@@ -1,7 +1,7 @@
 {
   "name": "Authno",
   "version": "1.1.5-beta.2",
-  "description": "AuthNo — offline story editor",
+  "description": "AuthNo \u2014 offline story editor",
   "author": {
     "name": "VCHS Studios",
     "email": "blader.ultramate@gmail.com"
@@ -24,7 +24,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-scripts": "^5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "@capawesome/capacitor-file-picker": "^6.0.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -70,9 +71,9 @@
     "tailwindcss": "^3.4.18"
   },
   "build": {
-    "appId": "com.authno.app",
+    "appId": "com.aurorastudios.authno",
     "productName": "AuthNo",
-    "copyright": "© 2025 VCHS Studios",
+    "copyright": "\u00a9 2025 VCHS Studios",
     "files": [
       "build/**/*",
       "main.js",
@@ -101,7 +102,10 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "ia32"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         }
       ],
       "legalTrademarks": "VCHS Studios"
@@ -115,9 +119,12 @@
       "displayLanguageSelector": false,
       "shortcutName": "AuthNo"
     },
-
     "linux": {
-      "target": ["AppImage", "deb", "rpm"],
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
       "category": "Utility",
       "icon": "public"
     }

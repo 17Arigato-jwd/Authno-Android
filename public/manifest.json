@@ -1,25 +1,19 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "AuthNo",
+  "name": "AuthNo — Story Editor",
+  "description": "Offline story editor by Aurora Studios",
   "icons": [
-    {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
+    { "src": "favicon.ico",    "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" },
+    { "src": "authno-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "any maskable" },
+    { "src": "authno-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any maskable" },
+    { "src": "authno-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any maskable" },
+    { "src": "authno-168.png", "sizes": "168x168", "type": "image/png", "purpose": "any maskable" },
+    { "src": "authno-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "authno-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "start_url": ".",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "background_color": "#000000"
 }
