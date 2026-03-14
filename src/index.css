@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes flamePulse {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 120, 0, 0.8)); }
+  50% { filter: drop-shadow(0 0 18px rgba(255, 150, 0, 1)); }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out;
+}
+
+.animate-flame {
+  animation: flamePulse 1.5s ease-in-out infinite;
+}
+
+/* small helper for hollow buttons to preserve contrast on dark backgrounds */
+.hollow-btn {
+  @apply border-2 border-white bg-transparent text-white rounded px-3 py-2;
+}
+
+/* smooth textarea font */
+textarea {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  letter-spacing: 0.002em;
+}
+
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-1deg); }
+  50% { transform: rotate(1deg); }
+}
+
+.animate-wobble {
+  animation: wiggle 1.8s infinite ease-in-out;
+  transform-origin: center;
+}
+
+/* ── Android / Mobile safe-area and touch fixes ───────────────────────── */
+
+/* Use dvh (dynamic viewport height) so the editor fills the screen
+   correctly even when the Android soft keyboard is visible.           */
+.authno-root {
+  height: 100dvh;
+}
+
+/* Prevent double-tap zoom on interactive elements */
+button, [role="button"], input, [contenteditable] {
+  touch-action: manipulation;
+}
+
+/* Keep the keyboard-visible area within the editor scrollable */
+[contenteditable] {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Respect the safe area on notched / gesture-nav Android devices */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Smooth sidebar drawer transition on Android */
+aside {
+  will-change: transform;
+}

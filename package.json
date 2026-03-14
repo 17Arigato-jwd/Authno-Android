@@ -1,0 +1,125 @@
+{
+  "name": "Authno",
+  "version": "1.1.5-beta.2",
+  "description": "AuthNo — offline story editor",
+  "author": {
+    "name": "VCHS Studios",
+    "email": "blader.ultramate@gmail.com"
+  },
+  "homepage": "./",
+  "main": "main.js",
+  "private": true,
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/filesystem": "^6.0.0",
+    "@capacitor/share": "^6.0.0",
+    "@tailwindcss/postcss": "^4.1.16",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "framer-motion": "^12.23.24",
+    "lucide-react": "^0.552.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-scripts": "^5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "cross-env CI=false react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "electron": "cross-env NODE_ENV=development electron .",
+    "electron-build": "cross-env NODE_ENV=production electron .",
+    "dist": "electron-builder --win",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder --win --linux",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:add:android": "npx cap add android",
+    "dist:android": "npm run build && npx cap sync android"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
+    "electron": "^39.1.1",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.18"
+  },
+  "build": {
+    "appId": "com.authno.app",
+    "productName": "AuthNo",
+    "copyright": "© 2025 VCHS Studios",
+    "files": [
+      "build/**/*",
+      "main.js",
+      "Preload.js",
+      "fileManager.js",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "public",
+      "output": "dist"
+    },
+    "extraMetadata": {
+      "main": "main.js"
+    },
+    "fileAssociations": [
+      {
+        "ext": "authbook",
+        "name": "AuthNo Book File",
+        "description": "AuthNo Book",
+        "icon": "public/authno.ico",
+        "mimeType": "application/x-authbook"
+      }
+    ],
+    "win": {
+      "icon": "public/authno.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        }
+      ],
+      "legalTrademarks": "VCHS Studios"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "license": "LICENSE.txt",
+      "displayLanguageSelector": false,
+      "shortcutName": "AuthNo"
+    },
+
+    "linux": {
+      "target": ["AppImage", "deb", "rpm"],
+      "category": "Utility",
+      "icon": "public"
+    }
+  }
+}
