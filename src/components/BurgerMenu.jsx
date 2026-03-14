@@ -1,29 +1,28 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Save, SaveAll, Settings as SettingsIcon, Share2 } from "lucide-react";
-import { saveBook, saveAsBook, exportBook } from "../utils/storageAdapter";
-import { isMobile } from "../utils/platform";
+import { saveBook, saveAsBook } from "../utils/storage";
+import { isAndroid } from "../utils/platform";
 
 /**
  * BurgerMenu
  *
- * Desktop  — small dropdown anchored directly below the burger button,
- *            mirroring the PC version exactly.
- * Mobile   — a bottom-sheet that slides up from the bottom of the screen,
- *            ensuring it's always fully visible and thumb-reachable.
+ * Desktop (Electron)
+ *   → Small dropdown rendered via createPortal, anchored 8px below the
+ *     burger button. Identical look to the original PC version.
  *
- * In both cases the menu is rendered via createPortal so it escapes any
- * overflow:hidden ancestors and is never clipped.
+ * Android
+ *   → Bottom-sheet that slides up from the screen bottom. Backdrop tap
+ *     dismisses it. "Save As" becomes "Export / Share" (native share sheet).
  *
  * Props
- * ─────
- * open            boolean   Whether the menu is visible
- * onClose         fn        Called to dismiss the menu
- * current         object    Active session (can be null)
- * setSessions     fn        Session updater
- * onOpenSettings  fn        Opens the Settings panel
- * accentHex       string    Theme accent colour
- * anchorRef       ref       Ref attached to the burger icon button in the header
+ *   open          boolean   whether the menu is visible
+ *   onClose       fn        dismiss callback
+ *   current       object    active session (may be null)
+ *   setSessions   fn        session list updater
+ *   onOpenSettings fn       open the Settings panel
+ *   accentHex     string    theme accent color
+ *   anchorRef     ref       ref on the burger button — used for positioning
  */
 export default function BurgerMenu({
   open,
@@ -36,46 +35,39 @@ export default function BurgerMenu({
 }) {
   const [status, setStatus] = useState("idle");
   const menuRef = useRef(null);
-  const mobile = isMobile();
+  const android = isAndroid();
 
-  // ── Position state (desktop only) ────────────────────────────────────────
+  // ── Anchor position (desktop only) ──────────────────────────────────────
   const [pos, setPos] = useState({ top: 0, right: 0 });
+  useEffect(() => {
+    if (open && !android && anchorRef?.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    }
+  }, [open, android, anchorRef]);
 
+  // ── Close on outside tap ─────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
-    if (!mobile && anchorRef?.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPos({
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      });
-    }
-  }, [open, mobile, anchorRef]);
-
-  // ── Close on outside tap/click ────────────────────────────────────────────
-  useEffect(() => {
-    const handleOutside = (e) => {
-      if (menuRef.current && menuRef.current.contains(e.target)) return;
-      if (anchorRef?.current && anchorRef.current.contains(e.target)) return;
+    const handler = (e) => {
+      if (menuRef.current?.contains(e.target)) return;
+      if (anchorRef?.current?.contains(e.target)) return;
       onClose?.();
     };
-    if (open) {
-      document.addEventListener("mousedown", handleOutside);
-      document.addEventListener("touchstart", handleOutside, { passive: true });
-    }
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler, { passive: true });
     return () => {
-      document.removeEventListener("mousedown", handleOutside);
-      document.removeEventListener("touchstart", handleOutside);
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
     };
   }, [open, onClose, anchorRef]);
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!current) return;
     setStatus("saving");
     try {
       const result = await saveBook(current);
-      // Update filePath in session list if a new file was created
       if (result?.filePath && result.filePath !== current.filePath) {
         setSessions((prev) =>
           prev.map((s) => (s.id === current.id ? { ...s, filePath: result.filePath } : s))
@@ -84,13 +76,13 @@ export default function BurgerMenu({
       setStatus("saved");
     } catch (err) {
       console.error("Save failed:", err);
-      alert("⚠️ Save failed. Check storage permissions and try again.");
+      alert("⚠️ Save failed. Check storage permissions.");
       setStatus("error");
     }
     setTimeout(() => setStatus("idle"), 2000);
   };
 
-  // ── Save As (desktop) / Export+Share (Android) ────────────────────────────
+  // ── Save As / Export ─────────────────────────────────────────────────────
   const handleSaveAs = async () => {
     if (!current) return;
     try {
@@ -106,7 +98,7 @@ export default function BurgerMenu({
     }
   };
 
-  // ── Keyboard shortcut: Ctrl+S ─────────────────────────────────────────────
+  // ── Ctrl+S shortcut ──────────────────────────────────────────────────────
   useEffect(() => {
     const handler = () => handleSave();
     document.addEventListener("triggerSave", handler);
@@ -115,17 +107,16 @@ export default function BurgerMenu({
 
   if (!open) return null;
 
-  // ── Shared button styles ──────────────────────────────────────────────────
-  const btnBase =
+  const btn =
     "flex items-center gap-2 w-full px-3 py-2 rounded-md border-2 text-sm font-semibold transition-all duration-300 justify-center";
 
   const menuContent = (
     <>
-      {/* ── SAVE ── */}
+      {/* SAVE */}
       <button
         disabled={status === "saving"}
         onClick={handleSave}
-        className={`${btnBase} ${
+        className={`${btn} ${
           status === "saving"
             ? "border-yellow-400 text-yellow-400 opacity-50 cursor-not-allowed"
             : status === "saved"
@@ -139,60 +130,38 @@ export default function BurgerMenu({
 
       <div className="h-px my-1 bg-white/10" />
 
-      {/* ── SAVE AS / EXPORT ── */}
-      {mobile ? (
-        <button
-          onClick={handleSaveAs}
-          className={`${btnBase} border-white text-white hover:bg-white/10`}
-        >
-          <Share2 className="w-4 h-4" />
-          Export / Share
-        </button>
-      ) : (
-        <button
-          onClick={handleSaveAs}
-          className={`${btnBase} border-white text-white hover:bg-white/10`}
-        >
-          <SaveAll className="w-4 h-4" />
-          Save As…
-        </button>
-      )}
+      {/* SAVE AS (desktop) or EXPORT (Android) */}
+      <button onClick={handleSaveAs} className={`${btn} border-white text-white hover:bg-white/10`}>
+        {android ? <Share2 className="w-4 h-4" /> : <SaveAll className="w-4 h-4" />}
+        {android ? "Export / Share" : "Save As…"}
+      </button>
 
       <div className="h-px my-1 bg-white/10" />
 
-      {/* ── SETTINGS ── */}
-      <button
-        onClick={onOpenSettings}
-        className={`${btnBase} border-white text-white hover:bg-white/10`}
-      >
+      {/* SETTINGS */}
+      <button onClick={onOpenSettings} className={`${btn} border-white text-white hover:bg-white/10`}>
         <SettingsIcon className="w-4 h-4" />
         Settings
       </button>
     </>
   );
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // MOBILE — Bottom sheet (slides up, thumb-friendly)
-  // ════════════════════════════════════════════════════════════════════════════
-  if (mobile) {
+  const gradient = `linear-gradient(to bottom right, ${accentHex}F2, rgba(0,0,0,0.95))`;
+
+  // ── Android: bottom-sheet ────────────────────────────────────────────────
+  if (android) {
     return createPortal(
       <>
-        {/* Scrim */}
-        <div
-          className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
-          onClick={onClose}
-        />
-        {/* Sheet */}
+        <div className="fixed inset-0 z-[9998] bg-black/50" onClick={onClose} />
         <div
           ref={menuRef}
-          className="fixed left-0 right-0 bottom-0 z-[9999] rounded-t-2xl p-5 shadow-2xl border-t border-white/20 animate-slideUp"
+          className="fixed bottom-0 left-0 right-0 z-[9999] rounded-t-2xl p-5 border-t border-white/20 animate-slideUp"
           style={{
-            background: `linear-gradient(to bottom right, ${accentHex}EE, rgba(0,0,0,0.97))`,
-            paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + 1.5rem)`,
+            background: gradient,
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)",
           }}
         >
-          {/* Drag handle */}
-          <div className="w-10 h-1 bg-white/25 rounded-full mx-auto mb-5" />
+          <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
           {menuContent}
         </div>
       </>,
@@ -200,19 +169,12 @@ export default function BurgerMenu({
     );
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // DESKTOP — Dropdown anchored below the burger button
-  // Matches the PC version style exactly
-  // ════════════════════════════════════════════════════════════════════════════
+  // ── Desktop: anchored dropdown ───────────────────────────────────────────
   return createPortal(
     <div
       ref={menuRef}
       className="fixed z-[9999] w-48 rounded-xl p-3 shadow-lg backdrop-blur-md border border-white/20 animate-fadeIn"
-      style={{
-        top: pos.top,
-        right: pos.right,
-        background: `linear-gradient(to bottom right, ${accentHex}F2, rgba(0,0,0,0.95))`,
-      }}
+      style={{ top: pos.top, right: pos.right, background: gradient }}
     >
       {menuContent}
     </div>,

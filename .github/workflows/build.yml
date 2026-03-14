@@ -3,81 +3,41 @@ name: Build AuthNo
 on:
   push:
     branches: [main, master]
-    tags:
-      - "v*"
+    tags: ["v*"]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
 
-# ── Shared React build artifact ────────────────────────────────────────────
-# The React bundle is built once and re-used by the Electron jobs and the
-# Android job, so we only pay the npm install + build cost once.
-
+# ── 1. Build React once, reuse across all platform jobs ──────────────────────
 jobs:
-  # ────────────────────────────────────────────────────────────────────────
-  # 1. Build React (runs on ubuntu, produces build/ directory)
-  # ────────────────────────────────────────────────────────────────────────
   build-react:
-    name: Build React App
+    name: Build React
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm install
+      - run: npm run build
+        env: { CI: false }
+      - uses: actions/upload-artifact@v4
+        with: { name: react-build, path: build/, retention-days: 1 }
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build React
-        run: npm run build
-        env:
-          CI: false
-
-      - name: Upload React build
-        uses: actions/upload-artifact@v4
-        with:
-          name: react-build
-          path: build/
-          retention-days: 1
-
-  # ────────────────────────────────────────────────────────────────────────
-  # 2. Windows — NSIS installer (x64 + ia32)
-  # ────────────────────────────────────────────────────────────────────────
+  # ── 2. Windows ──────────────────────────────────────────────────────────────
   build-windows:
     name: Build Windows
     needs: build-react
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Download React build
-        uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: build/
-
-      - name: Package (electron-builder)
-        run: npm run dist:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows installers
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with: { name: react-build, path: build/ }
+      - run: npm run dist:win
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: actions/upload-artifact@v4
         with:
           name: authno-windows
           path: |
@@ -85,44 +45,22 @@ jobs:
             dist/*.msi
           if-no-files-found: warn
 
-  # ────────────────────────────────────────────────────────────────────────
-  # 3. Linux — AppImage + deb + rpm
-  # ────────────────────────────────────────────────────────────────────────
+  # ── 3. Linux ────────────────────────────────────────────────────────────────
   build-linux:
     name: Build Linux
     needs: build-react
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Install Linux build tools
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y rpm fakeroot
-
-      - name: Download React build
-        uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: build/
-
-      - name: Package (electron-builder)
-        run: npm run dist:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Linux packages
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: sudo apt-get update -y && sudo apt-get install -y rpm fakeroot
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with: { name: react-build, path: build/ }
+      - run: npm run dist:linux
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: actions/upload-artifact@v4
         with:
           name: authno-linux
           path: |
@@ -131,74 +69,51 @@ jobs:
             dist/*.rpm
           if-no-files-found: warn
 
-  # ────────────────────────────────────────────────────────────────────────
-  # 4. Android — Capacitor + Gradle → unsigned APK & AAB
-  # ────────────────────────────────────────────────────────────────────────
+  # ── 4. Android ──────────────────────────────────────────────────────────────
   build-android:
     name: Build Android
     needs: build-react
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with: { name: react-build, path: build/ }
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Download React build
-        uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: build/
-
-      # Initialise the Android project if it doesn't yet exist in the repo.
-      # On first run (no android/ directory) Capacitor scaffolds it;
-      # on subsequent runs it skips the add step and only syncs.
-      - name: Capacitor sync
+      # Scaffold android/ if it doesn't exist yet (first run)
+      - name: Capacitor add + sync
         run: |
           if [ ! -d "android" ]; then
-            echo "⚙️  No android/ folder found — running 'cap add android'"
             npx cap add android
           fi
           npx cap sync android
 
-      - name: Make gradlew executable
-        run: chmod +x android/gradlew
+      - run: chmod +x android/gradlew
 
-      # ── Debug APK (always built) ────────────────────────────────────────
+      # Debug APK — built on every push
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      # ── Release AAB (only on tag pushes) ───────────────────────────────
-      # To enable signed release builds, add these repository secrets:
-      #   KEYSTORE_BASE64   — base64-encoded .jks file
-      #   KEY_ALIAS         — key alias inside the keystore
-      #   KEY_PASSWORD      — key password
-      #   STORE_PASSWORD    — store password
+      # Release AAB — only on version tags
       - name: Build release AAB
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: android
         run: ./gradlew bundleRelease --no-daemon
 
+      # Sign AAB if keystore secret is present
+      # To enable: add KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
+      # as repository secrets in Settings → Secrets and variables → Actions
       - name: Sign release AAB
         if: startsWith(github.ref, 'refs/tags/')
         uses: r0adkll/sign-android-release@v1
+        continue-on-error: true   # skip gracefully if secrets are not set
         with:
           releaseDirectory: android/app/build/outputs/bundle/release
           signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -221,24 +136,18 @@ jobs:
           path: android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn
 
-  # ────────────────────────────────────────────────────────────────────────
-  # 5. GitHub Release — attach all artifacts (tag pushes only)
-  # ────────────────────────────────────────────────────────────────────────
+  # ── 5. GitHub Release (tag pushes only) ─────────────────────────────────────
   release:
-    name: Publish GitHub Release
+    name: Publish Release
     needs: [build-windows, build-linux, build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/download-artifact@v4
+        with: { path: release-assets/ }
+      - uses: softprops/action-gh-release@v2
         with:
           files: release-assets/**/*
           generate_release_notes: true

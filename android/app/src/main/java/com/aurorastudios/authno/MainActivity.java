@@ -1,4 +1,4 @@
-package com.authno.app;
+package com.aurorastudios.authno;
 
 import com.getcapacitor.BridgeActivity;
 

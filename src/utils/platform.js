@@ -1,22 +1,15 @@
 /**
- * platform.js — Runtime environment detection for AuthNo
- * Supports: Electron (Windows/Linux), Capacitor Android, and plain browser.
+ * platform.js
+ * Detects whether the app is running inside Electron or Capacitor Android.
+ * Import these helpers anywhere — they never trigger re-renders.
  */
 
-/** True when running inside Electron with the preload bridge available. */
+/** Running inside Electron (Windows / Linux desktop). */
 export const isElectron = () => Boolean(window.electron);
 
-/** True when running inside a Capacitor Android WebView. */
+/** Running inside a Capacitor Android WebView. */
 export const isAndroid = () => {
-  if (typeof window === 'undefined') return false;
-  // Capacitor injects window.Capacitor at runtime
-  if (window.Capacitor?.getPlatform() === 'android') return true;
-  // Fallback: UA sniff (useful in dev with browser preview)
+  if (typeof window === "undefined") return false;
+  if (window.Capacitor?.getPlatform() === "android") return true;
   return /Android/i.test(navigator.userAgent);
 };
-
-/** True on any touch-first mobile device. */
-export const isMobile = () => isAndroid();
-
-/** True on desktop (Electron). */
-export const isDesktop = () => isElectron();
