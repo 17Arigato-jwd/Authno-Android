@@ -10,7 +10,7 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
-import { listSavedBooks } from "./utils/storage";
+import { listSavedBooks, saveBook } from "./utils/storage";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -113,6 +113,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const burgerBtnRef = useRef(null);
+  const autoSaveTimer = useRef(null);
   const android = isAndroid();
 
   // ── Load sessions ────────────────────────────────────────────────────────
@@ -183,6 +184,43 @@ export default function App() {
     window.electron.onOpenAuthBook(listener);
     return () => window.removeEventListener("open-authbook", listener);
   }, [sessions]);
+
+  // Android: .authbook file opened via intent (tapped in file manager)
+  useEffect(() => {
+    const handler = (e) => {
+      const book = e.detail;
+      if (!book) return;
+      setSessions((prev) => {
+        if (prev.some((s) => s.id === book.id)) return prev;
+        const nb = {
+          ...book,
+          id: book.id || Date.now().toString(),
+          preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...",
+        };
+        setCurrentId(nb.id);
+        return [nb, ...prev];
+      });
+    };
+    const errHandler = () => alert("⚠️ Could not open that .authbook file — it may be corrupt.");
+    window.addEventListener("open-authbook-android", handler);
+    window.addEventListener("open-authbook-android-error", errHandler);
+    return () => {
+      window.removeEventListener("open-authbook-android", handler);
+      window.removeEventListener("open-authbook-android-error", errHandler);
+    };
+  }, []);
+
+  // Android: debounced auto-save — saves 2s after any content change
+  useEffect(() => {
+    if (!android) return;
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      sessions.forEach((s) => {
+        if (s.filePath) saveBook(s).catch(console.error);
+      });
+    }, 2000);
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [sessions, android]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Settings / Customization ─────────────────────────────────────────────
   const [customizerOpen, setCustomizerOpen] = useState(false);

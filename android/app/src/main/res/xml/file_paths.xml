@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- App-specific external Documents (used by Capacitor Filesystem) -->
+    <external-files-path name="authno_documents" path="." />
+    <!-- Internal cache (used for export/share via Share plugin) -->
+    <cache-path name="authno_cache" path="." />
+    <!-- External cache fallback -->
+    <external-cache-path name="authno_external_cache" path="." />
 </paths>

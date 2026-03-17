@@ -22,6 +22,28 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Open .authbook files from any file manager (content URI) -->
+            <intent-filter android:label="Open with AuthNo">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/x-authbook" />
+            </intent-filter>
+
+            <!-- Fallback: match by extension when MIME type is generic -->
+            <intent-filter android:label="Open with AuthNo">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\.authbook" />
+            </intent-filter>
+
+            <intent-filter android:label="Open with AuthNo">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\.authbook" />
+            </intent-filter>
+
         </activity>
 
         <provider
@@ -36,6 +58,9 @@
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Storage: required for file picker and export on Android ≤ 12 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"  android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 </manifest>
