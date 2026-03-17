@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  X, User, Palette, Database, BookOpen,
+  Camera, Check, Trash2, RefreshCw, AlertTriangle,
+  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target,
+} from 'lucide-react';
+import { buildPalette } from './Background';
+import { ColorPicker } from './ColorPicker';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -9,13 +16,6 @@ function useIsPortrait() {
   }, []);
   return isPortrait;
 }
-import {
-  X, User, Palette, Database, BookOpen,
-  Camera, Check, Trash2, RefreshCw, AlertTriangle,
-  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target,
-} from 'lucide-react';
-import { buildPalette } from './Background';
-import { ColorPicker } from './ColorPicker';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
