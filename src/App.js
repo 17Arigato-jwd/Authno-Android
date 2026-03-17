@@ -42,7 +42,8 @@ function Editor({
   return (
     <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-[#060606] border-b border-white/10 shrink-0">
+      <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+        style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2 min-w-0">
           {android && (
             <button onClick={onToggleSidebar}
@@ -81,8 +82,9 @@ function Editor({
               ref={editorRef}
               contentEditable
               suppressContentEditableWarning
-              className="w-full min-h-[400px] bg-[#0f0f10] text-white p-4 rounded-lg shadow-inner focus:outline-none leading-relaxed"
+              className="w-full min-h-[400px] p-4 rounded-lg shadow-inner focus:outline-none leading-relaxed"
               style={{
+                background: 'var(--editor-bg)', color: 'var(--text-1)',
                 marginTop: android ? "0.25rem" : "5rem",
                 WebkitUserSelect: "text", userSelect: "text",
               }}
@@ -249,7 +251,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-root flex text-white relative">
+    <div className={`app-root flex text-white relative${settings.lightMode ? ' light-mode' : ''}`}>
       <Background
         accentHex={customization.accentHex}
         backgroundOpacity={customization.backgroundOpacity}
@@ -277,6 +279,7 @@ export default function App() {
         currentId={currentId}
         setView={setView}
         accentHex={customization.accentHex}
+        lightMode={settings.lightMode}
         isDrawerOpen={drawerOpen}
         onDrawerClose={() => setDrawerOpen(false)}
         onDelete={(id) => {

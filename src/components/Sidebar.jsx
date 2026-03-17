@@ -33,6 +33,7 @@ export default function Sidebar({
   currentId,
   onDelete,
   accentHex,
+  lightMode,
   setView,
   // mobile
   isDrawerOpen,
@@ -92,20 +93,21 @@ export default function Sidebar({
     }
     const modal = document.createElement("div");
     modal.className = "fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999]";
+    const isDark = !lightMode;
     modal.innerHTML = `
-      <div class="bg-[#0f0f10] border border-white/20 rounded-xl p-6 w-[360px] max-w-[90vw] text-white shadow-xl">
+      <div style="background:${isDark ? '#0f0f10' : '#ffffff'};color:${isDark ? '#fff' : '#1a1a1e'}" class="border rounded-xl p-6 w-[360px] max-w-[90vw] shadow-xl" style="border-color:rgba(${isDark?'255,255,255':'0,0,0'},0.2)">
         <h2 class="text-lg font-semibold mb-2">Delete from Workspace?</h2>
-        <p class="text-sm text-white/70 mb-4 leading-relaxed">
+        <p class="text-sm mb-4 leading-relaxed" style="opacity:0.7">
           This removes the session from your workspace.<br/>
           ${android ? "Your writing data will be deleted." : "The actual <b>.authbook</b> file will remain on your computer."}
         </p>
         <label class="flex items-center gap-2 mb-4 cursor-pointer select-none">
-          <input type="checkbox" id="skipCheck" class="w-4 h-4 accent-[#00b4ff]" />
-          <span class="text-sm text-white/70">Don't show this again</span>
+          <input type="checkbox" id="skipCheck" class="w-4 h-4" style="accent-color:${accentHex}" />
+          <span class="text-sm" style="opacity:0.7">Don't show this again</span>
         </label>
         <div class="flex justify-end gap-3">
-          <button id="cancelBtn" class="px-3 py-1.5 rounded-md border border-white/30 hover:bg-white/10 transition text-sm">Cancel</button>
-          <button id="confirmBtn" class="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition">Delete</button>
+          <button id="cancelBtn" class="px-3 py-1.5 rounded-md text-sm transition" style="border:1px solid rgba(${isDark?'255,255,255':'0,0,0'},0.3);background:transparent">Cancel</button>
+          <button id="confirmBtn" class="px-3 py-1.5 rounded-md font-semibold text-sm transition" style="background:#dc2626;color:#fff">Delete</button>
         </div>
       </div>`;
     document.body.appendChild(modal);
@@ -290,7 +292,14 @@ export default function Sidebar({
       {/* SESSIONS LIST */}
       <div className="p-3 flex-1 overflow-auto">
         <div className="rounded-lg p-2"
-          style={{ background: "linear-gradient(135deg, #1f1f1f 0%, #050505 100%)", border: "1px solid rgba(255,255,255,0.04)" }}>
+          style={{
+            background: lightMode
+              ? 'linear-gradient(135deg, #f0f0f2 0%, #e8e8ec 100%)'
+              : 'linear-gradient(135deg, #1f1f1f 0%, #050505 100%)',
+            border: lightMode
+              ? '1px solid rgba(0,0,0,0.07)'
+              : '1px solid rgba(255,255,255,0.04)',
+          }}>
           <h3 className="text-xs text-white/70 px-2 mb-2">Sessions</h3>
           <div className="flex flex-col gap-2">
             {sessions.length === 0 ? (
