@@ -1,4 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+
+function useIsPortrait() {
+  const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
+  useEffect(() => {
+    const check = () => setIsPortrait(window.innerWidth < window.innerHeight || window.innerWidth < 600);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return isPortrait;
+}
 import {
   X, User, Palette, Database, BookOpen,
   Camera, Check, Trash2, RefreshCw, AlertTriangle,
@@ -601,6 +611,7 @@ export const DEFAULT_SETTINGS = {
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer }) {
   const [activeSection, setActiveSection] = useState('profile');
+  const isPortrait = useIsPortrait();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -626,6 +637,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
         animation: 'settingsFadeIn 0.15s ease',
+        padding: isPortrait ? '0' : '16px',
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -633,91 +645,180 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
         @keyframes settingsFadeIn  { from { opacity: 0; } to { opacity: 1; } }
         @keyframes settingsPanelIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .settings-nav-item:hover { background: rgba(255,255,255,0.05) !important; color: #dcddde !important; }
+        .settings-tab:hover { background: rgba(255,255,255,0.05) !important; }
+        .settings-content::-webkit-scrollbar { width: 4px; }
+        .settings-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .settings-tabs::-webkit-scrollbar { display: none; }
       `}</style>
 
       <div style={{
-        width: '90vw', maxWidth: '860px',
-        height: '80vh', maxHeight: '680px',
-        display: 'flex', borderRadius: '16px', overflow: 'hidden',
-        background: '#1a1b1e',                               /* ← darkened from #2b2d31 */
-        border: '1px solid rgba(255,255,255,0.07)',
+        width: isPortrait ? '100vw' : '90vw',
+        maxWidth: isPortrait ? '100vw' : '860px',
+        height: isPortrait ? '100dvh' : '80vh',
+        maxHeight: isPortrait ? '100dvh' : '680px',
+        display: 'flex',
+        flexDirection: isPortrait ? 'column' : 'row',
+        borderRadius: isPortrait ? '0' : '16px',
+        overflow: 'hidden',
+        background: '#1a1b1e',
+        border: isPortrait ? 'none' : '1px solid rgba(255,255,255,0.07)',
         boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
         animation: 'settingsPanelIn 0.2s ease',
       }}>
 
-        {/* ── Left Nav ── */}
-        <div style={{
-          width: '220px', flexShrink: 0,
-          background: '#111214',                             /* ← darkened from #1e1f22 */
-          padding: '16px 8px',
-          display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid rgba(255,255,255,0.05)',
-          overflowY: 'auto',
-        }}>
-          {groups.map(group => (
-            <div key={group} style={{ marginBottom: '16px' }}>
-              <div style={{
-                fontSize: '11px', fontWeight: 700, color: '#72767d',
-                textTransform: 'uppercase', letterSpacing: '0.8px',
-                padding: '4px 10px', marginBottom: '4px',
-              }}>
-                {group}
-              </div>
-              {NAV_ITEMS.filter(i => i.group === group).map(item => {
+        {isPortrait ? (
+          /* ── Portrait: Top header + scrollable tab bar ── */
+          <>
+            {/* Header bar */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '14px 16px 0',
+              background: '#111214',
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#fff', letterSpacing: '-0.2px' }}>
+                Settings
+              </span>
+              <button
+                onClick={onClose}
+                style={{
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.06)', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#72767d',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Scrollable tab bar */}
+            <div
+              className="settings-tabs"
+              style={{
+                display: 'flex', overflowX: 'auto', gap: '4px',
+                padding: '10px 12px',
+                background: '#111214',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                flexShrink: 0,
+              }}
+            >
+              {NAV_ITEMS.map(item => {
                 const active = activeSection === item.id;
                 return (
                   <button
                     key={item.id}
-                    className="settings-nav-item"
+                    className="settings-tab"
                     onClick={() => setActiveSection(item.id)}
                     style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-                      padding: '8px 10px', borderRadius: '6px', border: 'none',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '7px 12px', borderRadius: '8px', border: 'none',
                       background: active ? `${accentHex}22` : 'transparent',
                       color: active ? '#fff' : '#96989d',
-                      cursor: 'pointer', fontSize: '14px', fontWeight: active ? 600 : 400,
-                      textAlign: 'left', transition: 'all 0.1s ease',
+                      cursor: 'pointer', fontSize: '13px',
+                      fontWeight: active ? 600 : 400,
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                      borderBottom: active ? `2px solid ${accentHex}` : '2px solid transparent',
+                      transition: 'all 0.1s ease',
                     }}
                   >
-                    <item.icon size={16} color={active ? accentHex : '#72767d'} />
+                    <item.icon size={14} color={active ? accentHex : '#72767d'} />
                     {item.label}
-                    {active && (
-                      <div style={{ marginLeft: 'auto', width: '3px', height: '16px', borderRadius: '2px', background: accentHex }} />
-                    )}
                   </button>
                 );
               })}
             </div>
-          ))}
 
-          <div style={{ marginTop: 'auto', padding: '8px 10px', fontSize: '11px', color: '#4f545c' }}>
-            Settings v1.0
-          </div>
-        </div>
+            {/* Scrollable content */}
+            <div
+              className="settings-content"
+              style={{ flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}
+            >
+              {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
+              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} />}
+              {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
+              {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
+              {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
+            </div>
+          </>
+        ) : (
+          /* ── Landscape: Original left nav + content ── */
+          <>
+            <div style={{
+              width: '220px', flexShrink: 0,
+              background: '#111214',
+              padding: '16px 8px',
+              display: 'flex', flexDirection: 'column',
+              borderRight: '1px solid rgba(255,255,255,0.05)',
+              overflowY: 'auto',
+            }}>
+              {groups.map(group => (
+                <div key={group} style={{ marginBottom: '16px' }}>
+                  <div style={{
+                    fontSize: '11px', fontWeight: 700, color: '#72767d',
+                    textTransform: 'uppercase', letterSpacing: '0.8px',
+                    padding: '4px 10px', marginBottom: '4px',
+                  }}>
+                    {group}
+                  </div>
+                  {NAV_ITEMS.filter(i => i.group === group).map(item => {
+                    const active = activeSection === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        className="settings-nav-item"
+                        onClick={() => setActiveSection(item.id)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+                          padding: '8px 10px', borderRadius: '6px', border: 'none',
+                          background: active ? `${accentHex}22` : 'transparent',
+                          color: active ? '#fff' : '#96989d',
+                          cursor: 'pointer', fontSize: '14px', fontWeight: active ? 600 : 400,
+                          textAlign: 'left', transition: 'all 0.1s ease',
+                        }}
+                      >
+                        <item.icon size={16} color={active ? accentHex : '#72767d'} />
+                        {item.label}
+                        {active && (
+                          <div style={{ marginLeft: 'auto', width: '3px', height: '16px', borderRadius: '2px', background: accentHex }} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              <div style={{ marginTop: 'auto', padding: '8px 10px', fontSize: '11px', color: '#4f545c' }}>
+                Settings v1.0
+              </div>
+            </div>
 
-        {/* ── Content ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}>
-          <button
-            onClick={onClose}
-            style={{
-              position: 'absolute', top: '16px', right: '16px',
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: 'rgba(255,255,255,0.06)', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: '#72767d', transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#72767d'; }}
-          >
-            <X size={16} />
-          </button>
+            <div
+              className="settings-content"
+              style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}
+            >
+              <button
+                onClick={onClose}
+                style={{
+                  position: 'absolute', top: '16px', right: '16px',
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.06)', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#72767d', transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = '#72767d'; }}
+              >
+                <X size={16} />
+              </button>
 
-          {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
-          {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} />}
-          {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
-          {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-          {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
-        </div>
+              {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
+              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} />}
+              {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
+              {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
+              {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
