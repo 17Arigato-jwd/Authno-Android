@@ -23,53 +23,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: react-build, path: build/, retention-days: 1 }
 
-  # ── 2. Windows ──────────────────────────────────────────────────────────────
-  build-windows:
-    name: Build Windows
-    needs: build-react
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "20" }
-      - run: npm install
-      - uses: actions/download-artifact@v4
-        with: { name: react-build, path: build/ }
-      - run: npm run dist:win
-        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: authno-windows
-          path: |
-            dist/*.exe
-            dist/*.msi
-          if-no-files-found: warn
-
-  # ── 3. Linux ────────────────────────────────────────────────────────────────
-  build-linux:
-    name: Build Linux
-    needs: build-react
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: "20" }
-      - run: sudo apt-get update -y && sudo apt-get install -y rpm fakeroot
-      - run: npm install
-      - uses: actions/download-artifact@v4
-        with: { name: react-build, path: build/ }
-      - run: npm run dist:linux
-        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: authno-linux
-          path: |
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.rpm
-          if-no-files-found: warn
-
-  # ── 4. Android ──────────────────────────────────────────────────────────────
+  # ── 2. Android ──────────────────────────────────────────────────────────────
   build-android:
     name: Build Android
     needs: build-react
@@ -86,7 +40,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: react-build, path: build/ }
 
-      # Scaffold android/ if it doesn't exist yet (first run)
       - name: Capacitor add + sync
         run: |
           if [ ! -d "android" ]; then
@@ -96,24 +49,19 @@ jobs:
 
       - run: chmod +x android/gradlew
 
-      # Debug APK — built on every push
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      # Release AAB — only on version tags
       - name: Build release AAB
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: android
         run: ./gradlew bundleRelease --no-daemon
 
-      # Sign AAB if keystore secret is present
-      # To enable: add KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
-      # as repository secrets in Settings → Secrets and variables → Actions
       - name: Sign release AAB
         if: startsWith(github.ref, 'refs/tags/')
         uses: r0adkll/sign-android-release@v1
-        continue-on-error: true   # skip gracefully if secrets are not set
+        continue-on-error: true
         with:
           releaseDirectory: android/app/build/outputs/bundle/release
           signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -136,10 +84,10 @@ jobs:
           path: android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn
 
-  # ── 5. GitHub Release (tag pushes only) ─────────────────────────────────────
+  # ── 3. GitHub Release (tag pushes only) ─────────────────────────────────────
   release:
     name: Publish Release
-    needs: [build-windows, build-linux, build-android]
+    needs: [build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
