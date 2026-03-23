@@ -49,14 +49,37 @@ jobs:
 
       - run: chmod +x android/gradlew
 
+      # ── Resolve version numbers ─────────────────────────────────────────────
+      # versionCode = GitHub run number (auto-increments, Play Store safe)
+      # versionName = git tag (e.g. "1.1.6") on releases, "debug-<run>" otherwise
+      - name: Set version variables
+        id: version
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION_NAME="${{ github.ref_name }}"
+            VERSION_NAME="${VERSION_NAME#v}"   # strip leading 'v'
+          else
+            VERSION_NAME="debug-${{ github.run_number }}"
+          fi
+          echo "code=$VERSION_CODE"   >> $GITHUB_OUTPUT
+          echo "name=$VERSION_NAME"   >> $GITHUB_OUTPUT
+          echo "versionCode=$VERSION_CODE  versionName=$VERSION_NAME"
+
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          ./gradlew assembleDebug --no-daemon \
+            -PversionCode=${{ steps.version.outputs.code }} \
+            -PversionName=${{ steps.version.outputs.name }}
 
       - name: Build release AAB
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: android
-        run: ./gradlew bundleRelease --no-daemon
+        run: |
+          ./gradlew bundleRelease --no-daemon \
+            -PversionCode=${{ steps.version.outputs.code }} \
+            -PversionName=${{ steps.version.outputs.name }}
 
       - name: Sign release AAB
         if: startsWith(github.ref, 'refs/tags/')
