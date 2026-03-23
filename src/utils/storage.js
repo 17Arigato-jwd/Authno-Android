@@ -1,20 +1,17 @@
 /**
  * storage.js — Unified file I/O for AuthNo
  *
- * Handles three file format generations transparently:
+ * Android approach (simple, proven, no custom Java plugin required):
+ *   Open    → <input type="file"> — same mechanism as the image picker in Settings
+ *   Save    → @capacitor/filesystem writes to Documents/AuthNo/ automatically
+ *   Export  → @capacitor/share opens the OS share sheet
  *
- *   Format 0  Legacy plain JSON  (old app, no VCHS-ECS)
- *   Format 1  VCHS-ECS binary    (current, all new saves)
+ * Electron approach (unchanged):
+ *   Open / Save / Save-As → window.electron IPC bridge
  *
- * On read:  detects format, migrates if needed, returns a flat session
- *           that App.js can use without any changes.
- * On write: always writes VCHS-ECS Format 1. A legacy file opened and
- *           saved is automatically upgraded on first save.
- *
- * Platform routing:
- *   Electron  → window.electron IPC (binary base64 bridge)
- *   Android   → AuthnoFilePicker SAF plugin (binary base64)
- *   Fallback  → no-op (web / test environment)
+ * Backward compatibility:
+ *   Old plain-JSON .authbook files are detected and migrated to VCHS-ECS
+ *   transparently on the first save after opening.
  */
 
 import { isElectron, isAndroid } from './platform';
@@ -24,11 +21,6 @@ import {
 } from './authbook';
 
 // ─── Lazy plugin loaders ──────────────────────────────────────────────────────
-
-async function getSAFPlugin() {
-  const { registerPlugin } = await import('@capacitor/core');
-  return registerPlugin('AuthnoFilePicker');
-}
 
 async function getFS() {
   const m = await import('@capacitor/filesystem');
@@ -41,28 +33,31 @@ async function getShare() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function isSafUri(p) { return typeof p === 'string' && p.startsWith('content://'); }
+const SAVE_DIR = 'AuthNo';
 
 function loadSettings() {
-  try { return JSON.parse(localStorage.getItem('writerSettings')) ?? {}; } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem('writerSettings')) ?? {}; }
+  catch { return {}; }
 }
 
-// ─── Core format functions ────────────────────────────────────────────────────
+/** Build a safe filename from a session title. */
+function safeName(session) {
+  const base = (session.title || 'Untitled')
+    .replace(/[^a-z0-9\-_ ]/gi, '_').slice(0, 60).trim();
+  return `${base}.authbook`;
+}
 
-/**
- * Encode a session to VCHS-ECS bytes.
- * session can be either a flat App.js session or already have a chapters array.
- */
-async function encodeSession(session, settings) {
-  const book    = sessionToBook(session);
-  const rsLevel = loadSettings().rsLevel ?? 20;
-  const bytes   = await packSession(book, settings ?? loadSettings(), rsLevel);
-  return bytes;
+/** Encode a session → VCHS-ECS Uint8Array. */
+async function encodeSession(session) {
+  const settings = loadSettings();
+  const rsLevel  = settings.rsLevel ?? 20;
+  const book     = sessionToBook(session);
+  return packSession(book, settings, rsLevel);
 }
 
 /**
- * Decode raw bytes (VCHS-ECS or legacy JSON) into a flat App.js session.
- * filePath is stored on the returned session so storage can save back.
+ * Decode raw bytes (VCHS-ECS binary or legacy JSON) → flat App.js session.
+ * Handles migration automatically.
  */
 async function decodeBytes(bytes, filePath) {
   const fmt = detectFormat(bytes);
@@ -70,115 +65,206 @@ async function decodeBytes(bytes, filePath) {
   if (fmt === 'vchs') {
     const book    = await unpackSession(bytes);
     const session = bookToSession(book);
-    // Log any warnings so they're visible in dev tools
-    if (book.warnings?.length) console.warn('[authbook] warnings:', book.warnings);
-    return { ...session, filePath, _vchs: true };
+    if (book.warnings?.length) console.warn('[authbook]', book.warnings);
+    return { ...session, filePath };
   }
 
   if (fmt === 'legacy-json') {
-    const text = new TextDecoder().decode(bytes);
-    const raw  = JSON.parse(text);
-    // Normalise legacy streak format (plain int log values → { words, goal })
+    const text    = new TextDecoder().decode(bytes);
+    const raw     = JSON.parse(text);
     const session = bookToSession(fromLegacySession(raw));
-    // filePath kept; will be overwritten as VCHS-ECS on first save
     return { ...session, filePath, _legacy: true };
   }
 
-  throw new Error('Unrecognised file format — not a valid .authbook file');
+  throw new Error('Not a valid .authbook file');
+}
+
+// ─── File input picker (Android + web) ────────────────────────────────────────
+
+/**
+ * Show a native file picker using a hidden <input type="file"> element.
+ * This is exactly how the avatar image picker in Settings works — it is
+ * the standard Android WebView file picker and is always reliable.
+ *
+ * Returns a File object, or null if the user cancels.
+ */
+function pickFileViaInput(accept = '.authbook,*/*') {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type   = 'file';
+    input.accept = accept;
+    input.style.display = 'none';
+
+    // Resolve null if the dialog is closed without picking
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!input.files?.length) resolve(null);
+        document.body.removeEventListener('focus', onFocus, true);
+      }, 500);
+    };
+    document.body.addEventListener('focus', onFocus, { capture: true, once: true });
+
+    input.onchange = (e) => {
+      document.body.removeEventListener('focus', onFocus, true);
+      resolve(e.target.files?.[0] ?? null);
+    };
+
+    document.body.appendChild(input);
+    input.click();
+    // Clean up after a moment
+    setTimeout(() => {
+      if (document.body.contains(input)) document.body.removeChild(input);
+    }, 60000);
+  });
+}
+
+/** Read a File object as Uint8Array. */
+function readFileAsBytes(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = (e) => resolve(new Uint8Array(e.target.result));
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ─── Android filesystem helpers ───────────────────────────────────────────────
+
+async function ensureSaveDir() {
+  const { Filesystem, Directory } = await getFS();
+  try {
+    await Filesystem.mkdir({
+      path: SAVE_DIR, directory: Directory.Documents, recursive: true,
+    });
+  } catch { /* already exists */ }
+}
+
+/** Write VCHS-ECS bytes to Documents/AuthNo/<filename> and return the path. */
+async function writeToDocuments(session, bytes) {
+  const { Filesystem, Directory } = await getFS();
+  await ensureSaveDir();
+  const filename = safeName(session);
+  const path     = `${SAVE_DIR}/${filename}`;
+  const base64   = bytesToBase64(bytes);
+
+  // Capacitor Filesystem.writeFile accepts base64 when encoding is omitted
+  await Filesystem.writeFile({
+    path,
+    data:      base64,
+    directory: Directory.Documents,
+  });
+  return path;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Save the current session to disk.
+ * Save the current session.
  *
- * If the session came from a legacy JSON file (_legacy flag), the first save
- * rewrites it as VCHS-ECS automatically — the user sees no difference.
+ * Android : writes to Documents/AuthNo/<title>.authbook silently
+ * Electron: overwrites the existing filePath, or opens Save-As if none
  *
- * Returns { success: true, filePath } or { cancelled: true }
+ * Returns { success: true, filePath }
  */
-export async function saveBook(session, settingsOverride) {
-  const settings = settingsOverride ?? loadSettings();
-  const bytes    = await encodeSession(session, settings);
-  const b64      = bytesToBase64(bytes);
-
+export async function saveBook(session) {
   // ── Electron ──────────────────────────────────────────────────────────────
   if (isElectron()) {
+    const bytes  = await encodeSession(session);
+    const base64 = bytesToBase64(bytes);
     if (session.filePath)
-      return window.electron.saveBookBytes({ filePath: session.filePath, base64: b64 });
+      return window.electron.saveBookBytes({ filePath: session.filePath, base64 });
     return window.electron.saveAsBytesBook({
-      base64:      b64,
-      defaultName: _safeName(session),
+      base64, defaultName: safeName(session),
     });
   }
 
   // ── Android ───────────────────────────────────────────────────────────────
   if (isAndroid()) {
-    if (isSafUri(session.filePath)) {
-      const plugin = await getSAFPlugin();
-      await plugin.writeBytesToUri({ uri: session.filePath, base64: b64 });
-      return { success: true, filePath: session.filePath };
-    }
-    // No SAF URI yet — show the Create Document picker
-    return saveAsBook(session, settings);
+    const bytes    = await encodeSession(session);
+    const filePath = await writeToDocuments(session, bytes);
+    return { success: true, filePath };
   }
 
   return { success: true };
 }
 
 /**
- * Save As — always shows the system file picker.
+ * Export / Save-As.
+ *
+ * Android : writes to Documents/AuthNo/ then opens the OS share sheet so
+ *           the user can copy it to Google Drive, email, another folder, etc.
+ * Electron: shows the native Save-As dialog.
+ *
  * Returns { success: true, filePath } or { cancelled: true }
  */
-export async function saveAsBook(session, settingsOverride) {
-  const settings = settingsOverride ?? loadSettings();
-  const bytes    = await encodeSession(session, settings);
-  const b64      = bytesToBase64(bytes);
-
-  if (isElectron())
+export async function saveAsBook(session) {
+  // ── Electron ──────────────────────────────────────────────────────────────
+  if (isElectron()) {
+    const bytes  = await encodeSession(session);
+    const base64 = bytesToBase64(bytes);
     return window.electron.saveAsBytesBook({
-      base64: b64, defaultName: _safeName(session),
+      base64, defaultName: safeName(session),
     });
+  }
 
+  // ── Android: write to Documents + share ───────────────────────────────────
   if (isAndroid()) {
-    const plugin = await getSAFPlugin();
-    const result = await plugin.createDocument({ fileName: _safeName(session) });
-    if (!result?.uri) return { cancelled: true };
-    await plugin.writeBytesToUri({ uri: result.uri, base64: b64 });
-    return { success: true, filePath: result.uri };
+    const bytes    = await encodeSession(session);
+    const { Filesystem, Directory } = await getFS();
+    const Share    = await getShare();
+    const filename = safeName(session);
+
+    // Write to cache so the share sheet can send it anywhere
+    await Filesystem.writeFile({
+      path:      filename,
+      data:      bytesToBase64(bytes),
+      directory: Directory.Cache,
+    });
+    const { uri } = await Filesystem.getUri({
+      path: filename, directory: Directory.Cache,
+    });
+    await Share.share({
+      title:      `Export "${session.title}"`,
+      url:        uri,
+      dialogTitle: 'Save or share .authbook',
+    });
+    // Also persist to Documents in the background
+    const savedPath = await writeToDocuments(session, bytes);
+    return { success: true, filePath: savedPath };
   }
 
   return { success: true };
 }
 
 /**
- * Open an existing .authbook file via the system file picker.
- * Handles both VCHS-ECS and legacy JSON transparently.
- * Returns a flat session or null if cancelled.
+ * Open an existing .authbook file.
+ *
+ * Android : shows a native file picker via <input type="file"> — identical
+ *           to how the avatar image picker in Settings works.
+ * Electron: shows the native Open dialog.
+ *
+ * Returns a flat session object or null if the user cancelled.
  */
 export async function openBook() {
+  // ── Electron ──────────────────────────────────────────────────────────────
   if (isElectron()) {
     const result = await window.electron.openBookBytes();
     if (!result) return null;
-    const bytes = base64ToBytes(result.base64);
-    return decodeBytes(bytes, result.filePath);
+    return decodeBytes(base64ToBytes(result.base64), result.filePath);
   }
 
-  if (isAndroid()) {
-    const plugin = await getSAFPlugin();
-    const result = await plugin.openDocument();
-    if (!result?.uri) return null;
-    const bytes = base64ToBytes(result.base64);
-    return decodeBytes(bytes, result.uri);
-  }
+  // ── Android (and web fallback) ────────────────────────────────────────────
+  const file = await pickFileViaInput('.authbook,*/*');
+  if (!file) return null;
 
-  return null;
+  const bytes = await readFileAsBytes(file);
+  // Use the filename as the filePath on Android since we have no content URI
+  return decodeBytes(bytes, file.name);
 }
 
 /**
- * Decode bytes that arrived via the MainActivity intent handler.
- * Called by the 'open-authbook-android-bytes' event listener in App.js.
- * Returns a flat session or throws on unrecoverable corruption.
+ * Decode bytes that arrived via the MainActivity intent handler
+ * (user tapped an .authbook in a file manager).
  */
 export async function openBookFromBytes(base64, uri) {
   const bytes = base64ToBytes(base64);
@@ -186,97 +272,46 @@ export async function openBookFromBytes(base64, uri) {
 }
 
 /**
- * Android only: re-read sessions that have SAF URIs from disk.
- * Refreshes content that may have been edited outside the app.
- * Legacy sessions (no SAF URI) are returned unchanged.
+ * Android only: re-read sessions that previously had SAF content:// URIs
+ * from an older version of the app. Since we no longer use SAF for new saves,
+ * these are just kept in-memory as-is (they'll be re-saved to Documents on
+ * next Save).
  */
 export async function restoreSafBooks(sessions) {
   if (!isAndroid() || !sessions?.length) return sessions ?? [];
-  const plugin   = await getSAFPlugin();
-  const refreshed = [];
-
-  for (const session of sessions) {
-    if (!isSafUri(session.filePath)) {
-      refreshed.push(session);
-      continue;
-    }
-    try {
-      const result  = await plugin.readBytesFromUri({ uri: session.filePath });
-      const decoded = await decodeBytes(base64ToBytes(result.base64), session.filePath);
-      refreshed.push(decoded);
-    } catch {
-      // URI revoked or file moved — keep last in-memory copy
-      refreshed.push(session);
-    }
-  }
-  return refreshed;
+  // No SAF reads — just return sessions unchanged.
+  // On next save they will be written to Documents/AuthNo/ with VCHS-ECS format.
+  return sessions;
 }
 
 /**
- * Android only: scan Documents/AuthNo/ for legacy JSON files saved by
- * older versions of the app. Returns flat sessions ready for App.js.
- * They carry _legacy:true so the next save upgrades them to VCHS-ECS.
+ * Android only: scan Documents/AuthNo/ for .authbook files and return them
+ * as flat sessions. Handles both legacy JSON and VCHS-ECS formats.
  */
 export async function listSavedBooks() {
   if (!isAndroid()) return [];
-  const { Filesystem, Directory, Encoding } = await getFS();
-  const LEGACY_DIR = 'AuthNo';
+  const { Filesystem, Directory } = await getFS();
 
   try {
-    await Filesystem.mkdir({
-      path: LEGACY_DIR, directory: Directory.Documents, recursive: true,
-    }).catch(() => { /* already exists */ });
-
+    await ensureSaveDir();
     const { files } = await Filesystem.readdir({
-      path: LEGACY_DIR, directory: Directory.Documents,
+      path: SAVE_DIR, directory: Directory.Documents,
     });
 
     const books = [];
     for (const f of files) {
       if (!f.name.endsWith('.authbook')) continue;
       try {
+        // Read as base64 (no encoding specified = binary/base64 mode)
         const { data } = await Filesystem.readFile({
-          path: `${LEGACY_DIR}/${f.name}`,
+          path: `${SAVE_DIR}/${f.name}`,
           directory: Directory.Documents,
-          encoding: Encoding.UTF8,
         });
-        // These are guaranteed to be legacy JSON (old app wrote them as UTF-8 text)
-        const raw     = JSON.parse(data);
-        const session = bookToSession(fromLegacySession(raw));
-        books.push({
-          ...session,
-          filePath: raw.filePath || `${LEGACY_DIR}/${f.name}`,
-          _legacy: true,
-        });
+        const bytes   = base64ToBytes(data);
+        const session = await decodeBytes(bytes, `${SAVE_DIR}/${f.name}`);
+        books.push(session);
       } catch { /* skip corrupt files */ }
     }
     return books;
   } catch { return []; }
-}
-
-/**
- * Export via the OS share sheet (Android).
- * Writes the VCHS-ECS file to cache then shares.
- */
-export async function exportBook(session) {
-  const bytes  = await encodeSession(session, loadSettings());
-  const b64    = bytesToBase64(bytes);
-  const name   = _safeName(session);
-  const { Filesystem, Directory } = await getFS();
-  const Share  = await getShare();
-
-  await Filesystem.writeFile({ path: name, data: b64, directory: Directory.Cache });
-  const { uri } = await Filesystem.getUri({ path: name, directory: Directory.Cache });
-  await Share.share({
-    title: `Export "${session.title}"`, url: uri, dialogTitle: 'Export as .authbook',
-  });
-  return { success: true };
-}
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-
-function _safeName(session) {
-  const base = (session.title || 'Untitled')
-    .replace(/[^a-z0-9\-_ ]/gi, '_').slice(0, 60).trim();
-  return `${base}.authbook`;
 }
