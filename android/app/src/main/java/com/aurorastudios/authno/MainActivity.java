@@ -3,21 +3,19 @@ package com.aurorastudios.authno;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
+
 import com.getcapacitor.BridgeActivity;
+
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Register our SAF file-picker plugin BEFORE super.onCreate()
         registerPlugin(FilePickerPlugin.class);
-
         super.onCreate(savedInstanceState);
-
-        // Handle .authbook file opened via file-manager intent
         getBridge().getWebView().post(() -> handleAuthBookIntent(getIntent()));
     }
 
@@ -29,14 +27,16 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Handles ACTION_VIEW intents (tapping an .authbook in a file manager).
-     * Reads the file content and fires the same 'open-authbook-android' event
-     * that App.js already listens for — no JS changes needed for this path.
+     * Handles ACTION_VIEW intents — tapping an .authbook file in a file manager.
+     *
+     * VCHS-ECS files are binary. We read raw bytes, base64-encode them, and
+     * pass them to JS via a CustomEvent. The JS side (storage.js) detects the
+     * format, runs migration if it is a legacy JSON file, then dispatches the
+     * decoded session into App.js via the existing 'open-authbook-android' event.
      */
     private void handleAuthBookIntent(Intent intent) {
         if (intent == null) return;
         if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
-
         Uri uri = intent.getData();
         if (uri == null) return;
 
@@ -44,22 +44,20 @@ public class MainActivity extends BridgeActivity {
             InputStream is = getContentResolver().openInputStream(uri);
             if (is == null) return;
 
-            InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
-            StringBuilder sb = new StringBuilder();
-            char[] buf = new char[8192];
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
             int n;
-            while ((n = reader.read(buf)) != -1) sb.append(buf, 0, n);
+            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
             is.close();
 
-            // Escape for safe embedding in JS template literal
-            String json = sb.toString()
-                            .replace("\\", "\\\\")
-                            .replace("`", "\\`");
+            String base64  = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+            String uriStr  = uri.toString().replace("'", "\\'");
 
-            // Inject the URI so App.js can store it as filePath for future saves
+            // JS will call storage.openBookFromBytes(base64, uri) which handles
+            // both legacy JSON and new VCHS-ECS binary, then fires the event.
             String js =
-                "window.dispatchEvent(new CustomEvent('open-authbook-android', {" +
-                "  detail: { ...JSON.parse(`" + json + "`), filePath: '" + uri.toString() + "' }" +
+                "window.dispatchEvent(new CustomEvent('open-authbook-android-bytes', {" +
+                "  detail: { base64: '" + base64 + "', uri: '" + uriStr + "' }" +
                 "}))";
             getBridge().getWebView().evaluateJavascript(js, null);
 

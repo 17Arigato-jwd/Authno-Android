@@ -6,8 +6,10 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
+import android.util.Base64;
 
-import com.getcapacitor.ActivityResult;
+import androidx.activity.result.ActivityResult;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -15,37 +17,38 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
 
 /**
- * AuthnoFilePicker
+ * AuthnoFilePicker — SAF wrapper for VCHS-ECS .authbook files
  *
- * Wraps Android's Storage Access Framework so that JS can:
- *   - createDocument(fileName)  → show "Save As" system picker → returns { uri }
- *   - openDocument()            → show "Open" system picker   → returns { uri, content, name }
- *   - writeToUri(uri, content)  → overwrite an existing SAF URI (no picker)
- *   - readFromUri(uri)          → read an existing SAF URI (no picker)
+ * Exposes four methods to JS:
+ *   createDocument(fileName)          → "Save As" picker  → { uri }
+ *   openDocument()                    → "Open" picker     → { uri, base64, name }
+ *   writeBytesToUri(uri, base64)       → write binary to existing SAF URI
+ *   readBytesFromUri(uri)             → read binary from existing SAF URI → { base64 }
  *
- * SAF URIs are persistent across app restarts once
- * takePersistableUriPermission() is called.
+ * All file content crosses the JS/Java bridge as base64 because VCHS-ECS files
+ * are binary and the Capacitor bridge only carries JSON-serialisable types.
+ *
+ * FIX NOTE: ActivityResult is imported from androidx.activity.result, NOT from
+ * com.getcapacitor. com.getcapacitor.ActivityResult was removed in Capacitor 5.
+ * This file is compatible with Capacitor 5 and 6.
  */
 @CapacitorPlugin(name = "AuthnoFilePicker")
 public class FilePickerPlugin extends Plugin {
 
-    // ── Create Document (Save As) ─────────────────────────────────────────
+    // ── Create Document (Save As) ──────────────────────────────────────────
 
     @PluginMethod
     public void createDocument(PluginCall call) {
         String fileName = call.getString("fileName", "Untitled.authbook");
-
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");                          // avoids MIME-type lock-in
-        intent.putExtra(Intent.EXTRA_TITLE, fileName);  // pre-fill the filename field
-
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_TITLE, fileName);
         startActivityForResult(call, intent, "handleCreateDocument");
     }
 
@@ -54,29 +57,23 @@ public class FilePickerPlugin extends Plugin {
         if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
             Uri uri = result.getData().getData();
             if (uri != null) {
-                // Persist read+write permission so future writes need no picker
-                getActivity().getContentResolver().takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                );
+                persistPermission(uri);
                 JSObject ret = new JSObject();
                 ret.put("uri", uri.toString());
                 call.resolve(ret);
                 return;
             }
         }
-        // User cancelled — resolve with no data so JS can detect cancellation
-        call.resolve();
+        call.resolve(); // user cancelled — JS checks for missing uri
     }
 
-    // ── Open Document ─────────────────────────────────────────────────────
+    // ── Open Document ──────────────────────────────────────────────────────
 
     @PluginMethod
     public void openDocument(PluginCall call) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
-
         startActivityForResult(call, intent, "handleOpenDocument");
     }
 
@@ -85,17 +82,14 @@ public class FilePickerPlugin extends Plugin {
         if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
             Uri uri = result.getData().getData();
             if (uri != null) {
-                // Persist read+write permission for future opens/saves
-                getActivity().getContentResolver().takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                );
+                persistPermission(uri);
                 try {
-                    String content = readUri(uri);
-                    JSObject ret = new JSObject();
-                    ret.put("uri", uri.toString());
-                    ret.put("content", content);
-                    ret.put("name", getFileName(uri));
+                    byte[] bytes  = readAllBytes(uri);
+                    String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+                    JSObject ret  = new JSObject();
+                    ret.put("uri",    uri.toString());
+                    ret.put("base64", base64);
+                    ret.put("name",   getDisplayName(uri));
                     call.resolve(ret);
                 } catch (Exception e) {
                     call.reject("Failed to read file: " + e.getMessage());
@@ -103,35 +97,30 @@ public class FilePickerPlugin extends Plugin {
                 return;
             }
         }
-        // User cancelled
         call.resolve();
     }
 
-    // ── Write to existing URI (no picker) ─────────────────────────────────
+    // ── Write binary bytes to existing URI ────────────────────────────────
 
     @PluginMethod
-    public void writeToUri(PluginCall call) {
-        String uriStr  = call.getString("uri");
-        String content = call.getString("content");
-
-        if (uriStr == null || content == null) {
-            call.reject("Both 'uri' and 'content' are required");
+    public void writeBytesToUri(PluginCall call) {
+        String uriStr = call.getString("uri");
+        String base64 = call.getString("base64");
+        if (uriStr == null || base64 == null) {
+            call.reject("Both 'uri' and 'base64' are required");
             return;
         }
-
         Uri uri = Uri.parse(uriStr);
         try {
-            // "wt" = write + truncate, so we replace the whole file
-            ParcelFileDescriptor pfd = getActivity().getContentResolver()
-                .openFileDescriptor(uri, "wt");
-            if (pfd == null) throw new Exception("Could not open descriptor");
-
-            try (FileOutputStream fos = new FileOutputStream(pfd.getFileDescriptor());
-                 OutputStreamWriter writer = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
-                writer.write(content);
+            byte[] bytes = Base64.decode(base64, Base64.NO_WRAP);
+            // "wt" = write + truncate — fully replaces the file
+            ParcelFileDescriptor pfd = getActivity()
+                    .getContentResolver().openFileDescriptor(uri, "wt");
+            if (pfd == null) throw new Exception("Could not open file descriptor");
+            try (FileOutputStream fos = new FileOutputStream(pfd.getFileDescriptor())) {
+                fos.write(bytes);
             }
             pfd.close();
-
             JSObject ret = new JSObject();
             ret.put("success", true);
             call.resolve(ret);
@@ -140,41 +129,50 @@ public class FilePickerPlugin extends Plugin {
         }
     }
 
-    // ── Read from existing URI (no picker) ────────────────────────────────
+    // ── Read binary bytes from existing URI ───────────────────────────────
 
     @PluginMethod
-    public void readFromUri(PluginCall call) {
+    public void readBytesFromUri(PluginCall call) {
         String uriStr = call.getString("uri");
-        if (uriStr == null) {
-            call.reject("'uri' is required");
-            return;
-        }
+        if (uriStr == null) { call.reject("'uri' is required"); return; }
         Uri uri = Uri.parse(uriStr);
         try {
-            String content = readUri(uri);
-            JSObject ret = new JSObject();
-            ret.put("content", content);
+            byte[] bytes  = readAllBytes(uri);
+            String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+            JSObject ret  = new JSObject();
+            ret.put("base64", base64);
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Read failed: " + e.getMessage());
         }
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────
+    // ── Helpers ────────────────────────────────────────────────────────────
 
-    private String readUri(Uri uri) throws Exception {
+    private void persistPermission(Uri uri) {
+        try {
+            getActivity().getContentResolver().takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            );
+        } catch (Exception ignored) { }
+    }
+
+    private byte[] readAllBytes(Uri uri) throws Exception {
         try (InputStream is = getActivity().getContentResolver().openInputStream(uri)) {
-            if (is == null) throw new Exception("Stream is null");
-            byte[] bytes = is.readAllBytes();
-            return new String(bytes, StandardCharsets.UTF_8);
+            if (is == null) throw new Exception("InputStream is null");
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+            return buf.toByteArray();
         }
     }
 
-    private String getFileName(Uri uri) {
+    private String getDisplayName(Uri uri) {
         if ("content".equals(uri.getScheme())) {
             try (Cursor cursor = getActivity().getContentResolver().query(
-                    uri, new String[]{ OpenableColumns.DISPLAY_NAME },
-                    null, null, null)) {
+                    uri, new String[]{ OpenableColumns.DISPLAY_NAME }, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                     if (idx >= 0) return cursor.getString(idx);

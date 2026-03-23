@@ -10,7 +10,7 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
-import { listSavedBooks, saveBook, restoreSafBooks } from "./utils/storage";
+import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes } from "./utils/storage";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -164,9 +164,19 @@ export default function App() {
   useEffect(() => {
     const handler = (e) => {
       if (e.data.type === "restored-books") {
-        setSessions((prev) => {
-          const fresh = e.data.books.filter((b) => !prev.some((s) => s.filePath === b.filePath));
-          return [...fresh, ...prev];
+        // e.data.books = [{ base64, filePath }] from the new fileManager.js
+        // Decode each book via storage then merge into sessions
+        Promise.all(
+          e.data.books.map(({ base64, filePath }) =>
+            openBookFromBytes(base64, filePath).catch(() => null)
+          )
+        ).then((decoded) => {
+          const valid = decoded.filter(Boolean);
+          if (!valid.length) return;
+          setSessions((prev) => {
+            const fresh = valid.filter((b) => !prev.some((s) => s.filePath === b.filePath));
+            return [...fresh, ...prev];
+          });
         });
       }
       if (e.data.type === "missing-books") e.data.messages.forEach(alert);
@@ -195,8 +205,27 @@ export default function App() {
   }, [sessions]);
 
   // Android: .authbook file opened via intent (tapped in file manager)
+  // Handles both VCHS-ECS binary files and legacy JSON files.
   useEffect(() => {
-    const handler = (e) => {
+    // New binary path fired by MainActivity (VCHS-ECS + legacy JSON both come through here)
+    const bytesHandler = async (e) => {
+      const { base64, uri } = e.detail || {};
+      if (!base64) return;
+      try {
+        const session = await openBookFromBytes(base64, uri);
+        if (!session) return;
+        setSessions((prev) => {
+          if (prev.some((s) => s.id === session.id)) return prev;
+          setCurrentId(session.id);
+          return [session, ...prev];
+        });
+      } catch (err) {
+        alert("⚠️ Could not open that .authbook file — it may be corrupt.\n" + err.message);
+      }
+    };
+
+    // Legacy path kept for any code that fires the old event directly
+    const legacyHandler = (e) => {
       const book = e.detail;
       if (!book) return;
       setSessions((prev) => {
@@ -210,14 +239,18 @@ export default function App() {
         return [nb, ...prev];
       });
     };
+
     const errHandler = () => alert("⚠️ Could not open that .authbook file — it may be corrupt.");
-    window.addEventListener("open-authbook-android", handler);
-    window.addEventListener("open-authbook-android-error", errHandler);
+
+    window.addEventListener("open-authbook-android-bytes",  bytesHandler);
+    window.addEventListener("open-authbook-android",        legacyHandler);
+    window.addEventListener("open-authbook-android-error",  errHandler);
     return () => {
-      window.removeEventListener("open-authbook-android", handler);
-      window.removeEventListener("open-authbook-android-error", errHandler);
+      window.removeEventListener("open-authbook-android-bytes",  bytesHandler);
+      window.removeEventListener("open-authbook-android",        legacyHandler);
+      window.removeEventListener("open-authbook-android-error",  errHandler);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Android: debounced auto-save — saves 2s after any content change
   useEffect(() => {
