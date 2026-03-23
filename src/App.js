@@ -10,7 +10,7 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
-import { listSavedBooks, saveBook } from "./utils/storage";
+import { listSavedBooks, saveBook, restoreSafBooks } from "./utils/storage";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -134,16 +134,25 @@ export default function App() {
       }
     }
 
-    // Android: surface books saved in Documents/AuthNo/
-    if (android) {
-      listSavedBooks().then((books) => {
-        if (!books.length) return;
-        setSessions((prev) => {
-          const fresh = books.filter((b) => !prev.some((s) => s.id === b.id));
-          return fresh.length ? [...fresh, ...prev] : prev;
-        });
-      });
-    }
+// Android: restore legacy Documents/AuthNo/ books AND SAF-URI books
+     if (android) {
+       const localRaw   = localStorage.getItem("offlineWriterSessions");
+       const localSessions = localRaw ? JSON.parse(localRaw) : [];
+
+       // Refresh any SAF-URI sessions from disk (catches edits made outside the app)
+       restoreSafBooks(localSessions).then((refreshed) => {
+         setSessions(refreshed);
+
+         // Scan legacy directory for books saved before SAF was introduced
+         return listSavedBooks();
+       }).then((legacyBooks) => {
+         if (!legacyBooks.length) return;
+         setSessions((prev) => {
+           const fresh = legacyBooks.filter((b) => !prev.some((s) => s.id === b.id));
+           return fresh.length ? [...fresh, ...prev] : prev;
+         });
+       });
+     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save open books for Electron restore

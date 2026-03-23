@@ -12,8 +12,12 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Register our SAF file-picker plugin BEFORE super.onCreate()
+        registerPlugin(FilePickerPlugin.class);
+
         super.onCreate(savedInstanceState);
-        // Delay until the WebView bridge is ready before dispatching the event
+
+        // Handle .authbook file opened via file-manager intent
         getBridge().getWebView().post(() -> handleAuthBookIntent(getIntent()));
     }
 
@@ -24,6 +28,11 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().post(() -> handleAuthBookIntent(intent));
     }
 
+    /**
+     * Handles ACTION_VIEW intents (tapping an .authbook in a file manager).
+     * Reads the file content and fires the same 'open-authbook-android' event
+     * that App.js already listens for — no JS changes needed for this path.
+     */
     private void handleAuthBookIntent(Intent intent) {
         if (intent == null) return;
         if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
@@ -42,13 +51,19 @@ public class MainActivity extends BridgeActivity {
             while ((n = reader.read(buf)) != -1) sb.append(buf, 0, n);
             is.close();
 
-            String json = sb.toString().replace("\\", "\\\\").replace("`", "\\`");
-            String js = "window.dispatchEvent(new CustomEvent('open-authbook-android', " +
-                        "{ detail: JSON.parse(`" + json + "`) }))";
+            // Escape for safe embedding in JS template literal
+            String json = sb.toString()
+                            .replace("\\", "\\\\")
+                            .replace("`", "\\`");
+
+            // Inject the URI so App.js can store it as filePath for future saves
+            String js =
+                "window.dispatchEvent(new CustomEvent('open-authbook-android', {" +
+                "  detail: { ...JSON.parse(`" + json + "`), filePath: '" + uri.toString() + "' }" +
+                "}))";
             getBridge().getWebView().evaluateJavascript(js, null);
 
         } catch (Exception e) {
-            // Malformed file — fire an error event so React can show a message
             String js = "window.dispatchEvent(new CustomEvent('open-authbook-android-error'))";
             getBridge().getWebView().evaluateJavascript(js, null);
         }
