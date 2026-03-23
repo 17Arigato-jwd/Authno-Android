@@ -258,7 +258,13 @@ export default function App() {
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       sessions.forEach((s) => {
-        if (s.filePath) saveBook(s).catch(console.error);
+        saveBook(s).then((result) => {
+          if (result?.filePath && result.filePath !== s.filePath) {
+            setSessions((prev) =>
+              prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
+            );
+          }
+        }).catch(console.error);
       });
     }, 2000);
     return () => clearTimeout(autoSaveTimer.current);
@@ -392,6 +398,7 @@ export default function App() {
         current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
+        onOpen={(id) => { setCurrentId(id); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex}
         anchorRef={burgerBtnRef}
       />

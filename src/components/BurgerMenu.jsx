@@ -1,28 +1,21 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Save, SaveAll, Settings as SettingsIcon, Share2 } from "lucide-react";
-import { saveBook, saveAsBook } from "../utils/storage";
+import { Save, SaveAll, Settings as SettingsIcon, FolderOpen } from "lucide-react";
+import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
 
 /**
  * BurgerMenu
  *
- * Desktop (Electron)
- *   → Small dropdown rendered via createPortal, anchored 8px below the
- *     burger button. Identical look to the original PC version.
- *
- * Android
- *   → Bottom-sheet that slides up from the screen bottom. Backdrop tap
- *     dismisses it. "Save As" becomes "Export / Share" (native share sheet).
- *
  * Props
- *   open          boolean   whether the menu is visible
- *   onClose       fn        dismiss callback
- *   current       object    active session (may be null)
- *   setSessions   fn        session list updater
- *   onOpenSettings fn       open the Settings panel
- *   accentHex     string    theme accent color
- *   anchorRef     ref       ref on the burger button — used for positioning
+ *   open            boolean   whether the menu is visible
+ *   onClose         fn        dismiss callback
+ *   current         object    active session (may be null)
+ *   setSessions     fn        session list updater
+ *   onOpenSettings  fn        open the Settings panel
+ *   onOpen          fn(id)    called after a file is opened — sets it as current
+ *   accentHex       string    theme accent colour
+ *   anchorRef       ref       burger button ref — used for desktop positioning
  */
 export default function BurgerMenu({
   open,
@@ -30,12 +23,14 @@ export default function BurgerMenu({
   current,
   setSessions,
   onOpenSettings,
+  onOpen,
   accentHex,
   anchorRef,
 }) {
-  const [status, setStatus] = useState("idle");
-  const menuRef = useRef(null);
-  const android = isAndroid();
+  const [status, setStatus]   = useState("idle");
+  const [opening, setOpening] = useState(false);
+  const menuRef  = useRef(null);
+  const android  = isAndroid();
 
   // ── Anchor position (desktop only) ──────────────────────────────────────
   const [pos, setPos] = useState({ top: 0, right: 0 });
@@ -68,6 +63,7 @@ export default function BurgerMenu({
     setStatus("saving");
     try {
       const result = await saveBook(current);
+      // Update filePath in state if this was the first save
       if (result?.filePath && result.filePath !== current.filePath) {
         setSessions((prev) =>
           prev.map((s) => (s.id === current.id ? { ...s, filePath: result.filePath } : s))
@@ -82,11 +78,12 @@ export default function BurgerMenu({
     setTimeout(() => setStatus("idle"), 2000);
   };
 
-  // ── Save As / Export ─────────────────────────────────────────────────────
+  // ── Save As ───────────────────────────────────────────────────────────────
   const handleSaveAs = async () => {
     if (!current) return;
     try {
       const result = await saveAsBook(current);
+      if (result?.cancelled) return;
       if (result?.filePath) {
         setSessions((prev) =>
           prev.map((s) => (s.id === current.id ? { ...s, filePath: result.filePath } : s))
@@ -94,11 +91,36 @@ export default function BurgerMenu({
       }
     } catch (err) {
       console.error("Save As failed:", err);
-      alert("⚠️ Export failed.");
+      alert("⚠️ Save As failed.");
     }
   };
 
-  // ── Ctrl+S shortcut ──────────────────────────────────────────────────────
+  // ── Open ──────────────────────────────────────────────────────────────────
+  const handleOpen = async () => {
+    if (opening) return;
+    setOpening(true);
+    onClose?.(); // close menu before picker opens (important on Android)
+    try {
+      const session = await openBook();
+      if (!session) return; // user cancelled
+      setSessions((prev) => {
+        // Don't duplicate if already open
+        if (prev.some((s) => s.id === session.id)) {
+          onOpen?.(session.id);
+          return prev;
+        }
+        onOpen?.(session.id);
+        return [session, ...prev];
+      });
+    } catch (err) {
+      console.error("Open failed:", err);
+      alert("⚠️ Could not open that file.\n" + err.message);
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  // ── Ctrl+S shortcut ───────────────────────────────────────────────────────
   useEffect(() => {
     const handler = () => handleSave();
     document.addEventListener("triggerSave", handler);
@@ -130,10 +152,22 @@ export default function BurgerMenu({
 
       <div className="h-px my-1 bg-white/10" />
 
-      {/* SAVE AS (desktop) or EXPORT (Android) */}
+      {/* SAVE AS — same label on all platforms */}
       <button onClick={handleSaveAs} className={`${btn} border-white text-white hover:bg-white/10`}>
-        {android ? <Share2 className="w-4 h-4" /> : <SaveAll className="w-4 h-4" />}
-        {android ? "Export / Share" : "Save As…"}
+        <SaveAll className="w-4 h-4" />
+        Save As…
+      </button>
+
+      <div className="h-px my-1 bg-white/10" />
+
+      {/* OPEN */}
+      <button
+        onClick={handleOpen}
+        disabled={opening}
+        className={`${btn} border-white text-white hover:bg-white/10 ${opening ? "opacity-50" : ""}`}
+      >
+        <FolderOpen className="w-4 h-4" />
+        {opening ? "Opening…" : "Open…"}
       </button>
 
       <div className="h-px my-1 bg-white/10" />
@@ -148,7 +182,7 @@ export default function BurgerMenu({
 
   const gradient = `linear-gradient(to bottom right, ${accentHex}F2, rgba(0,0,0,0.95))`;
 
-  // ── Android: bottom-sheet ────────────────────────────────────────────────
+  // ── Android: bottom-sheet ─────────────────────────────────────────────────
   if (android) {
     return createPortal(
       <>
@@ -169,7 +203,7 @@ export default function BurgerMenu({
     );
   }
 
-  // ── Desktop: anchored dropdown ───────────────────────────────────────────
+  // ── Desktop: anchored dropdown ────────────────────────────────────────────
   return createPortal(
     <div
       ref={menuRef}
