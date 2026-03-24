@@ -1,17 +1,23 @@
 /**
  * storage.js — Unified file I/O for AuthNo
  *
- * Android:
- *   Permissions → Filesystem.requestPermissions() called once before first write
- *   Save        → @capacitor/filesystem → Documents/AuthNo/<title>.authbook
- *   Save As     → FilePickerPlugin.createDocument (ACTION_CREATE_DOCUMENT picker)
- *   Open        → <input type="file"> (same as avatar picker in Settings)
+ * Android file strategy (no permissions required for any of these):
+ *
+ *   Save    → @capacitor/filesystem Directory.External
+ *             Maps to getExternalFilesDir() — app-specific external storage.
+ *             Path: /storage/emulated/0/Android/data/com.aurorastudios.authno/files/AuthNo/
+ *             Visible in Files app. Zero permissions needed on any Android version.
+ *
+ *   Save As → @capacitor/share share sheet
+ *             Writes to cache, then opens the Android share sheet so the user
+ *             can send the file to Files, Google Drive, email, etc.
+ *             No permission needed — identical mechanism to sharing any other file.
+ *
+ *   Open    → <input type="file"> (same as the avatar picker in Settings)
+ *             No permission needed. Android WebView handles this natively.
  *
  * Electron:
- *   All operations → window.electron IPC bridge
- *
- * On Android 11+ (API 30+) storage permissions are auto-granted by the OS.
- * On Android 9–10 we request READ/WRITE_EXTERNAL_STORAGE before the first write.
+ *   All operations → window.electron IPC bridge (unchanged)
  */
 
 import { isElectron, isAndroid } from './platform';
@@ -22,51 +28,21 @@ import {
 
 // ─── Lazy loaders ─────────────────────────────────────────────────────────────
 
-async function getSAFPlugin() {
-  const { registerPlugin } = await import('@capacitor/core');
-  return registerPlugin('AuthnoFilePicker');
-}
-
 async function getFS() {
   const m = await import('@capacitor/filesystem');
-  return { Filesystem: m.Filesystem, Directory: m.Directory, Encoding: m.Encoding };
+  return { Filesystem: m.Filesystem, Directory: m.Directory };
 }
 
 async function getShare() {
   return (await import('@capacitor/share')).Share;
 }
 
-// ─── Permission gate ──────────────────────────────────────────────────────────
-// Only relevant on Android 9–10. On Android 11+ the Capacitor Filesystem plugin
-// considers permissions auto-granted and skips the dialog entirely.
-
-let _permissionsGranted = false;
-
-async function ensureStoragePermission() {
-  if (_permissionsGranted) return true;
-  const { Filesystem } = await getFS();
-
-  try {
-    const check = await Filesystem.checkPermissions();
-    if (check.publicStorage === 'granted') {
-      _permissionsGranted = true;
-      return true;
-    }
-    // Not yet granted — show the system dialog
-    const req = await Filesystem.requestPermissions();
-    _permissionsGranted = req.publicStorage === 'granted';
-    return _permissionsGranted;
-  } catch {
-    // Android 11+ throws here because permissions aren't managed this way —
-    // treat the error as "permission granted" and let the write proceed.
-    _permissionsGranted = true;
-    return true;
-  }
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const SAVE_DIR = 'AuthNo';
+// App-specific external dir — no permission needed on any Android version.
+// Files are visible under:
+//   Files app → Android → data → com.aurorastudios.authno → files → AuthNo
+const SAVE_SUBDIR = 'AuthNo';
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('writerSettings')) ?? {}; }
@@ -103,25 +79,28 @@ async function decodeBytes(bytes, filePath) {
 async function ensureSaveDir() {
   const { Filesystem, Directory } = await getFS();
   try {
-    await Filesystem.mkdir({ path: SAVE_DIR, directory: Directory.Documents, recursive: true });
+    await Filesystem.mkdir({
+      path:      SAVE_SUBDIR,
+      directory: Directory.External,   // ← app-specific external, no permission needed
+      recursive: true,
+    });
   } catch { /* already exists */ }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-/**
- * Call this once on app startup (in App.js useEffect) so the permission
- * dialog appears at a natural moment rather than mid-save.
- */
+// ─── initStoragePermissions ───────────────────────────────────────────────────
+// No-op for file saving (External dir needs no permission).
+// Kept so App.js doesn't need changes — reserved for future permission requests
+// (notifications, camera, media) which will be added here when those features ship.
 export async function initStoragePermissions() {
-  if (!isAndroid()) return;
-  await ensureStoragePermission();
+  // Nothing to request for file I/O on Android with External directory.
+  // Future: request POST_NOTIFICATIONS here when streak reminders ship.
 }
 
+// ─── saveBook ─────────────────────────────────────────────────────────────────
 /**
- * Save silently to Documents/AuthNo/<title>.authbook.
- * Handles both new books (no filePath) and existing ones.
- * Returns { success, filePath }.
+ * Silently save to the app-specific external directory.
+ * No permission dialog. No picker. Works on Android 9–14+.
+ * Returns { success: true, filePath }.
  */
 export async function saveBook(session) {
   if (isElectron()) {
@@ -132,19 +111,15 @@ export async function saveBook(session) {
   }
 
   if (isAndroid()) {
-    const granted = await ensureStoragePermission();
-    if (!granted) {
-      alert('⚠️ Storage permission is required to save files.');
-      return { success: false };
-    }
     const { Filesystem, Directory } = await getFS();
     await ensureSaveDir();
-    const path  = `${SAVE_DIR}/${safeName(session)}`;
     const bytes = await encodeSession(session);
+    const path  = `${SAVE_SUBDIR}/${safeName(session)}`;
+
     await Filesystem.writeFile({
       path,
       data:      bytesToBase64(bytes),
-      directory: Directory.Documents,
+      directory: Directory.External,   // ← no permission needed
     });
     return { success: true, filePath: path };
   }
@@ -152,11 +127,11 @@ export async function saveBook(session) {
   return { success: true };
 }
 
+// ─── saveAsBook ───────────────────────────────────────────────────────────────
 /**
- * Save As — opens the system "Save to…" file picker.
- * Android: FilePickerPlugin.createDocument (ACTION_CREATE_DOCUMENT).
- * Electron: native Save dialog.
- * Returns { success, filePath } or { cancelled: true }.
+ * Write to cache then open the Android share sheet.
+ * The user can send the file to Files, Google Drive, email, Bluetooth, etc.
+ * No permission needed — same mechanism as sharing any document.
  */
 export async function saveAsBook(session) {
   if (isElectron()) {
@@ -165,22 +140,42 @@ export async function saveAsBook(session) {
   }
 
   if (isAndroid()) {
-    const bytes  = await encodeSession(session);
-    const plugin = await getSAFPlugin();
-    const result = await plugin.createDocument({ fileName: safeName(session) });
-    if (!result?.uri) return { cancelled: true };
-    await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
-    return { success: true, filePath: result.uri };
+    const { Filesystem, Directory } = await getFS();
+    const Share    = await getShare();
+    const bytes    = await encodeSession(session);
+    const filename = safeName(session);
+
+    // Write to cache — share sheet reads from here
+    await Filesystem.writeFile({
+      path:      filename,
+      data:      bytesToBase64(bytes),
+      directory: Directory.Cache,
+    });
+
+    const { uri } = await Filesystem.getUri({
+      path:      filename,
+      directory: Directory.Cache,
+    });
+
+    await Share.share({
+      title:       `Save "${session.title}"`,
+      text:        `AuthNo book: ${session.title}`,
+      url:         uri,
+      dialogTitle: 'Save or send .authbook',
+    });
+
+    return { success: true };
   }
 
   return { success: true };
 }
 
+// ─── openBook ─────────────────────────────────────────────────────────────────
 /**
  * Open a file via the native file picker.
- * Android: hidden <input type="file"> — identical to the avatar picker in Settings.
+ * Android: hidden <input type="file"> — same as the avatar picker in Settings.
  * Electron: native Open dialog.
- * Returns a flat session object, or null if cancelled.
+ * Returns a flat session object or null if cancelled.
  */
 export async function openBook() {
   if (isElectron()) {
@@ -195,43 +190,46 @@ export async function openBook() {
   return decodeBytes(bytes, file.name);
 }
 
+// ─── openBookFromBytes ────────────────────────────────────────────────────────
 /**
  * Decode bytes from the MainActivity intent handler
- * (user tapped an .authbook in a file manager app).
+ * (user tapped an .authbook in a file manager).
  */
 export async function openBookFromBytes(base64, uri) {
   return decodeBytes(base64ToBytes(base64), uri);
 }
 
+// ─── listSavedBooks ───────────────────────────────────────────────────────────
 /**
- * Android: scan Documents/AuthNo/ for saved books on startup.
- * Handles both legacy JSON and VCHS-ECS binary formats.
+ * Android: scan the app-specific external dir for .authbook files on startup.
+ * Handles both VCHS-ECS binary and legacy JSON formats.
  */
 export async function listSavedBooks() {
   if (!isAndroid()) return [];
-  const granted = await ensureStoragePermission();
-  if (!granted) return [];
-
   const { Filesystem, Directory } = await getFS();
   try {
     await ensureSaveDir();
-    const { files } = await Filesystem.readdir({ path: SAVE_DIR, directory: Directory.Documents });
+    const { files } = await Filesystem.readdir({
+      path:      SAVE_SUBDIR,
+      directory: Directory.External,
+    });
     const books = [];
     for (const f of files) {
       if (!f.name.endsWith('.authbook')) continue;
       try {
         const { data } = await Filesystem.readFile({
-          path: `${SAVE_DIR}/${f.name}`,
-          directory: Directory.Documents,
+          path:      `${SAVE_SUBDIR}/${f.name}`,
+          directory: Directory.External,
         });
-        books.push(await decodeBytes(base64ToBytes(data), `${SAVE_DIR}/${f.name}`));
+        books.push(await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`));
       } catch { /* skip corrupt */ }
     }
     return books;
   } catch { return []; }
 }
 
-/** No-op — kept for API compatibility with App.js. */
+// ─── restoreSafBooks ──────────────────────────────────────────────────────────
+/** No-op — kept for App.js API compatibility. */
 export async function restoreSafBooks(sessions) {
   return sessions ?? [];
 }
@@ -241,8 +239,8 @@ export async function restoreSafBooks(sessions) {
 function _pickFileViaInput(accept = '.authbook,*/*') {
   return new Promise((resolve) => {
     const input = document.createElement('input');
-    input.type   = 'file';
-    input.accept = accept;
+    input.type         = 'file';
+    input.accept       = accept;
     input.style.display = 'none';
     input.onchange = (e) => resolve(e.target.files?.[0] ?? null);
 

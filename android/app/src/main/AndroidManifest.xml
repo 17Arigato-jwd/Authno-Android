@@ -29,7 +29,6 @@
                 <data android:scheme="content" android:mimeType="application/x-authbook" />
             </intent-filter>
 
-            <!-- Fallback: match by extension when MIME type is generic -->
             <intent-filter android:label="Open with AuthNo">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -53,14 +52,54 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
+                android:resource="@xml/file_paths" />
         </provider>
     </application>
 
-    <!-- Permissions -->
+    <!-- ── Permissions ──────────────────────────────────────────────────────
+
+         INTERNET
+         Required now: Capacitor WebView, future cloud sync / AI features.
+
+         POST_NOTIFICATIONS  (Android 13+, API 33+)
+         Required now: none. Future: writing streak reminders, daily goal
+         alerts, backup completion toasts. Declared here so we can request
+         it when the feature ships without an app update.
+
+         READ_MEDIA_IMAGES  (Android 13+, API 33+)
+         Required now: none. Future: book cover art, inline images,
+         storyboard image attachments. Scoped replacement for READ_EXTERNAL_STORAGE
+         on modern Android.
+
+         READ_EXTERNAL_STORAGE  (Android ≤ 12, capped at API 32)
+         Fallback for READ_MEDIA_IMAGES on older devices. Only needed if the
+         user picks an image from their gallery on Android 9–12. Harmless on
+         Android 13+ because it is silently ignored.
+
+         CAMERA
+         Required now: none. Future: cover photo from camera, writing
+         prompt image capture.
+
+         NOTE — We do NOT declare WRITE_EXTERNAL_STORAGE or
+         MANAGE_EXTERNAL_STORAGE. All file saving uses either:
+           • Directory.External (app-specific dir, never needs permission)
+           • Storage Access Framework via ACTION_CREATE_DOCUMENT (SAF grants
+             its own URI permission — no manifest entry needed)
+         This keeps the Play Store data-safety declaration clean.
+    ──────────────────────────────────────────────────────────────────────── -->
+
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Storage: required for file picker and export on Android ≤ 12 -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"  android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+
 </manifest>
