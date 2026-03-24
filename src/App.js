@@ -11,6 +11,7 @@ import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/Customi
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
+import { logError } from "./utils/ErrorLogger";
 import { Onboarding, hasSeenOnboarding, markOnboardingDone } from "./components/Onboarding";
 
 const BurgerIcon = ({ className }) => (
