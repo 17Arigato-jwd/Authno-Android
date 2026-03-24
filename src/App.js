@@ -117,9 +117,44 @@ function AppInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
 
-  const burgerBtnRef = useRef(null);
+  const burgerBtnRef  = useRef(null);
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
+
+  // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
+  useEffect(() => {
+    if (!android) return;
+    const EDGE_ZONE   = 22;   // px from left edge to start tracking
+    const MIN_SWIPE_X = 60;   // px rightward to trigger open
+    const MAX_DRIFT_Y = 50;   // px vertical drift allowed
+    let startX = null, startY = null, tracking = false;
+
+    const onStart = (e) => {
+      const t = e.touches[0];
+      if (t.clientX <= EDGE_ZONE) {
+        startX = t.clientX; startY = t.clientY; tracking = true;
+      }
+    };
+    const onMove = (e) => {
+      if (!tracking) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientY - startY) > MAX_DRIFT_Y) { tracking = false; return; }
+      if (t.clientX - startX > MIN_SWIPE_X) {
+        tracking = false;
+        setDrawerOpen(true);
+      }
+    };
+    const onEnd = () => { tracking = false; };
+
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove",  onMove,  { passive: true });
+    document.addEventListener("touchend",   onEnd,   { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove",  onMove);
+      document.removeEventListener("touchend",   onEnd);
+    };
+  }, [android]);
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -370,9 +405,13 @@ function AppInner() {
         visible={settings.enableGradient}
       />
 
-      {/* Android drawer backdrop */}
+      {/* Android drawer backdrop — closes instantly on any touch or click */}
       {android && drawerOpen && (
-        <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setDrawerOpen(false)} />
+        <div
+          className="fixed inset-0 bg-black/60 z-40"
+          onClick={() => setDrawerOpen(false)}
+          onTouchStart={() => setDrawerOpen(false)}
+        />
       )}
 
       <Sidebar

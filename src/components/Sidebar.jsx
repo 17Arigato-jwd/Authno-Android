@@ -55,7 +55,7 @@ export default function Sidebar({
   });
   const resizing = useRef(false);
 
-  // ── Close menus on outside click ─────────────────────────────────────────
+  // ── Close menus on outside click / touch ────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (contextRef.current?.contains(e.target)) return;
@@ -65,7 +65,11 @@ export default function Sidebar({
       }
     };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
   }, []);
 
   // ── Context menu (right-click on desktop) ────────────────────────────────
@@ -75,13 +79,39 @@ export default function Sidebar({
   };
 
   // ── Long-press context menu (Android) ────────────────────────────────────
+  // Cancels if the finger moves > 8px (scroll intent) so it never fights
+  // with natural scrolling. Vibrates on trigger for tactile confirmation.
   const onTouchStart = (e, sessionId) => {
+    const t = e.touches[0];
+    const startX = t.clientX, startY = t.clientY;
+
     longPressRef.current = setTimeout(() => {
-      const t = e.touches[0];
-      setContextMenu({ x: t.clientX, y: t.clientY, sessionId });
-    }, 500);
+      // Haptic feedback — short pulse, silently ignored if unavailable
+      try { navigator.vibrate?.(18); } catch (_) {}
+
+      // Position the menu near the item but always fully on-screen
+      const MENU_W = 160, MENU_H = 90;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const x = Math.min(t.clientX + 8, vw - MENU_W - 8);
+      const y = Math.min(t.clientY - 8, vh - MENU_H - 8);
+      setContextMenu({ x, y, sessionId });
+    }, 480);
+
+    // Cancel if finger drifts (the user is scrolling, not pressing)
+    const onMove = (me) => {
+      const mt = me.touches[0];
+      if (Math.abs(mt.clientX - startX) > 8 || Math.abs(mt.clientY - startY) > 8) {
+        clearTimeout(longPressRef.current);
+        document.removeEventListener("touchmove", onMove);
+      }
+    };
+    document.addEventListener("touchmove", onMove, { passive: true });
+    longPressRef.current._cleanup = () => document.removeEventListener("touchmove", onMove);
   };
-  const onTouchEnd = () => { clearTimeout(longPressRef.current); };
+  const onTouchEnd = () => {
+    longPressRef.current?._cleanup?.();
+    clearTimeout(longPressRef.current);
+  };
 
   // ── Delete with confirmation modal ───────────────────────────────────────
   const handleDelete = () => {
@@ -259,11 +289,11 @@ export default function Sidebar({
             <div className="absolute mt-2 w-full bg-[#0f0f10] border border-white/10 rounded-lg shadow-lg overflow-hidden z-20">
               <button onClick={() => { setDropdownOpen(false); onNewBook(); }}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 transition">
-                📖 New Blank Book
+                New Blank Book
               </button>
               <button onClick={() => { setDropdownOpen(false); handleOpenBook(); }}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 transition">
-                📂 Open Existing Book
+                Open Existing Book
               </button>
             </div>
           )}
@@ -284,7 +314,7 @@ export default function Sidebar({
         <div className="p-3 border-b border-white/10">
           <button onClick={() => setEditMode(false)} style={{ borderColor: accentHex, color: accentHex }}
             className="w-full border-2 rounded-lg px-3 py-2 text-sm font-semibold bg-white/5 hover:bg-white/10 transition">
-            ✅ Done Editing
+            Done Editing
           </button>
         </div>
       )}
@@ -328,7 +358,7 @@ export default function Sidebar({
               >
                 <div className="font-medium">{s.title}</div>
                 <div className="text-xs text-white/40">
-                  {s.type === "book" ? "📖 Book" : "🎞️ Storyboard"} — {s.preview}
+                  {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
                 </div>
               </div>
             ))}
@@ -338,21 +368,38 @@ export default function Sidebar({
 
       {/* CONTEXT MENU */}
       {contextMenu && createPortal(
-        <div ref={contextRef} style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
-          className="p-2 rounded-lg shadow-xl border border-white/30 backdrop-blur-md">
-          <div className="text-white rounded-lg overflow-hidden border border-white/20"
-            style={{ background: `linear-gradient(to bottom right, ${accentHex}, black)`, minWidth: "120px" }}>
-            <button onClick={handleDelete} className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 transition">
-              🗑️ Delete
-            </button>
-            {!android && (
-              <button onClick={() => { setEditMode(true); setContextMenu(null); }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 transition">
-                ✏️ Edit Layout
+        <>
+          {/* Invisible full-screen backdrop — closes on any tap outside */}
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setContextMenu(null)}
+            onTouchStart={() => setContextMenu(null)}
+          />
+          <div
+            ref={contextRef}
+            style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
+            className="p-2 rounded-lg shadow-xl border border-white/30 backdrop-blur-md"
+          >
+            <div className="text-white rounded-lg overflow-hidden border border-white/20"
+              style={{ background: `linear-gradient(to bottom right, ${accentHex}, black)`, minWidth: "140px" }}>
+              <button
+                onClick={handleDelete}
+                onTouchStart={(e) => e.stopPropagation()}
+                className="w-full text-left px-3 py-2.5 text-sm hover:bg-white/10 transition"
+              >
+                Delete
               </button>
-            )}
+              {!android && (
+                <button
+                  onClick={() => { setEditMode(true); setContextMenu(null); }}
+                  className="w-full text-left px-3 py-2.5 text-sm hover:bg-white/10 transition"
+                >
+                  Edit Layout
+                </button>
+              )}
+            </div>
           </div>
-        </div>,
+        </>,
         document.body
       )}
 

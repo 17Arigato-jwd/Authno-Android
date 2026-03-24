@@ -90,12 +90,20 @@ export default function EditorToolbar({ execCommand, accentHex }) {
     </>
   );
 
-  const bg = `linear-gradient(to bottom right, ${accentHex}B3, rgba(0,0,0,0.7))`;
+  // Semi-transparent frosted-glass background (40% opacity accent + dark tint)
+  const bg = `linear-gradient(to bottom right, ${accentHex}66, rgba(0,0,0,0.45))`;
 
-  // ── Android: scrollable strip ────────────────────────────────────────────
+  // ── Android: sticky scrollable strip with frosted glass ──────────────────
   if (android) {
     return (
-      <div className="relative mb-2 rounded-xl overflow-hidden" style={{ background: bg }}>
+      <div
+        className="sticky top-0 z-20 mb-2 rounded-xl overflow-hidden backdrop-blur-md"
+        style={{
+          background: bg,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.25)",
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
         {/* Scrollable row — hidden scrollbar */}
         <div className="toolbar-scroll flex items-center gap-2 px-3 py-2 overflow-x-auto">
           {controls}
@@ -103,19 +111,22 @@ export default function EditorToolbar({ execCommand, accentHex }) {
         {/* Right-edge fade hints at scrollability */}
         <div
           className="pointer-events-none absolute inset-y-0 right-0 w-8"
-          style={{ background: "linear-gradient(to right, transparent, rgba(0,0,0,0.5))" }}
+          style={{ background: "linear-gradient(to right, transparent, rgba(0,0,0,0.4))" }}
         />
       </div>
     );
   }
 
-  // ── Desktop: floating pill (unchanged from PC version) ───────────────────
+  // ── Desktop: floating frosted-glass pill ─────────────────────────────────
   return (
     <div
       className="sticky top-4 z-20 mx-auto w-fit flex items-center gap-3 px-4 py-2
-        rounded-2xl backdrop-blur-md ring-2 ring-white/70
-        shadow-[0_0_20px_2px_rgba(255,255,255,0.1)] transition-all duration-300"
-      style={{ background: bg }}
+        rounded-2xl backdrop-blur-md ring-1 ring-white/20
+        shadow-[0_8px_32px_rgba(0,0,0,0.3)] transition-all duration-300"
+      style={{
+        background: bg,
+        border: "1px solid rgba(255,255,255,0.12)",
+      }}
     >
       {controls}
     </div>
