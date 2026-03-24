@@ -2,97 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Save, SaveAll, Settings as SettingsIcon, FolderOpen, X, Copy, AlertCircle } from "lucide-react";
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
-import { logError, formatError, formatBugReport, getErrorHistory, clearErrorHistory } from "../utils/ErrorLogger";
+import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
-
-// ─── Error Dialog ──────────────────────────────────────────────────────────────
-
-function ErrorDialog({ entry, onClose, accentHex }) {
-  const [copied, setCopied] = useState(false);
-
-  const copyReport = () => {
-    const report = formatBugReport(10);
-    navigator.clipboard?.writeText(report).catch(() => {
-      // Fallback for WebView
-      const ta = document.createElement('textarea');
-      ta.value = report;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-    });
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (!entry) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[10000] flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="w-full rounded-t-2xl p-5 border-t border-white/10"
-        style={{ background: '#1a1a2e', maxHeight: '80vh', overflowY: 'auto',
-                 paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }}
-      >
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-            <span className="text-white font-semibold text-sm">
-              {entry.icon} {entry.category} failed
-            </span>
-          </div>
-          <button onClick={onClose} className="text-white/40 hover:text-white p-1">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* What went wrong */}
-        <div className="bg-white/5 rounded-lg p-3 mb-3">
-          <p className="text-white/80 text-sm leading-relaxed">{entry.message}</p>
-        </div>
-
-        {/* Suggestion */}
-        <div className="flex items-start gap-2 mb-4">
-          <span className="text-xs text-white/40 mt-0.5 shrink-0">Fix:</span>
-          <p className="text-xs text-white/60 leading-relaxed">{entry.suggestion}</p>
-        </div>
-
-        {/* Technical details (collapsed) */}
-        <details className="mb-4">
-          <summary className="text-xs text-white/30 cursor-pointer select-none hover:text-white/50">
-            Technical details
-          </summary>
-          <pre className="mt-2 text-xs text-white/40 font-mono whitespace-pre-wrap break-all bg-black/30 rounded p-2 leading-relaxed">
-            {formatError(entry)}
-          </pre>
-        </details>
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <button
-            onClick={copyReport}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/20 text-xs text-white/60 hover:text-white hover:border-white/40 transition"
-          >
-            <Copy className="w-3 h-3" />
-            {copied ? 'Copied!' : 'Copy bug report'}
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 rounded-lg text-xs font-semibold text-white"
-            style={{ background: accentHex + '33', border: `1px solid ${accentHex}66` }}
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 // ─── BurgerMenu ────────────────────────────────────────────────────────────────
 
@@ -106,9 +17,9 @@ export default function BurgerMenu({
   accentHex,
   anchorRef,
 }) {
+  const { showError } = useError();
   const [status,  setStatus]  = useState("idle");
   const [busy,    setBusy]    = useState(false);
-  const [errorEntry, setErrorEntry] = useState(null);
   const menuRef = useRef(null);
   const android = isAndroid();
 
@@ -136,12 +47,6 @@ export default function BurgerMenu({
       document.removeEventListener("touchstart", handler);
     };
   }, [open, onClose, anchorRef]);
-
-  // ── Show error dialog ─────────────────────────────────────────────────────
-  const showError = (operation, err, context = {}) => {
-    const entry = logError(operation, err, context);
-    setErrorEntry(entry);
-  };
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -214,7 +119,7 @@ export default function BurgerMenu({
     return () => document.removeEventListener("triggerSave", handler);
   }, [current, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!open && !errorEntry) return null;
+  if (!open) return null;
 
   const btn = "flex items-center gap-2 w-full px-3 py-2 rounded-md border-2 text-sm font-semibold transition-all duration-300 justify-center";
 
@@ -276,15 +181,6 @@ export default function BurgerMenu({
 
   return (
     <>
-      {/* Error dialog — shown regardless of menu open state */}
-      {errorEntry && (
-        <ErrorDialog
-          entry={errorEntry}
-          onClose={() => setErrorEntry(null)}
-          accentHex={accentHex}
-        />
-      )}
-
       {/* Menu — only when open */}
       {open && (android ? (
         createPortal(

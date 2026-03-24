@@ -11,11 +11,16 @@ export function markOnboardingDone() {
   localStorage.setItem(ONBOARDING_KEY, "done");
 }
 
+export function resetOnboarding() {
+  localStorage.removeItem(ONBOARDING_KEY);
+}
+
 // ─── Onboarding Screen ────────────────────────────────────────────────────────
 
 export function Onboarding({ accentHex = "#5a00d9", onDone }) {
-  const [step,    setStep]    = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [step,        setStep]        = useState(0);
+  const [loading,     setLoading]     = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
 
   const steps = [
     {
@@ -55,8 +60,9 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
       title: "You're all set",
       body:  "Tap the + button in the sidebar to create your first book.\n\nHappy writing!",
       action: "Start writing",
+      isLast: true,
       onAction: () => {
-        markOnboardingDone();
+        if (dontShowAgain) markOnboardingDone();
         onDone?.();
       },
     },
@@ -90,9 +96,38 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
         <h2 className="text-white text-2xl font-bold mb-4 leading-tight">
           {current.title}
         </h2>
-        <p className="text-white/60 text-sm leading-relaxed mb-10 whitespace-pre-line">
+        <p className="text-white/60 text-sm leading-relaxed mb-8 whitespace-pre-line">
           {current.body}
         </p>
+
+        {/* "Don't show again" checkbox — only on last step */}
+        {current.isLast && (
+          <label className="flex items-center justify-center gap-2 mb-6 cursor-pointer select-none group">
+            <span
+              className="w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0"
+              style={{
+                borderColor: dontShowAgain ? accentHex : "rgba(255,255,255,0.3)",
+                background:  dontShowAgain ? accentHex : "transparent",
+              }}
+              onClick={() => setDontShowAgain((v) => !v)}
+            >
+              {dontShowAgain && (
+                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </span>
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+            />
+            <span className="text-white/40 text-xs group-hover:text-white/60 transition-colors">
+              Don't show this again
+            </span>
+          </label>
+        )}
 
         {/* Primary action */}
         <button

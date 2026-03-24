@@ -11,8 +11,9 @@ import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/Customi
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
-import { logError } from "./utils/ErrorLogger";
-import { Onboarding, hasSeenOnboarding, markOnboardingDone } from "./components/Onboarding";
+
+import { ErrorProvider, useError } from "./utils/ErrorContext";
+import { Onboarding } from "./components/Onboarding";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -104,7 +105,8 @@ function Editor({
 }
 
 /* ── App ────────────────────────────────────────────────────────────────── */
-export default function App() {
+function AppInner() {
+  const { showError } = useError();
   const [sessions, setSessions]   = useState([]);
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
@@ -113,7 +115,7 @@ export default function App() {
   const [inactive]                = useState(false);
   const [view, setView]           = useState("editor");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(!hasSeenOnboarding());
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   const burgerBtnRef = useRef(null);
   const autoSaveTimer = useRef(null);
@@ -271,7 +273,7 @@ export default function App() {
                 prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
               );
             }
-          }).catch(err => logError('saveBook', err)); // Use your new ErrorLogger!
+          }).catch(err => console.error('[AuthNo AutoSave]', err));
         });
       }, 2000);
 
@@ -353,10 +355,7 @@ export default function App() {
       {showOnboarding && (
         <Onboarding
           accentHex={customization.accentHex}
-          onDone={() => {
-            markOnboardingDone();
-            setShowOnboarding(false);
-          }}
+          onDone={() => setShowOnboarding(false)}
         />
       )}
 
@@ -451,5 +450,19 @@ export default function App() {
         </button>
       </div>
     </div>
+  );
+}
+
+/* ── Root export wrapped in ErrorProvider ──────────────────────────────────── */
+export default function App() {
+  // We read accentHex from localStorage so ErrorProvider has the right colour
+  // before customization state is initialised inside AppInner.
+  const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");
+  const accentHex = stored.accentHex || "#5a00d9";
+
+  return (
+    <ErrorProvider accentHex={accentHex}>
+      <AppInner />
+    </ErrorProvider>
   );
 }
