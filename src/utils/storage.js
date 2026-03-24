@@ -2,12 +2,16 @@
  * storage.js — Unified file I/O for AuthNo
  *
  * Android:
- *   Save    → @capacitor/filesystem → Documents/AuthNo/<title>.authbook (silent)
- *   Save As → FilePickerPlugin.createDocument (SAF "Create Document" picker)
- *   Open    → <input type="file"> (same as avatar picker in Settings)
+ *   Permissions → Filesystem.requestPermissions() called once before first write
+ *   Save        → @capacitor/filesystem → Documents/AuthNo/<title>.authbook
+ *   Save As     → FilePickerPlugin.createDocument (ACTION_CREATE_DOCUMENT picker)
+ *   Open        → <input type="file"> (same as avatar picker in Settings)
  *
  * Electron:
  *   All operations → window.electron IPC bridge
+ *
+ * On Android 11+ (API 30+) storage permissions are auto-granted by the OS.
+ * On Android 9–10 we request READ/WRITE_EXTERNAL_STORAGE before the first write.
  */
 
 import { isElectron, isAndroid } from './platform';
@@ -30,6 +34,34 @@ async function getFS() {
 
 async function getShare() {
   return (await import('@capacitor/share')).Share;
+}
+
+// ─── Permission gate ──────────────────────────────────────────────────────────
+// Only relevant on Android 9–10. On Android 11+ the Capacitor Filesystem plugin
+// considers permissions auto-granted and skips the dialog entirely.
+
+let _permissionsGranted = false;
+
+async function ensureStoragePermission() {
+  if (_permissionsGranted) return true;
+  const { Filesystem } = await getFS();
+
+  try {
+    const check = await Filesystem.checkPermissions();
+    if (check.publicStorage === 'granted') {
+      _permissionsGranted = true;
+      return true;
+    }
+    // Not yet granted — show the system dialog
+    const req = await Filesystem.requestPermissions();
+    _permissionsGranted = req.publicStorage === 'granted';
+    return _permissionsGranted;
+  } catch {
+    // Android 11+ throws here because permissions aren't managed this way —
+    // treat the error as "permission granted" and let the write proceed.
+    _permissionsGranted = true;
+    return true;
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,15 +104,24 @@ async function ensureSaveDir() {
   const { Filesystem, Directory } = await getFS();
   try {
     await Filesystem.mkdir({ path: SAVE_DIR, directory: Directory.Documents, recursive: true });
-  } catch { /* exists */ }
+  } catch { /* already exists */ }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * Call this once on app startup (in App.js useEffect) so the permission
+ * dialog appears at a natural moment rather than mid-save.
+ */
+export async function initStoragePermissions() {
+  if (!isAndroid()) return;
+  await ensureStoragePermission();
+}
+
+/**
  * Save silently to Documents/AuthNo/<title>.authbook.
- * Works for both new books (no filePath) and existing ones.
- * Returns { success, filePath } so callers can update state.
+ * Handles both new books (no filePath) and existing ones.
+ * Returns { success, filePath }.
  */
 export async function saveBook(session) {
   if (isElectron()) {
@@ -91,11 +132,15 @@ export async function saveBook(session) {
   }
 
   if (isAndroid()) {
+    const granted = await ensureStoragePermission();
+    if (!granted) {
+      alert('⚠️ Storage permission is required to save files.');
+      return { success: false };
+    }
     const { Filesystem, Directory } = await getFS();
     await ensureSaveDir();
-    const filename = safeName(session);
-    const path     = `${SAVE_DIR}/${filename}`;
-    const bytes    = await encodeSession(session);
+    const path  = `${SAVE_DIR}/${safeName(session)}`;
+    const bytes = await encodeSession(session);
     await Filesystem.writeFile({
       path,
       data:      bytesToBase64(bytes),
@@ -108,12 +153,9 @@ export async function saveBook(session) {
 }
 
 /**
- * Save As — shows the system file picker so the user chooses where to save.
- *
- * Android: uses FilePickerPlugin.createDocument (ACTION_CREATE_DOCUMENT)
- *          which opens the Android "Save to…" system dialog.
+ * Save As — opens the system "Save to…" file picker.
+ * Android: FilePickerPlugin.createDocument (ACTION_CREATE_DOCUMENT).
  * Electron: native Save dialog.
- *
  * Returns { success, filePath } or { cancelled: true }.
  */
 export async function saveAsBook(session) {
@@ -124,15 +166,10 @@ export async function saveAsBook(session) {
 
   if (isAndroid()) {
     const bytes  = await encodeSession(session);
-    const b64    = bytesToBase64(bytes);
     const plugin = await getSAFPlugin();
-
-    // Open the Android "Save to…" system picker pre-filled with the book title
     const result = await plugin.createDocument({ fileName: safeName(session) });
-    if (!result?.uri) return { cancelled: true }; // user dismissed picker
-
-    // Write binary VCHS-ECS bytes to the chosen URI
-    await plugin.writeBytesToUri({ uri: result.uri, base64: b64 });
+    if (!result?.uri) return { cancelled: true };
+    await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
     return { success: true, filePath: result.uri };
   }
 
@@ -141,11 +178,8 @@ export async function saveAsBook(session) {
 
 /**
  * Open a file via the native file picker.
- *
- * Android: hidden <input type="file"> — identical to the avatar picker
- *          in Settings. Always works in Android WebView.
+ * Android: hidden <input type="file"> — identical to the avatar picker in Settings.
  * Electron: native Open dialog.
- *
  * Returns a flat session object, or null if cancelled.
  */
 export async function openBook() {
@@ -155,7 +189,6 @@ export async function openBook() {
     return decodeBytes(base64ToBytes(result.base64), result.filePath);
   }
 
-  // Android + web: hidden file input
   const file = await _pickFileViaInput();
   if (!file) return null;
   const bytes = await _readFileBytes(file);
@@ -171,11 +204,14 @@ export async function openBookFromBytes(base64, uri) {
 }
 
 /**
- * Android only: scan Documents/AuthNo/ for saved books on startup.
- * Handles both legacy JSON and VCHS-ECS formats.
+ * Android: scan Documents/AuthNo/ for saved books on startup.
+ * Handles both legacy JSON and VCHS-ECS binary formats.
  */
 export async function listSavedBooks() {
   if (!isAndroid()) return [];
+  const granted = await ensureStoragePermission();
+  if (!granted) return [];
+
   const { Filesystem, Directory } = await getFS();
   try {
     await ensureSaveDir();
@@ -195,7 +231,7 @@ export async function listSavedBooks() {
   } catch { return []; }
 }
 
-/** Android only: no-op — SAF URIs from old app version are kept in-memory. */
+/** No-op — kept for API compatibility with App.js. */
 export async function restoreSafBooks(sessions) {
   return sessions ?? [];
 }
@@ -210,7 +246,6 @@ function _pickFileViaInput(accept = '.authbook,*/*') {
     input.style.display = 'none';
     input.onchange = (e) => resolve(e.target.files?.[0] ?? null);
 
-    // Detect cancel — body regains focus after picker closes without a pick
     const onFocus = () => {
       setTimeout(() => {
         if (!input.files?.length) resolve(null);

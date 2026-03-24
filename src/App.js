@@ -10,7 +10,7 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
-import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes } from "./utils/storage";
+import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -134,8 +134,9 @@ export default function App() {
       }
     }
 
-// Android: restore legacy Documents/AuthNo/ books AND SAF-URI books
+// Android: request storage permissions immediately, then restore books
      if (android) {
+       initStoragePermissions();
        const localRaw   = localStorage.getItem("offlineWriterSessions");
        const localSessions = localRaw ? JSON.parse(localRaw) : [];
 
