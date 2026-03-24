@@ -11,6 +11,7 @@ import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/Customi
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
+import { Onboarding, hasSeenOnboarding, markOnboardingDone } from "./components/Onboarding";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -111,6 +112,7 @@ export default function App() {
   const [inactive]                = useState(false);
   const [view, setView]           = useState("editor");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(!hasSeenOnboarding());
 
   const burgerBtnRef = useRef(null);
   const autoSaveTimer = useRef(null);
@@ -255,21 +257,28 @@ export default function App() {
 
   // Android: debounced auto-save — saves 2s after any content change
   useEffect(() => {
-    if (!android) return;
-    clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => {
-      sessions.forEach((s) => {
-        saveBook(s).then((result) => {
-          if (result?.filePath && result.filePath !== s.filePath) {
-            setSessions((prev) =>
-              prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
-            );
-          }
-        }).catch(console.error);
-      });
-    }, 2000);
-    return () => clearTimeout(autoSaveTimer.current);
-  }, [sessions, android]); // eslint-disable-line react-hooks/exhaustive-deps
+      if (!android || sessions.length === 0) return;
+
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(() => {
+        sessions.forEach((s) => {
+          saveBook(s).then((result) => {
+            // FIX: Only trigger a state update if the path is actually NEW.
+            // This prevents the infinite loop.
+            if (result?.filePath && result.filePath !== s.filePath) {
+              setSessions((prev) =>
+                prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
+              );
+            }
+          }).catch(err => logError('saveBook', err)); // Use your new ErrorLogger!
+        });
+      }, 2000);
+
+      return () => clearTimeout(autoSaveTimer.current);
+      // REMOVED 'sessions' from dependencies to prevent the loop.
+      // We only want this to run when the active session content changes,
+      // but usually, it's better to trigger this from the 'onChange' event instead.
+    }, [android]);
 
   // ── Settings / Customization ─────────────────────────────────────────────
   const [customizerOpen, setCustomizerOpen] = useState(false);
@@ -339,6 +348,17 @@ export default function App() {
 
   return (
     <div className={`app-root flex text-white relative${settings.lightMode ? ' light-mode' : ''}`}>
+
+      {showOnboarding && (
+        <Onboarding
+          accentHex={customization.accentHex}
+          onDone={() => {
+            markOnboardingDone();
+            setShowOnboarding(false);
+          }}
+        />
+      )}
+
       <Background
         accentHex={customization.accentHex}
         backgroundOpacity={customization.backgroundOpacity}

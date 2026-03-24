@@ -22,7 +22,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Open .authbook files from any file manager (content URI) -->
             <intent-filter android:label="Open with AuthNo">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -59,47 +58,43 @@
     <!-- ── Permissions ──────────────────────────────────────────────────────
 
          INTERNET
-         Required now: Capacitor WebView, future cloud sync / AI features.
+         Active now: Capacitor WebView bridge.
+         Future: cloud sync, AI writing assistant, auto-backup.
 
-         POST_NOTIFICATIONS  (Android 13+, API 33+)
-         Required now: none. Future: writing streak reminders, daily goal
-         alerts, backup completion toasts. Declared here so we can request
-         it when the feature ships without an app update.
+         POST_NOTIFICATIONS  (Android 13+)
+         Active now: requested during first-launch onboarding.
+         Future: daily writing reminders, streak alerts, backup notifications.
 
-         READ_MEDIA_IMAGES  (Android 13+, API 33+)
-         Required now: none. Future: book cover art, inline images,
-         storyboard image attachments. Scoped replacement for READ_EXTERNAL_STORAGE
-         on modern Android.
+         READ_MEDIA_IMAGES  (Android 13+)
+         Active now: user avatar photo picker in Settings already works
+         via <input type="file"> — this permission unlocks the gallery picker
+         for book cover art when that feature ships.
+         Future: book covers, inline story images, storyboard attachments.
 
-         READ_EXTERNAL_STORAGE  (Android ≤ 12, capped at API 32)
-         Fallback for READ_MEDIA_IMAGES on older devices. Only needed if the
-         user picks an image from their gallery on Android 9–12. Harmless on
-         Android 13+ because it is silently ignored.
+         READ_EXTERNAL_STORAGE  (Android ≤ 12, maxSdkVersion 32)
+         Same purpose as READ_MEDIA_IMAGES on older devices.
+         Silently ignored on Android 13+.
 
          CAMERA
-         Required now: none. Future: cover photo from camera, writing
-         prompt image capture.
+         Active now: declared for avatar capture (Settings).
+         Future: book cover from camera, writing prompt image capture.
 
-         NOTE — We do NOT declare WRITE_EXTERNAL_STORAGE or
-         MANAGE_EXTERNAL_STORAGE. All file saving uses either:
-           • Directory.External (app-specific dir, never needs permission)
-           • Storage Access Framework via ACTION_CREATE_DOCUMENT (SAF grants
-             its own URI permission — no manifest entry needed)
+         VIBRATE
+         Future: haptic feedback on streak milestones and goal completion.
+
+         NOTE — No WRITE_EXTERNAL_STORAGE or MANAGE_EXTERNAL_STORAGE.
+         File saving uses either:
+           • Directory.External / Directory.Data (app-specific, zero permission)
+           • ACTION_CREATE_DOCUMENT SAF (grants its own URI permission)
          This keeps the Play Store data-safety declaration clean.
     ──────────────────────────────────────────────────────────────────────── -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+                     android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.CAMERA" />
-
     <uses-permission android:name="android.permission.VIBRATE" />
 
 </manifest>
