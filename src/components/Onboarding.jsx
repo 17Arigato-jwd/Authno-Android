@@ -46,10 +46,19 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
       onAction: async () => {
         setLoading(true);
         try {
-          if ("Notification" in window) {
-            await Notification.requestPermission();
+          // Android 13+: use Capacitor PushNotifications for POST_NOTIFICATIONS
+          if (window.Capacitor?.getPlatform() === "android") {
+            try {
+              const { PushNotifications } = await import("@capacitor/push-notifications");
+              await PushNotifications.requestPermissions();
+            } catch {
+              // Fallback: Web Notifications API (works on older Android / web)
+              if ("Notification" in window) await Notification.requestPermission();
+            }
+          } else {
+            if ("Notification" in window) await Notification.requestPermission();
           }
-        } catch { /* ignore */ }
+        } catch { /* user denied or API unavailable — carry on */ }
         setLoading(false);
         setStep(3);
       },

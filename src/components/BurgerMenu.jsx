@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Save, SaveAll, Settings as SettingsIcon, FolderOpen, X, Copy, AlertCircle } from "lucide-react";
+import { Save, SaveAll, Settings as SettingsIcon, FolderOpen, X } from "lucide-react";
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
@@ -55,6 +55,11 @@ export default function BurgerMenu({
     setStatus("saving");
     try {
       const result = await saveBook(current);
+      if (result?.cancelled) {
+        // User dismissed the SAF picker — treat as a no-op, not an error
+        setStatus("idle");
+        return;
+      }
       if (result?.filePath && result.filePath !== current.filePath) {
         setSessions((prev) =>
           prev.map((s) => (s.id === current.id ? { ...s, filePath: result.filePath } : s))
@@ -77,13 +82,14 @@ export default function BurgerMenu({
     if (!current || busy) return;
     setBusy(true);
 
-    // Dismiss the menu and give Android time to remove it from the view hierarchy
-    onClose?.();
-    await _wait(350);
-
     try {
-      await saveAsBook(current);
-      // saveAsBook with Share doesn't return a filePath — auto-save handles persistence
+      const result = await saveAsBook(current);
+      if (result?.filePath && result.filePath !== current.filePath) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === current.id ? { ...s, filePath: result.filePath } : s))
+        );
+      }
+      // result.cancelled = user dismissed picker — silent no-op
     } catch (err) {
       showError('saveAsBook', err, { sessionTitle: current?.title });
     } finally {
@@ -95,16 +101,16 @@ export default function BurgerMenu({
   const handleOpen = async () => {
     if (busy) return;
     setBusy(true);
-    onClose?.();
-    await _wait(200);
     try {
       const session = await openBook();
-      if (!session) return;
-      setSessions((prev) => {
-        if (prev.some((s) => s.id === session.id)) { onOpen?.(session.id); return prev; }
-        onOpen?.(session.id);
-        return [session, ...prev];
-      });
+      if (session) {
+        setSessions((prev) => {
+          if (prev.some((s) => s.id === session.id)) { onOpen?.(session.id); return prev; }
+          onOpen?.(session.id);
+          return [session, ...prev];
+        });
+      }
+      // null = user cancelled picker — silent no-op
     } catch (err) {
       showError('openBook', err);
     } finally {
@@ -212,8 +218,4 @@ export default function BurgerMenu({
       ))}
     </>
   );
-}
-
-function _wait(ms) {
-  return new Promise(r => setTimeout(r, ms));
 }

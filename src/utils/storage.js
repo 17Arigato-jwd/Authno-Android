@@ -5,8 +5,8 @@
  *   Save (existing file)  → overwrite silently using same path
  *   Save (new file)       → write to External dir (app-specific, no permission needed)
  *                           falls back to internal Data dir if External unavailable
- *   Save As               → write to cache, then open share sheet
- *                           (user sends to Files app, Google Drive, email, etc.)
+ *   Save As               → SAF ACTION_CREATE_DOCUMENT picker (same as Save for new files)
+ *                           user picks any location: Downloads, Drive, SD card, etc.
  *   Open                  → <input type="file"> — same as avatar picker in Settings
  *
  * Root causes of previous failures:
@@ -31,9 +31,6 @@ async function getFS() {
   return { Filesystem: m.Filesystem, Directory: m.Directory };
 }
 
-async function getShare() {
-  return (await import('@capacitor/share')).Share;
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -160,18 +157,21 @@ export async function saveBook(session) {
 
     if (isAndroid()) {
       const bytes = await encodeSession(session);
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
 
-      // Existing file saved via SAF (content:// URI) — overwrite directly
+      // Existing file saved via SAF (content:// URI) — overwrite directly, no picker
       if (session.filePath?.startsWith('content://')) {
-        const { registerPlugin } = await import('@capacitor/core');
-        const plugin = registerPlugin('AuthnoFilePicker');
         await plugin.writeBytesToUri({ uri: session.filePath, base64: bytesToBase64(bytes) });
         return { success: true, filePath: session.filePath };
       }
 
-      // New file or legacy path — write to app dir
-      const { path } = await writeToAppDir(safeName(session), bytes);
-      return { success: true, filePath: path };
+      // New file — open SAF CREATE_DOCUMENT picker so user chooses location
+      const result = await plugin.createDocument({ fileName: safeName(session) });
+      if (!result?.uri) return { success: false, cancelled: true }; // user cancelled
+
+      await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
+      return { success: true, filePath: result.uri };
     }
 
     return { success: true };
@@ -199,32 +199,16 @@ export async function saveAsBook(session) {
     }
 
     if (isAndroid()) {
-      const { Filesystem, Directory } = await getFS();
-      const Share    = await getShare();
-      const bytes    = await encodeSession(session);
-      const filename = safeName(session);
-      const b64      = bytesToBase64(bytes);
+      const bytes = await encodeSession(session);
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
 
-      // Write to INTERNAL cache (getCacheDir) — FileProvider can share from here
-      await Filesystem.writeFile({
-        path:      filename,
-        data:      b64,
-        directory: Directory.Cache,  // internal cache — FileProvider covers this
-      });
+      // Open SAF CREATE_DOCUMENT picker — user picks any location (Downloads, Drive, etc.)
+      const result = await plugin.createDocument({ fileName: safeName(session) });
+      if (!result?.uri) return { success: false, cancelled: true }; // user cancelled
 
-      // getUri returns file:// which Share plugin accepts
-      const { uri } = await Filesystem.getUri({
-        path:      filename,
-        directory: Directory.Cache,
-      });
-
-      await Share.share({
-        title:       `Save "${session.title}"`,
-        url:         uri,               // must be file:// — Share plugin requires this
-        dialogTitle: 'Save .authbook to…',
-      });
-
-      return { success: true };
+      await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
+      return { success: true, filePath: result.uri };
     }
 
     return { success: true };
@@ -246,6 +230,15 @@ export async function openBook() {
       return decodeBytes(base64ToBytes(result.base64), result.filePath);
     }
 
+    if (isAndroid()) {
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
+      const result = await plugin.openDocument();
+      if (!result?.uri) return null; // user cancelled
+      return decodeBytes(base64ToBytes(result.base64), result.uri);
+    }
+
+    // Web / other platforms: HTML file input
     const file = await _pickFileViaInput();
     if (!file) return null;
     const bytes = await _readFileBytes(file);
