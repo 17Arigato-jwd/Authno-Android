@@ -42,10 +42,11 @@ export default function Sidebar({
   const [contextMenu, setContextMenu] = useState(null);
   const [editMode, setEditMode]       = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const sidebarRef    = useRef(null);
-  const contextRef    = useRef(null);
-  const dragState     = useRef({});
-  const longPressRef  = useRef(null);
+  const sidebarRef       = useRef(null);
+  const contextRef       = useRef(null);
+  const dragState        = useRef({});
+  const longPressTimer   = useRef(null);   // setTimeout id (number)
+  const longPressCleanup = useRef(null);   // touchmove cancel fn — stored separately because timer ids are primitives
   const android = isAndroid();
 
   // Desktop resize width (ignored on Android)
@@ -85,11 +86,11 @@ export default function Sidebar({
     const t = e.touches[0];
     const startX = t.clientX, startY = t.clientY;
 
-    longPressRef.current = setTimeout(() => {
+    longPressTimer.current = setTimeout(() => {
       // Haptic feedback — short pulse, silently ignored if unavailable
       try { navigator.vibrate?.(18); } catch (_) {}
 
-      // Position the menu near the item but always fully on-screen
+      // Position the menu near the finger but always fully on-screen
       const MENU_W = 160, MENU_H = 90;
       const vw = window.innerWidth, vh = window.innerHeight;
       const x = Math.min(t.clientX + 8, vw - MENU_W - 8);
@@ -97,20 +98,24 @@ export default function Sidebar({
       setContextMenu({ x, y, sessionId });
     }, 480);
 
-    // Cancel if finger drifts (the user is scrolling, not pressing)
+    // Cancel if finger drifts — stored in its own ref so it's always reachable
     const onMove = (me) => {
       const mt = me.touches[0];
       if (Math.abs(mt.clientX - startX) > 8 || Math.abs(mt.clientY - startY) > 8) {
-        clearTimeout(longPressRef.current);
-        document.removeEventListener("touchmove", onMove);
+        clearTimeout(longPressTimer.current);
+        longPressCleanup.current?.();
       }
     };
+    longPressCleanup.current = () => {
+      document.removeEventListener("touchmove", onMove);
+      longPressCleanup.current = null;
+    };
     document.addEventListener("touchmove", onMove, { passive: true });
-    longPressRef.current._cleanup = () => document.removeEventListener("touchmove", onMove);
   };
+
   const onTouchEnd = () => {
-    longPressRef.current?._cleanup?.();
-    clearTimeout(longPressRef.current);
+    clearTimeout(longPressTimer.current);
+    longPressCleanup.current?.();
   };
 
   // ── Delete with confirmation modal ───────────────────────────────────────
@@ -187,7 +192,38 @@ export default function Sidebar({
     return () => { stop(); document.removeEventListener("dragover", drag); document.removeEventListener("drop", stop); document.removeEventListener("dragend", stop); };
   }, [editMode, android]);
 
-  // ── Desktop resize handle ────────────────────────────────────────────────
+  // ── Swipe-left-to-close (Android drawer only) ────────────────────────────
+  useEffect(() => {
+    if (!android || !isDrawerOpen) return;
+    const el = sidebarRef.current;
+    if (!el) return;
+
+    let startX = null, startY = null;
+    const MIN_SWIPE_X  = 60;   // px leftward to dismiss
+    const MAX_DRIFT_Y  = 50;   // px vertical drift allowed
+
+    const onStart = (e) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    };
+    const onMove = (e) => {
+      if (startX === null) return;
+      const dx = startX - e.touches[0].clientX;
+      const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dy > MAX_DRIFT_Y) { startX = null; return; }
+      if (dx > MIN_SWIPE_X) { onDrawerClose?.(); startX = null; }
+    };
+    const onEnd = () => { startX = null; };
+
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove",  onMove,  { passive: true });
+    el.addEventListener("touchend",   onEnd,   { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove",  onMove);
+      el.removeEventListener("touchend",   onEnd);
+    };
+  }, [android, isDrawerOpen, onDrawerClose]);
   useEffect(() => {
     if (android) return;
     const move = (e) => {

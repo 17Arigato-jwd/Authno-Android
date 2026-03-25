@@ -21,6 +21,7 @@ export default function BurgerMenu({
   const [status,  setStatus]  = useState("idle");
   const [busy,    setBusy]    = useState(false);
   const menuRef = useRef(null);
+  const swipeStartY = useRef(null);
   const android = isAndroid();
 
   // ── Anchor position (desktop only) ────────────────────────────────────────
@@ -48,7 +49,31 @@ export default function BurgerMenu({
     };
   }, [open, onClose, anchorRef]);
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Swipe-down-to-dismiss (Android bottom sheet only) ─────────────────────
+  useEffect(() => {
+    if (!android || !open) return;
+    const el = menuRef.current;
+    if (!el) return;
+
+    const onStart = (e) => { swipeStartY.current = e.touches[0].clientY; };
+    const onMove  = (e) => {
+      if (swipeStartY.current === null) return;
+      if (e.touches[0].clientY - swipeStartY.current > 72) {
+        swipeStartY.current = null;
+        onClose?.();
+      }
+    };
+    const onEnd = () => { swipeStartY.current = null; };
+
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove",  onMove,  { passive: true });
+    el.addEventListener("touchend",   onEnd,   { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove",  onMove);
+      el.removeEventListener("touchend",   onEnd);
+    };
+  }, [android, open, onClose]);
   const handleSave = async () => {
     if (!current || busy) return;
     setBusy(true);
@@ -191,14 +216,14 @@ export default function BurgerMenu({
       {open && (android ? (
         createPortal(
           <>
-            <div className="fixed inset-0 z-[9998] bg-black/50" onClick={onClose} />
+            <div className="fixed inset-0 z-[9998] bg-black/50" onClick={onClose} onTouchStart={onClose} />
             <div
               ref={menuRef}
               className="fixed bottom-0 left-0 right-0 z-[9999] rounded-t-2xl p-5 border-t border-white/20 animate-slideUp"
               style={{ background: gradient,
                        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)" }}
             >
-              <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" />
+              <div className="w-12 h-1.5 bg-white/30 rounded-full mx-auto mb-5 active:bg-white/50 transition-colors" />
               {menuContent}
             </div>
           </>,
