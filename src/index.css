@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Global Background Fix (Prevents blank/white flash on load) ─── */
+:root {
+  --app-bg: #060606;
+}
+
+body {
+  background-color: #060606;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  background-color: var(--app-bg);
+  min-height: 100vh;
+}
+
 @keyframes flamePulse {
   0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 120, 0, 0.8)); }
   50% { filter: drop-shadow(0 0 18px rgba(255, 150, 0, 1)); }
@@ -37,7 +53,6 @@ textarea {
   letter-spacing: 0.002em;
 }
 
-
 @keyframes wiggle {
   0%, 100% { transform: rotate(-1deg); }
   50% { transform: rotate(1deg); }
@@ -47,7 +62,6 @@ textarea {
   animation: wiggle 1.8s infinite ease-in-out;
   transform-origin: center;
 }
-
 
 /* ─── Theme Variables ─────────────────────────────────────────────────────── */
 :root {

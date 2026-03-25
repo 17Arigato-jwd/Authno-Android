@@ -107,6 +107,16 @@ function Editor({
 /* ── App ────────────────────────────────────────────────────────────────── */
 function AppInner() {
   const { showError } = useError();
+
+  // 1. MUST BE DECLARED FIRST: Settings and Customization state
+  const [settings, setSettings] = useState(
+    () => JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
+  );
+  const [customization, setCustomization] = useState(
+    () => JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
+  );
+
+  // 2. Rest of state follows
   const [sessions, setSessions]   = useState([]);
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
@@ -117,16 +127,18 @@ function AppInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen]     = useState(false);
+
   const burgerBtnRef  = useRef(null);
-  const autoSaveTimer = useRef(null);
   const android = isAndroid();
 
   // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
   useEffect(() => {
     if (!android) return;
-    const EDGE_ZONE   = 22;   // px from left edge to start tracking
-    const MIN_SWIPE_X = 60;   // px rightward to trigger open
-    const MAX_DRIFT_Y = 50;   // px vertical drift allowed
+    const EDGE_ZONE   = 22;
+    const MIN_SWIPE_X = 60;
+    const MAX_DRIFT_Y = 50;
     let startX = null, startY = null, tracking = false;
 
     const onStart = (e) => {
@@ -179,17 +191,14 @@ function AppInner() {
       }
     }
 
-// Android: request storage permissions immediately, then restore books
-     if (android) {
+    // Android: request storage permissions immediately, then restore books
+    if (android) {
        initStoragePermissions();
        const localRaw   = localStorage.getItem("offlineWriterSessions");
        const localSessions = localRaw ? JSON.parse(localRaw) : [];
 
-       // Refresh any SAF-URI sessions from disk (catches edits made outside the app)
        restoreSafBooks(localSessions).then((refreshed) => {
          setSessions(refreshed);
-
-         // Scan legacy directory for books saved before SAF was introduced
          return listSavedBooks();
        }).then((legacyBooks) => {
          if (!legacyBooks.length) return;
@@ -202,17 +211,16 @@ function AppInner() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Startup behavior ─────────────────────────────────────────────────────
-  // Runs once after sessions are first loaded and settings are ready.
   const startupApplied = useRef(false);
   useEffect(() => {
-    if (startupApplied.current) return;
-    if (!sessions.length) return; // wait until sessions are loaded
-    startupApplied.current = true;
+    // Prevent running if onboarding is visible or sessions haven't loaded
+    if (startupApplied.current || showOnboarding) return;
+    if (!sessions.length) return;
 
+    startupApplied.current = true;
     const behavior = settings?.startupBehavior ?? "last";
 
     if (behavior === "last") {
-      // Reopen last-used book (already handled by offlineWriterCurrentId)
       const savedId = localStorage.getItem("offlineWriterCurrentId");
       if (savedId && sessions.some((s) => s.id === savedId)) {
         setCurrentId(savedId);
@@ -220,7 +228,6 @@ function AppInner() {
         setCurrentId(sessions[0].id);
       }
     } else if (behavior === "blank") {
-      // Open a fresh untitled book
       const blank = {
         id: Date.now().toString(),
         title: "Untitled Book",
@@ -230,10 +237,9 @@ function AppInner() {
       setSessions((prev) => [blank, ...prev]);
       setCurrentId(blank.id);
     } else if (behavior === "none") {
-      // Show empty editor — clear any remembered current book
       setCurrentId(null);
     }
-  }, [sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessions, settings, showOnboarding]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save open books for Electron restore
   useEffect(() => {
@@ -244,8 +250,6 @@ function AppInner() {
   useEffect(() => {
     const handler = (e) => {
       if (e.data.type === "restored-books") {
-        // e.data.books = [{ base64, filePath }] from the new fileManager.js
-        // Decode each book via storage then merge into sessions
         Promise.all(
           e.data.books.map(({ base64, filePath }) =>
             openBookFromBytes(base64, filePath).catch(() => null)
@@ -285,9 +289,7 @@ function AppInner() {
   }, [sessions]);
 
   // Android: .authbook file opened via intent (tapped in file manager)
-  // Handles both VCHS-ECS binary files and legacy JSON files.
   useEffect(() => {
-    // New binary path fired by MainActivity (VCHS-ECS + legacy JSON both come through here)
     const bytesHandler = async (e) => {
       const { base64, uri } = e.detail || {};
       if (!base64) return;
@@ -304,7 +306,6 @@ function AppInner() {
       }
     };
 
-    // Legacy path kept for any code that fires the old event directly
     const legacyHandler = (e) => {
       const book = e.detail;
       if (!book) return;
@@ -332,37 +333,27 @@ function AppInner() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Android: debounced auto-save — saves 2s after any content change
+  // Helper variable to get the current session
+  const current  = sessions.find((s) => s.id === currentId) || null;
+
+  // Android: debounced auto-save — saves 2s after current content changes
   useEffect(() => {
-      if (!android || sessions.length === 0) return;
+    if (!android || !current?.content) return;
 
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => {
-        sessions.forEach((s) => {
-          saveBook(s).then((result) => {
-            // FIX: Only trigger a state update if the path is actually NEW.
-            // This prevents the infinite loop.
-            if (result?.filePath && result.filePath !== s.filePath) {
-              setSessions((prev) =>
-                prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
-              );
-            }
-          }).catch(err => console.error('[AuthNo AutoSave]', err));
-        });
-      }, 2000);
+    const timer = setTimeout(() => {
+      saveBook(current).then((result) => {
+        if (result?.filePath && result.filePath !== current.filePath) {
+          setSessions((prev) =>
+            prev.map((x) => (x.id === current.id ? { ...x, filePath: result.filePath } : x))
+          );
+        }
+      }).catch(err => console.error('[AuthNo AutoSave]', err));
+    }, 2000);
 
-      return () => clearTimeout(autoSaveTimer.current);
-      // REMOVED 'sessions' from dependencies to prevent the loop.
-      // We only want this to run when the active session content changes,
-      // but usually, it's better to trigger this from the 'onChange' event instead.
-    }, [android]);
+    return () => clearTimeout(timer);
+  }, [current?.content, android]); // Only depends on the active content
 
-  // ── Settings / Customization ─────────────────────────────────────────────
-  const [customizerOpen, setCustomizerOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen]     = useState(false);
-  const [settings, setSettings] = useState(
-    JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
-  );
+  // ── Settings / Customization Handlers ────────────────────────────────────
   const handleSaveSettings = (patch) => {
     setSettings(patch);
     localStorage.setItem("writerSettings", JSON.stringify(patch));
@@ -372,9 +363,7 @@ function AppInner() {
       localStorage.setItem("writerCustomization", JSON.stringify(u));
     }
   };
-  const [customization, setCustomization] = useState(
-    JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
-  );
+
   const handleSaveCustomization = (patch) => {
     setCustomization(patch);
     localStorage.setItem("writerCustomization", JSON.stringify(patch));
@@ -398,12 +387,14 @@ function AppInner() {
     setCurrentId(id);
     if (android) setDrawerOpen(false);
   };
+
   const newStoryboard = () => {
     const id = Date.now().toString(), now = new Date().toISOString();
     setSessions((s) => [{ id, title: "Untitled Storyboard", preview: "Visual outline...", content: "", type: "storyboard", created: now, updated: now }, ...s]);
     setCurrentId(id);
     if (android) setDrawerOpen(false);
   };
+
   const handleSelect = (id) => { setCurrentId(id); if (android) setDrawerOpen(false); };
   const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId ? { ...x, title: t } : x));
   const handleEditContent = (c) => setSessions((s) => s.map((x) =>
@@ -411,10 +402,8 @@ function AppInner() {
   ));
 
   const filtered = sessions.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
-  const current  = sessions.find((s) => s.id === currentId) || null;
 
   const handleToggleMenu = () => {
-    // Update CSS vars so BurgerMenu knows exactly where to appear
     if (burgerBtnRef.current) {
       const r = burgerBtnRef.current.getBoundingClientRect();
       document.documentElement.style.setProperty("--bm-top",   `${r.bottom + 8}px`);
@@ -444,7 +433,7 @@ function AppInner() {
         visible={settings.enableGradient}
       />
 
-      {/* Android drawer backdrop — closes instantly on any touch or click */}
+      {/* Android drawer backdrop */}
       {android && drawerOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40"
@@ -533,8 +522,6 @@ function AppInner() {
 
 /* ── Root export wrapped in ErrorProvider ──────────────────────────────────── */
 export default function App() {
-  // We read accentHex from localStorage so ErrorProvider has the right colour
-  // before customization state is initialised inside AppInner.
   const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");
   const accentHex = stored.accentHex || "#5a00d9";
 
