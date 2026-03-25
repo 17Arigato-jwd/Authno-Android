@@ -3,6 +3,24 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Flame, ChevronLeft, ChevronRight, X, Target, CheckCircle2, XCircle } from 'lucide-react';
 
+// ── Haptics helper ─────────────────────────────────────────────────────────────
+// Streak fire pattern: two Medium impacts at 150 ms apart, then a Heavy at 325 ms after the second.
+async function hapticStreakFire() {
+  try {
+    if (window.Capacitor?.isPluginAvailable?.("Haptics")) {
+      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+      await Haptics.impact({ style: ImpactStyle.Medium });
+      await new Promise(r => setTimeout(r, 150));
+      await Haptics.impact({ style: ImpactStyle.Medium });
+      await new Promise(r => setTimeout(r, 325));
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+      return;
+    }
+  } catch (_) {}
+  // Web fallback — same timing via vibrate pattern
+  try { navigator.vibrate?.([40, 150, 40, 325, 60]); } catch (_) {}
+}
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 export function getTodayKey() {
@@ -516,6 +534,7 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
     if (justMet) {
       setShaking(true);
       setTimeout(() => setShaking(false), 600);
+      hapticStreakFire();
     }
   }, [wordsToday, goalWords, todayKey, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 

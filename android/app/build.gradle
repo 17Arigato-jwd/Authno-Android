@@ -19,10 +19,30 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            // Keystore is decoded from the KEYSTORE_BASE64 secret by CI before the build.
+            // KEYSTORE_PATH env var points to the decoded file; falls back to a local keystore.jks.
+            storeFile     file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
+            storePassword System.getenv("STORE_PASSWORD") ?: ""
+            keyAlias      System.getenv("KEY_ALIAS")      ?: ""
+            keyPassword   System.getenv("KEY_PASSWORD")   ?: ""
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            // Remove the default '.debug' suffix so the applicationId stays
+            // 'com.aurorastudios.authno' in both build types — this means a
+            // CI-built debug APK and a release APK share the same package name
+            // and Android will accept an update without requiring an uninstall.
+            applicationIdSuffix ""
         }
     }
 }

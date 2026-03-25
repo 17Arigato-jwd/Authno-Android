@@ -13,7 +13,7 @@ import { isAndroid } from "./utils/platform";
 import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
-import { Onboarding } from "./components/Onboarding";
+import { Onboarding, hasSeenOnboarding } from "./components/Onboarding";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -115,7 +115,7 @@ function AppInner() {
   const [inactive]                = useState(false);
   const [view, setView]           = useState("editor");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const burgerBtnRef  = useRef(null);
   const autoSaveTimer = useRef(null);
@@ -158,6 +158,11 @@ function AppInner() {
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
+    // ── Check onboarding (async — Capacitor Preferences) ──────────────────
+    hasSeenOnboarding().then((seen) => {
+      if (!seen) setShowOnboarding(true);
+    });
+
     const saved   = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
     if (saved) { setSessions(JSON.parse(saved)); if (savedId) setCurrentId(savedId); }
@@ -195,6 +200,40 @@ function AppInner() {
        });
      }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Startup behavior ─────────────────────────────────────────────────────
+  // Runs once after sessions are first loaded and settings are ready.
+  const startupApplied = useRef(false);
+  useEffect(() => {
+    if (startupApplied.current) return;
+    if (!sessions.length) return; // wait until sessions are loaded
+    startupApplied.current = true;
+
+    const behavior = settings?.startupBehavior ?? "last";
+
+    if (behavior === "last") {
+      // Reopen last-used book (already handled by offlineWriterCurrentId)
+      const savedId = localStorage.getItem("offlineWriterCurrentId");
+      if (savedId && sessions.some((s) => s.id === savedId)) {
+        setCurrentId(savedId);
+      } else if (sessions.length > 0) {
+        setCurrentId(sessions[0].id);
+      }
+    } else if (behavior === "blank") {
+      // Open a fresh untitled book
+      const blank = {
+        id: Date.now().toString(),
+        title: "Untitled Book",
+        content: "",
+        createdAt: Date.now(),
+      };
+      setSessions((prev) => [blank, ...prev]);
+      setCurrentId(blank.id);
+    } else if (behavior === "none") {
+      // Show empty editor — clear any remembered current book
+      setCurrentId(null);
+    }
+  }, [sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save open books for Electron restore
   useEffect(() => {

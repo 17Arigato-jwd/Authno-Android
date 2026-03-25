@@ -3,16 +3,52 @@ import { createPortal } from "react-dom";
 
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
-export function hasSeenOnboarding() {
-  return localStorage.getItem(ONBOARDING_KEY) === "done";
+// ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
+
+async function getPreference(key) {
+  try {
+    if (window.Capacitor?.isPluginAvailable?.("Preferences")) {
+      const { Preferences } = await import("@capacitor/preferences");
+      const { value } = await Preferences.get({ key });
+      return value;
+    }
+  } catch {}
+  return localStorage.getItem(key);
 }
 
-export function markOnboardingDone() {
-  localStorage.setItem(ONBOARDING_KEY, "done");
+async function setPreference(key, value) {
+  try {
+    if (window.Capacitor?.isPluginAvailable?.("Preferences")) {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.set({ key, value });
+      return;
+    }
+  } catch {}
+  localStorage.setItem(key, value);
 }
 
-export function resetOnboarding() {
-  localStorage.removeItem(ONBOARDING_KEY);
+async function removePreference(key) {
+  try {
+    if (window.Capacitor?.isPluginAvailable?.("Preferences")) {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.remove({ key });
+      return;
+    }
+  } catch {}
+  localStorage.removeItem(key);
+}
+
+export async function hasSeenOnboarding() {
+  const val = await getPreference(ONBOARDING_KEY);
+  return val === "done";
+}
+
+export async function markOnboardingDone() {
+  await setPreference(ONBOARDING_KEY, "done");
+}
+
+export async function resetOnboarding() {
+  await removePreference(ONBOARDING_KEY);
 }
 
 // ─── Onboarding Screen ────────────────────────────────────────────────────────
@@ -70,8 +106,8 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
       body:  "Tap the + button in the sidebar to create your first book.\n\nHappy writing!",
       action: "Start writing",
       isLast: true,
-      onAction: () => {
-        if (dontShowAgain) markOnboardingDone();
+      onAction: async () => {
+        if (dontShowAgain) await markOnboardingDone();
         onDone?.();
       },
     },
@@ -111,14 +147,22 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
         {/* "Don't show again" checkbox — only on last step */}
         {current.isLast && (
-          <label className="flex items-center justify-center gap-2 mb-6 cursor-pointer select-none group">
+          <label
+            className="flex items-center justify-center gap-2 mb-6 cursor-pointer select-none group"
+            style={{ WebkitTapHighlightColor: "transparent" }}
+          >
+            <input
+              type="checkbox"
+              className="sr-only"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+            />
             <span
               className="w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0"
               style={{
                 borderColor: dontShowAgain ? accentHex : "rgba(255,255,255,0.3)",
                 background:  dontShowAgain ? accentHex : "transparent",
               }}
-              onClick={() => setDontShowAgain((v) => !v)}
             >
               {dontShowAgain && (
                 <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -126,12 +170,6 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                 </svg>
               )}
             </span>
-            <input
-              type="checkbox"
-              className="sr-only"
-              checked={dontShowAgain}
-              onChange={(e) => setDontShowAgain(e.target.checked)}
-            />
             <span className="text-white/40 text-xs group-hover:text-white/60 transition-colors">
               Don't show this again
             </span>
