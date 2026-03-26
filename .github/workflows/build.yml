@@ -36,7 +36,42 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: android-actions/setup-android@v3
 
+      - name: "📊 Progress: Environment Ready"
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # 🔨 AuthNo Android Build
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ⏳ Running... |
+          | 🔄 Capacitor sync | ⏳ Waiting |
+          | 🔑 Keystore decode | ⏳ Waiting |
+          | 🏗️ Gradle build | ⏳ Waiting |
+          | 📤 Upload artifact | ⏳ Waiting |
+
+          EOF
+
       - run: npm install
+
+      - name: "📊 Progress: Dependencies Installed"
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ---
+          > **Updated:** Dependencies installed ✅
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ✅ Done |
+          | 🔄 Capacitor sync | ⏳ Running... |
+          | 🔑 Keystore decode | ⏳ Waiting |
+          | 🏗️ Gradle build | ⏳ Waiting |
+          | 📤 Upload artifact | ⏳ Waiting |
+
+          EOF
+
       - uses: actions/download-artifact@v4
         with: { name: react-build, path: build/ }
 
@@ -47,9 +82,27 @@ jobs:
           fi
           npx cap sync android
 
+      - name: "📊 Progress: Capacitor Synced"
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ---
+          > **Updated:** Capacitor synced ✅
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ✅ Done |
+          | 🔄 Capacitor sync | ✅ Done |
+          | 🔑 Keystore decode | ⏳ Running... |
+          | 🏗️ Gradle build | ⏳ Waiting |
+          | 📤 Upload artifact | ⏳ Waiting |
+
+          EOF
+
       - run: chmod +x android/gradlew
 
-      # ── Resolve version numbers ─────────────────────────────────────────────
+      # ── Resolve version numbers ───────────────────────────────────────────
       # versionCode = GitHub run number (auto-increments, Play Store safe)
       # versionName = git tag (e.g. "1.1.6") on releases, "debug-<run>" otherwise
       - name: Set version variables
@@ -66,7 +119,7 @@ jobs:
           echo "name=$VERSION_NAME"   >> $GITHUB_OUTPUT
           echo "versionCode=$VERSION_CODE  versionName=$VERSION_NAME"
 
-      # ── Decode keystore from secret ─────────────────────────────────────────
+      # ── Decode keystore from secret ───────────────────────────────────────
       # The decoded file is written next to build.gradle so Gradle can find it.
       # KEYSTORE_PATH is passed as an env var so signingConfigs.release picks it up.
       - name: Decode keystore
@@ -74,7 +127,25 @@ jobs:
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
         shell: bash
 
-      - name: Build debug APK
+      - name: "📊 Progress: Keystore Ready"
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ---
+          > **Updated:** Keystore decoded ✅
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ✅ Done |
+          | 🔄 Capacitor sync | ✅ Done |
+          | 🔑 Keystore decode | ✅ Done |
+          | 🏗️ Gradle build | ⏳ Running... |
+          | 📤 Upload artifact | ⏳ Waiting |
+
+          EOF
+
+      - name: Build release APK
         working-directory: android
         env:
           KEYSTORE_PATH: keystore.jks
@@ -82,7 +153,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew assembleDebug --no-daemon \
+          ./gradlew assembleRelease --no-daemon \
             -PversionCode=${{ steps.version.outputs.code }} \
             -PversionName=${{ steps.version.outputs.name }}
 
@@ -99,11 +170,33 @@ jobs:
             -PversionCode=${{ steps.version.outputs.code }} \
             -PversionName=${{ steps.version.outputs.name }}
 
-      - name: Upload debug APK
+      - name: "📊 Progress: Build Complete"
+        run: |
+          BUILD_TYPE=$([[ "${{ github.ref }}" == refs/tags/* ]] && echo "Release AAB + APK" || echo "Release APK")
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ---
+          > **Updated:** Gradle build finished ✅
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ✅ Done |
+          | 🔄 Capacitor sync | ✅ Done |
+          | 🔑 Keystore decode | ✅ Done |
+          | 🏗️ Gradle build | ✅ Done |
+          | 📤 Upload artifact | ⏳ Running... |
+
+          > 🏷️ **Version:** \`${{ steps.version.outputs.name }}\` (code \`${{ steps.version.outputs.code }}\`)
+          > 📦 **Build type:** $BUILD_TYPE
+
+          EOF
+
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: authno-android-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
 
       - name: Upload release AAB
@@ -113,6 +206,52 @@ jobs:
           name: authno-android-release
           path: android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn
+
+      - name: "📊 Progress: All Done"
+        run: |
+          APK_SIZE=$(find android/app/build/outputs/apk/release -name "*.apk" -exec du -sh {} \; 2>/dev/null | cut -f1 || echo "unknown")
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ---
+
+          ## ✅ Build Successful!
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ✅ Done |
+          | 🔄 Capacitor sync | ✅ Done |
+          | 🔑 Keystore decode | ✅ Done |
+          | 🏗️ Gradle build | ✅ Done |
+          | 📤 Upload artifact | ✅ Done |
+
+          > 🏷️ **Version:** \`${{ steps.version.outputs.name }}\` (code \`${{ steps.version.outputs.code }}\`)
+          > 📏 **APK size:** $APK_SIZE
+          > 🔗 **Download:** Check the Artifacts section above ↑
+
+          EOF
+
+      - name: "📊 Progress: Build FAILED"
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          ---
+
+          ## ❌ Build Failed
+
+          Check the step logs above for details.
+
+          | Step | Status |
+          |------|--------|
+          | ⚙️ Environment setup | ✅ Done |
+          | 📦 Dependencies | ✅ Done |
+          | 🔄 Capacitor sync | ✅ Done |
+          | 🔑 Keystore decode | ✅ Done |
+          | 🏗️ Gradle build | ❌ Failed |
+          | 📤 Upload artifact | ⏸️ Skipped |
+
+          EOF
 
   # ── 3. GitHub Release (tag pushes only) ─────────────────────────────────────
   release:

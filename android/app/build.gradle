@@ -42,6 +42,7 @@ android {
             // 'com.aurorastudios.authno' in both build types — this means a
             // CI-built debug APK and a release APK share the same package name
             // and Android will accept an update without requiring an uninstall.
+            signingConfig signingConfigs.release
             applicationIdSuffix ""
         }
     }

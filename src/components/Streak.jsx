@@ -518,6 +518,14 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
   useEffect(() => {
     if (!current) return;
     const existing   = log[todayKey] ?? null;
+
+    // Bug fix: never overwrite an existing log entry with 0 words.
+    // This race condition happens on first-open-of-day: the baseline hasn't been
+    // committed to state yet (it's set via an async setState in the effect above),
+    // so wordsToday computes as 0 even though the user previously wrote words today.
+    // Only allow a 0-write if there is genuinely no existing entry for today.
+    if (wordsToday === 0 && existing !== null) return;
+
     const needsWrite = !existing
       || existing.words !== wordsToday
       || existing.goal  !== goalWords;
