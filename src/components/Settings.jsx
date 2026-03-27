@@ -565,7 +565,7 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
       )}
 
       {/* ── Goal input ─────────────────────────────────────────────────── */}
-      <Label>Daily Word Goal{selectedBook ? \` — ${selectedBook.title || 'Untitled'}\` : ' (Global Default)'}</Label>
+      <Label>Daily Word Goal{selectedBook ? ` — ${selectedBook.title || 'Untitled'}` : ' (Global Default)'}</Label>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
         <input
           type="number"
