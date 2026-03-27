@@ -467,10 +467,11 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
 
   const streak     = current?.streak ?? {};
   const rawLog     = streak.log       ?? {};
-  // Normalise: convert any legacy plain-number entries to { words, goal } using
-  // the streak-level goalWords field that old versions stored at the top level.
-  const legacyGoal = streak.goalWords ?? goalWords;
-  const log        = normalizeLog(rawLog, legacyGoal);
+  // Resolve effective goal: per-book override > global prop from Settings.
+  // streak.goalWords is set by the per-book Writing Goal panel in Settings.
+  const effectiveGoal = streak.goalWords ?? goalWords;
+  // Normalise: convert any legacy plain-number entries to { words, goal }
+  const log        = normalizeLog(rawLog, effectiveGoal);
 
   const todayKey     = getTodayKey();
   const currentWords = countWords(current?.content ?? '');
@@ -507,7 +508,7 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
 
   const baseline   = streak.dailyBaseline?.[todayKey] ?? currentWords;
   const wordsToday = Math.max(0, hwRef.current - baseline);
-  const todayMet   = wordsToday >= goalWords;
+  const todayMet   = wordsToday >= effectiveGoal;
   const currentStreak = computeStreak(log);
 
   // ── Auto-persist today's entry whenever wordsToday or goalWords changes ─────
@@ -518,20 +519,12 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
   useEffect(() => {
     if (!current) return;
     const existing   = log[todayKey] ?? null;
-
-    // Bug fix: never overwrite an existing log entry with 0 words.
-    // This race condition happens on first-open-of-day: the baseline hasn't been
-    // committed to state yet (it's set via an async setState in the effect above),
-    // so wordsToday computes as 0 even though the user previously wrote words today.
-    // Only allow a 0-write if there is genuinely no existing entry for today.
-    if (wordsToday === 0 && existing !== null) return;
-
     const needsWrite = !existing
       || existing.words !== wordsToday
       || existing.goal  !== goalWords;
 
     if (needsWrite) {
-      const updatedLog    = { ...rawLog, [todayKey]: { words: wordsToday, goal: goalWords } };
+      const updatedLog    = { ...rawLog, [todayKey]: { words: wordsToday, goal: effectiveGoal } };
       const updatedStreak = { ...streak, log: updatedLog };
       onStreakUpdate?.(updatedStreak);
     }
@@ -570,7 +563,7 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
         title={
           !current
             ? 'Open a book to track your streak'
-            : `${wordsToday.toLocaleString()} / ${goalWords.toLocaleString()} words written today${todayMet ? ' ✓' : ''}`
+            : `${wordsToday.toLocaleString()} / ${effectiveGoal.toLocaleString()} words written today${todayMet ? ' ✓' : ''}`
         }
         style={{
           padding: '8px',
@@ -610,7 +603,7 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
           currentStreak={currentStreak}
           log={log}
           wordsToday={wordsToday}
-          goalWords={goalWords}
+          goalWords={effectiveGoal}
           accentHex={accentHex}
           anchorRef={buttonRef}
           onClose={() => setCalendarOpen(false)}

@@ -107,15 +107,6 @@ function Editor({
 /* ── App ────────────────────────────────────────────────────────────────── */
 function AppInner() {
   const { showError } = useError();
-
-  // ── Settings / Customization — declared FIRST so all useEffects below can read them ──
-  const [settings, setSettings] = useState(
-    JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
-  );
-  const [customization, setCustomization] = useState(
-    JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
-  );
-
   const [sessions, setSessions]   = useState([]);
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
@@ -204,47 +195,24 @@ function AppInner() {
          if (!legacyBooks.length) return;
          setSessions((prev) => {
            const fresh = legacyBooks.filter((b) => !prev.some((s) => s.id === b.id));
-           if (!fresh.length) return prev;
-           // Merge: prefer streak data from whichever copy has more log entries
-           const merged = fresh.map((fromDisk) => {
-             const inMem = prev.find((s) => s.filePath === fromDisk.filePath);
-             if (!inMem) return fromDisk;
-             const diskEntries = Object.keys(fromDisk.streak?.log ?? {}).length;
-             const memEntries  = Object.keys(inMem.streak?.log  ?? {}).length;
-             return {
-               ...fromDisk,
-               streak: diskEntries >= memEntries
-                 ? fromDisk.streak
-                 : inMem.streak,
-             };
-           });
-           return [...merged, ...prev];
+           return fresh.length ? [...fresh, ...prev] : prev;
          });
        });
      }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Startup behavior ─────────────────────────────────────────────────────
-  // Runs once after sessions AND settings are both ready.
+  // Runs once after sessions are first loaded and settings are ready.
   const startupApplied = useRef(false);
   useEffect(() => {
     if (startupApplied.current) return;
+    if (!sessions.length) return; // wait until sessions are loaded
+    startupApplied.current = true;
 
     const behavior = settings?.startupBehavior ?? "last";
 
-    // For "none": apply immediately — no sessions needed
-    if (behavior === "none") {
-      startupApplied.current = true;
-      setCurrentId(null);
-      return;
-    }
-
-    // For "last" and "blank": wait until sessions have loaded from localStorage
-    if (!sessions.length) return;
-    startupApplied.current = true;
-
     if (behavior === "last") {
-      // Reopen last-used book (persisted by the currentId useEffect above)
+      // Reopen last-used book (already handled by offlineWriterCurrentId)
       const savedId = localStorage.getItem("offlineWriterCurrentId");
       if (savedId && sessions.some((s) => s.id === savedId)) {
         setCurrentId(savedId);
@@ -252,35 +220,20 @@ function AppInner() {
         setCurrentId(sessions[0].id);
       }
     } else if (behavior === "blank") {
-      // Open a fresh untitled book every launch
-      const now = new Date().toISOString();
+      // Open a fresh untitled book
       const blank = {
         id: Date.now().toString(),
         title: "Untitled Book",
         content: "",
-        preview: "A new story...",
-        type: "book",
-        created: now,
-        updated: now,
+        createdAt: Date.now(),
       };
       setSessions((prev) => [blank, ...prev]);
       setCurrentId(blank.id);
+    } else if (behavior === "none") {
+      // Show empty editor — clear any remembered current book
+      setCurrentId(null);
     }
   }, [sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Persist sessions to localStorage on every change (fixes Bug 1: sidebar cleared on reopen) ──
-  useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
-    }
-  }, [sessions]);
-
-  // ── Persist currentId so the last-open book is remembered across restarts ──
-  useEffect(() => {
-    if (currentId) {
-      localStorage.setItem("offlineWriterCurrentId", currentId);
-    }
-  }, [currentId]);
 
   // Save open books for Electron restore
   useEffect(() => {
@@ -379,34 +332,37 @@ function AppInner() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Android: debounced auto-save — saves 2s after any content change.
-  // Uses a ref to hold the latest sessions so the setTimeout closure is never stale.
-  const sessionsRef = useRef(sessions);
-  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
-
+  // Android: debounced auto-save — saves 2s after any content change
   useEffect(() => {
-    if (!android) return;
-    clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => {
-      // Read from ref so we always get the latest sessions, not the stale closure value
-      sessionsRef.current.forEach((s) => {
-        saveBook(s).then((result) => {
-          // Only trigger a state update if the filePath is actually NEW.
-          // This prevents an infinite save loop.
-          if (result?.filePath && result.filePath !== s.filePath) {
-            setSessions((prev) =>
-              prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
-            );
-          }
-        }).catch(err => console.error('[AuthNo AutoSave]', err));
-      });
-    }, 2000);
-    return () => clearTimeout(autoSaveTimer.current);
-  }, [android, sessions]); // sessions dep is safe now because sessionsRef breaks the loop
+      if (!android || sessions.length === 0) return;
+
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(() => {
+        sessions.forEach((s) => {
+          saveBook(s).then((result) => {
+            // FIX: Only trigger a state update if the path is actually NEW.
+            // This prevents the infinite loop.
+            if (result?.filePath && result.filePath !== s.filePath) {
+              setSessions((prev) =>
+                prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
+              );
+            }
+          }).catch(err => console.error('[AuthNo AutoSave]', err));
+        });
+      }, 2000);
+
+      return () => clearTimeout(autoSaveTimer.current);
+      // REMOVED 'sessions' from dependencies to prevent the loop.
+      // We only want this to run when the active session content changes,
+      // but usually, it's better to trigger this from the 'onChange' event instead.
+    }, [android]);
 
   // ── Settings / Customization ─────────────────────────────────────────────
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen]     = useState(false);
+  const [settings, setSettings] = useState(
+    JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
+  );
   const handleSaveSettings = (patch) => {
     setSettings(patch);
     localStorage.setItem("writerSettings", JSON.stringify(patch));
@@ -416,6 +372,14 @@ function AppInner() {
       localStorage.setItem("writerCustomization", JSON.stringify(u));
     }
   };
+
+  // Merge a partial update into a single session by id (used by Settings per-book goal)
+  const handleSessionChange = (id, patch) => {
+    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
+  };
+  const [customization, setCustomization] = useState(
+    JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
+  );
   const handleSaveCustomization = (patch) => {
     setCustomization(patch);
     localStorage.setItem("writerCustomization", JSON.stringify(patch));
@@ -423,18 +387,13 @@ function AppInner() {
 
   // ── Streak ───────────────────────────────────────────────────────────────
   const handleStreakUpdate = useCallback((updatedStreak) => {
-    setSessions((prev) => {
-      const next = prev.map((s) =>
-        s.id === currentId ? { ...s, streak: {
-          ...(s.streak ?? {}), ...updatedStreak,
-          log:          { ...(s.streak?.log ?? {}),           ...(updatedStreak.log ?? {}) },
-          dailyBaseline:{ ...(s.streak?.dailyBaseline ?? {}), ...(updatedStreak.dailyBaseline ?? {}) },
-        }} : s
-      );
-      // Immediately persist so streak survives app restarts (Bug 2 fix)
-      localStorage.setItem("offlineWriterSessions", JSON.stringify(next));
-      return next;
-    });
+    setSessions((prev) => prev.map((s) =>
+      s.id === currentId ? { ...s, streak: {
+        ...(s.streak ?? {}), ...updatedStreak,
+        log:          { ...(s.streak?.log ?? {}),           ...(updatedStreak.log ?? {}) },
+        dailyBaseline:{ ...(s.streak?.dailyBaseline ?? {}), ...(updatedStreak.dailyBaseline ?? {}) },
+      }} : s
+    ));
   }, [currentId]);
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
@@ -555,6 +514,8 @@ function AppInner() {
         onSave={handleSaveSettings}
         onOpenCustomizer={() => setCustomizerOpen(true)}
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
+        sessions={sessions}
+        onSessionChange={handleSessionChange}
       />
 
       <CustomizationSlider
