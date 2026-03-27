@@ -117,6 +117,15 @@ function AppInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState(
+    JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
+  );
+  const [customization, setCustomization] = useState(
+    JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
+  );
+
   const burgerBtnRef  = useRef(null);
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
@@ -124,95 +133,105 @@ function AppInner() {
   // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
   useEffect(() => {
     if (!android) return;
-    const EDGE_ZONE   = 22;   // px from left edge to start tracking
-    const MIN_SWIPE_X = 60;   // px rightward to trigger open
-    const MAX_DRIFT_Y = 50;   // px vertical drift allowed
+    const EDGE_ZONE   = 22;
+    const MIN_SWIPE_X = 60;
+    const MAX_DRIFT_Y = 50;
     let startX = null, startY = null, tracking = false;
 
     const onStart = (e) => {
       const t = e.touches[0];
       if (t.clientX <= EDGE_ZONE) {
-        startX = t.clientX; startY = t.clientY; tracking = true;
+        startX = t.clientX;
+        startY = t.clientY;
+        tracking = true;
       }
     };
+
     const onMove = (e) => {
       if (!tracking) return;
       const t = e.touches[0];
-      if (Math.abs(t.clientY - startY) > MAX_DRIFT_Y) { tracking = false; return; }
+      if (Math.abs(t.clientY - startY) > MAX_DRIFT_Y) {
+        tracking = false;
+        return;
+      }
       if (t.clientX - startX > MIN_SWIPE_X) {
         tracking = false;
         setDrawerOpen(true);
       }
     };
-    const onEnd = () => { tracking = false; };
+
+    const onEnd = () => {
+      tracking = false;
+    };
 
     document.addEventListener("touchstart", onStart, { passive: true });
-    document.addEventListener("touchmove",  onMove,  { passive: true });
-    document.addEventListener("touchend",   onEnd,   { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchend", onEnd, { passive: true });
+
     return () => {
       document.removeEventListener("touchstart", onStart);
-      document.removeEventListener("touchmove",  onMove);
-      document.removeEventListener("touchend",   onEnd);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
     };
   }, [android]);
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
-    // ── Check onboarding (async — Capacitor Preferences) ──────────────────
     hasSeenOnboarding().then((seen) => {
       if (!seen) setShowOnboarding(true);
     });
 
-    const saved   = localStorage.getItem("offlineWriterSessions");
+    const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
-    if (saved) { setSessions(JSON.parse(saved)); if (savedId) setCurrentId(savedId); }
+    if (saved) {
+      setSessions(JSON.parse(saved));
+      if (savedId) setCurrentId(savedId);
+    }
 
-    // Electron: restore open books from file paths
     if (window.electron) {
       const openBooks = localStorage.getItem("openBooks");
       if (openBooks) {
         try {
           const books = JSON.parse(openBooks);
-          if (Array.isArray(books) && window.electron?.restoreBooks)
+          if (Array.isArray(books) && window.electron?.restoreBooks) {
             window.electron.restoreBooks(books);
-        } catch (e) { console.error(e); }
+          }
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
 
-// Android: request storage permissions immediately, then restore books
-     if (android) {
-       initStoragePermissions();
-       const localRaw   = localStorage.getItem("offlineWriterSessions");
-       const localSessions = localRaw ? JSON.parse(localRaw) : [];
+    if (android) {
+      initStoragePermissions();
+      const localRaw = localStorage.getItem("offlineWriterSessions");
+      const localSessions = localRaw ? JSON.parse(localRaw) : [];
 
-       // Refresh any SAF-URI sessions from disk (catches edits made outside the app)
-       restoreSafBooks(localSessions).then((refreshed) => {
-         setSessions(refreshed);
-
-         // Scan legacy directory for books saved before SAF was introduced
-         return listSavedBooks();
-       }).then((legacyBooks) => {
-         if (!legacyBooks.length) return;
-         setSessions((prev) => {
-           const fresh = legacyBooks.filter((b) => !prev.some((s) => s.id === b.id));
-           return fresh.length ? [...fresh, ...prev] : prev;
-         });
-       });
-     }
+      restoreSafBooks(localSessions)
+        .then((refreshed) => {
+          setSessions(refreshed);
+          return listSavedBooks();
+        })
+        .then((legacyBooks) => {
+          if (!legacyBooks.length) return;
+          setSessions((prev) => {
+            const fresh = legacyBooks.filter((b) => !prev.some((s) => s.id === b.id));
+            return fresh.length ? [...fresh, ...prev] : prev;
+          });
+        });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Startup behavior ─────────────────────────────────────────────────────
-  // Runs once after sessions are first loaded and settings are ready.
   const startupApplied = useRef(false);
   useEffect(() => {
     if (startupApplied.current) return;
-    if (!sessions.length) return; // wait until sessions are loaded
+    if (!sessions.length) return;
     startupApplied.current = true;
 
     const behavior = settings?.startupBehavior ?? "last";
 
     if (behavior === "last") {
-      // Reopen last-used book (already handled by offlineWriterCurrentId)
       const savedId = localStorage.getItem("offlineWriterCurrentId");
       if (savedId && sessions.some((s) => s.id === savedId)) {
         setCurrentId(savedId);
@@ -220,7 +239,6 @@ function AppInner() {
         setCurrentId(sessions[0].id);
       }
     } else if (behavior === "blank") {
-      // Open a fresh untitled book
       const blank = {
         id: Date.now().toString(),
         title: "Untitled Book",
@@ -230,22 +248,17 @@ function AppInner() {
       setSessions((prev) => [blank, ...prev]);
       setCurrentId(blank.id);
     } else if (behavior === "none") {
-      // Show empty editor — clear any remembered current book
       setCurrentId(null);
     }
-  }, [sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessions, settings]);
 
-  // Save open books for Electron restore
   useEffect(() => {
     if (window.electron) localStorage.setItem("openBooks", JSON.stringify(sessions));
   }, [sessions]);
 
-  // Electron: receive restored/missing books from preload
   useEffect(() => {
     const handler = (e) => {
       if (e.data.type === "restored-books") {
-        // e.data.books = [{ base64, filePath }] from the new fileManager.js
-        // Decode each book via storage then merge into sessions
         Promise.all(
           e.data.books.map(({ base64, filePath }) =>
             openBookFromBytes(base64, filePath).catch(() => null)
@@ -261,33 +274,35 @@ function AppInner() {
       }
       if (e.data.type === "missing-books") e.data.messages.forEach(alert);
     };
+
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  // Electron: .authbook file opened via file association
   useEffect(() => {
     if (!window.electron?.onOpenAuthBook) return;
+
     const listener = (book) => {
       if (sessions.some((s) => s.filePath === book.filePath)) return;
       const nb = {
-        id: Date.now().toString(), title: book.title || "Untitled Book",
+        id: Date.now().toString(),
+        title: book.title || "Untitled Book",
         content: book.content || "",
         preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...",
-        filePath: book.filePath, type: "book",
-        created: new Date().toISOString(), updated: new Date().toISOString(),
+        filePath: book.filePath,
+        type: "book",
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
       };
       setSessions((p) => [nb, ...p]);
       setCurrentId(nb.id);
     };
+
     window.electron.onOpenAuthBook(listener);
     return () => window.removeEventListener("open-authbook", listener);
   }, [sessions]);
 
-  // Android: .authbook file opened via intent (tapped in file manager)
-  // Handles both VCHS-ECS binary files and legacy JSON files.
   useEffect(() => {
-    // New binary path fired by MainActivity (VCHS-ECS + legacy JSON both come through here)
     const bytesHandler = async (e) => {
       const { base64, uri } = e.detail || {};
       if (!base64) return;
@@ -304,7 +319,6 @@ function AppInner() {
       }
     };
 
-    // Legacy path kept for any code that fires the old event directly
     const legacyHandler = (e) => {
       const book = e.detail;
       if (!book) return;
@@ -320,66 +334,61 @@ function AppInner() {
       });
     };
 
-    const errHandler = () => alert("⚠️ Could not open that .authbook file — it may be corrupt.");
+    const errHandler = () =>
+      alert("⚠️ Could not open that .authbook file — it may be corrupt.");
 
-    window.addEventListener("open-authbook-android-bytes",  bytesHandler);
-    window.addEventListener("open-authbook-android",        legacyHandler);
-    window.addEventListener("open-authbook-android-error",  errHandler);
+    window.addEventListener("open-authbook-android-bytes", bytesHandler);
+    window.addEventListener("open-authbook-android", legacyHandler);
+    window.addEventListener("open-authbook-android-error", errHandler);
+
     return () => {
-      window.removeEventListener("open-authbook-android-bytes",  bytesHandler);
-      window.removeEventListener("open-authbook-android",        legacyHandler);
-      window.removeEventListener("open-authbook-android-error",  errHandler);
+      window.removeEventListener("open-authbook-android-bytes", bytesHandler);
+      window.removeEventListener("open-authbook-android", legacyHandler);
+      window.removeEventListener("open-authbook-android-error", errHandler);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Android: debounced auto-save — saves 2s after any content change
   useEffect(() => {
-      if (!android || sessions.length === 0) return;
+    if (!android || sessions.length === 0) return;
 
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => {
-        sessions.forEach((s) => {
-          saveBook(s).then((result) => {
-            // FIX: Only trigger a state update if the path is actually NEW.
-            // This prevents the infinite loop.
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      sessions.forEach((s) => {
+        saveBook(s)
+          .then((result) => {
             if (result?.filePath && result.filePath !== s.filePath) {
               setSessions((prev) =>
                 prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
               );
             }
-          }).catch(err => console.error('[AuthNo AutoSave]', err));
-        });
-      }, 2000);
+          })
+          .catch((err) => console.error("[AuthNo AutoSave]", err));
+      });
+    }, 2000);
 
-      return () => clearTimeout(autoSaveTimer.current);
-      // REMOVED 'sessions' from dependencies to prevent the loop.
-      // We only want this to run when the active session content changes,
-      // but usually, it's better to trigger this from the 'onChange' event instead.
-    }, [android]);
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [android, sessions]);
 
-  // ── Settings / Customization ─────────────────────────────────────────────
-  const [customizerOpen, setCustomizerOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen]     = useState(false);
-  const [settings, setSettings] = useState(
-    JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
-  );
   const handleSaveSettings = (patch) => {
-    setSettings(patch);
-    localStorage.setItem("writerSettings", JSON.stringify(patch));
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      localStorage.setItem("writerSettings", JSON.stringify(next));
+      return next;
+    });
+
     if (patch.accentHex !== undefined) {
-      const u = { ...customization, accentHex: patch.accentHex };
-      setCustomization(u);
-      localStorage.setItem("writerCustomization", JSON.stringify(u));
+      setCustomization((prev) => {
+        const next = { ...prev, accentHex: patch.accentHex };
+        localStorage.setItem("writerCustomization", JSON.stringify(next));
+        return next;
+      });
     }
   };
 
-  // Merge a partial update into a single session by id (used by Settings per-book goal)
   const handleSessionChange = (id, patch) => {
-    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   };
-  const [customization, setCustomization] = useState(
-    JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
-  );
+
   const handleSaveCustomization = (patch) => {
     setCustomization(patch);
     localStorage.setItem("writerCustomization", JSON.stringify(patch));
