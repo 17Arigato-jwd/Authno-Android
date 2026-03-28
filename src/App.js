@@ -25,7 +25,7 @@ const BurgerIcon = ({ className }) => (
 function Editor({
   current, onEditTitle, onEditContent,
   onToggleMenu, accentHex, goalWords, onStreakUpdate,
-  onToggleSidebar, burgerBtnRef,
+  onToggleSidebar, burgerBtnRef, streakEnabled,
 }) {
   const [title, setTitle] = useState(current?.title || "");
   const editorRef = useRef(null);
@@ -65,7 +65,9 @@ function Editor({
           />
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+          {streakEnabled && (
+            <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+          )}
           <button
             ref={burgerBtnRef}
             onClick={onToggleMenu}
@@ -498,7 +500,12 @@ function AppInner() {
           onEditContent={handleEditContent}
           onToggleMenu={handleToggleMenu}
           accentHex={customization.accentHex}
-          goalWords={settings.dailyWordGoal ?? 300}
+          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          streakEnabled={
+            // Per-book override (streak.streakEnabled) takes priority over global setting.
+            // If the book has no override (null/undefined), fall back to the global toggle.
+            current?.streak?.streakEnabled ?? settings.streakEnabled ?? true
+          }
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           burgerBtnRef={burgerBtnRef}
