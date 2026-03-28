@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -94,6 +95,17 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
                      android:maxSdkVersion="32" />
+    <!--
+         MANAGE_EXTERNAL_STORAGE — Android 11+ (API 30+)
+         Allows the On Device scanner to find .authbook files anywhere on the
+         device, mirroring how Adobe Acrobat auto-locates PDFs.
+         The user explicitly grants this via the "Grant Storage Access" button
+         in the HomeScreen On Device tab — it is NEVER requested silently.
+         Note: Google Play requires a declaration in the data-safety form for
+         this permission. Declare that it is used to locate user-created files.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+                     tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.VIBRATE" />
 

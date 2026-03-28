@@ -1,25 +1,17 @@
 /**
  * storage.js — Unified file I/O for AuthNo
  *
- * Android save strategy:
- *   Save (existing file)  → overwrite silently using same path
- *   Save (new file)       → SAF ACTION_CREATE_DOCUMENT picker
- *   Save As               → SAF ACTION_CREATE_DOCUMENT picker
- *   Open                  → AuthnoFilePicker.openDocument (SAF ACTION_OPEN_DOCUMENT)
+ * On-Device scanning — two-phase approach:
  *
- * On-Device scanning strategy:
- *   Android 13+  (API 33+) → MediaStore query — no extra permission required for shared storage
- *   Android 10-12          → READ_EXTERNAL_STORAGE → recursive Filesystem walk
- *   Android 9 and below    → READ_EXTERNAL_STORAGE → recursive Filesystem walk
- *   MANAGE_EXTERNAL_STORAGE (optional, API 30+) → requested only when the user
- *                           taps "Grant Storage Access" in the permission banner
+ *   Phase 1 (INSTANT, always works, no permission needed):
+ *     Read getPersistedUriPermissions() — every file the user has ever
+ *     opened or saved via SAF already has a persisted content:// URI.
+ *     This gives back results immediately.
  *
- * The plugin method `scanForAuthbooks` must be implemented in the native
- * AuthnoFilePicker plugin (Capacitor).  It returns:
- *   { files: Array<{ uri: string, name: string, size: number, lastModified: number }> }
- *
- * If the native method is unavailable (e.g. older plugin build), we fall back
- * to the old readAppDir() approach so nothing breaks.
+ *   Phase 2 (broader scan, needs READ_EXTERNAL_STORAGE / MediaStore):
+ *     plugin.scanForAuthbooks() — MediaStore query finds .authbook files
+ *     anywhere on the device that weren't opened via SAF.
+ *     Falls back gracefully if the plugin method is unavailable.
  */
 
 import { isElectron, isAndroid } from './platform';
@@ -31,19 +23,12 @@ import {
 
 // ─── Lazy loaders ─────────────────────────────────────────────────────────────
 
-async function getFS() {
-  const m = await import('@capacitor/filesystem');
-  return { Filesystem: m.Filesystem, Directory: m.Directory };
-}
-
 async function getPlugin() {
   const { registerPlugin } = await import('@capacitor/core');
   return registerPlugin('AuthnoFilePicker');
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const SAVE_SUBDIR = 'AuthNo';
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('writerSettings')) ?? {}; }
@@ -87,129 +72,41 @@ async function decodeBytes(bytes, filePath) {
   }
 }
 
-// ─── Old app-directory scan (fallback) ───────────────────────────────────────
+// ─── Decode a list of { uri, base64, size?, lastModified? } entries ──────────
 
-async function readAppDir() {
-  const { Filesystem, Directory } = await getFS();
-  const books = [];
-
-  for (const dir of [Directory.External, Directory.Data]) {
-    try {
-      await Filesystem.mkdir({ path: SAVE_SUBDIR, directory: dir, recursive: true }).catch(() => {});
-      const { files } = await Filesystem.readdir({ path: SAVE_SUBDIR, directory: dir });
-      for (const f of files) {
-        if (!f.name.endsWith('.authbook')) continue;
-        try {
-          const { data } = await Filesystem.readFile({
-            path: `${SAVE_SUBDIR}/${f.name}`, directory: dir,
-          });
-          const decoded = await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`);
-          books.push({ ...decoded, fileSize: f.size ?? null });
-        } catch { /* skip corrupt files */ }
-      }
-    } catch { /* directory not available */ }
-  }
-  return books;
-}
-
-// ─── Full-device scan via native plugin ───────────────────────────────────────
-
-/**
- * Ask the native plugin to scan the whole device (MediaStore + SAF tree walk)
- * for any file whose name ends in ".authbook".
- *
- * The plugin must expose:
- *   scanForAuthbooks() → { files: [{ uri, name, size, lastModified, base64 }] }
- *
- * We decode each file in parallel (with a concurrency cap to avoid OOM).
- */
-async function scanWholeDevice() {
-  const plugin = await getPlugin();
-
-  if (typeof plugin.scanForAuthbooks !== 'function') {
-    // Plugin not updated yet — fall back to app-dir only
-    console.warn('[storage] scanForAuthbooks not available, falling back to readAppDir');
-    return readAppDir();
-  }
-
-  let result;
-  try {
-    result = await plugin.scanForAuthbooks();
-  } catch (e) {
-    console.warn('[storage] scanForAuthbooks failed:', e.message);
-    return readAppDir();
-  }
-
-  const files = result?.files ?? [];
-  if (files.length === 0) return [];
-
-  // Decode up to 6 files concurrently
-  const CONCURRENCY = 6;
+async function decodeFileList(files) {
+  const CONCURRENCY = 4;
   const books = [];
   for (let i = 0; i < files.length; i += CONCURRENCY) {
     const chunk = files.slice(i, i + CONCURRENCY);
-    const decoded = await Promise.allSettled(
+    const results = await Promise.allSettled(
       chunk.map(async (f) => {
         try {
-          const bytes = base64ToBytes(f.base64);
+          const bytes   = base64ToBytes(f.base64);
           const session = await decodeBytes(bytes, f.uri);
           return {
             ...session,
             filePath: f.uri,
             fileSize: f.size ?? null,
-            // Prefer the session's own timestamps but fall back to FS mtime
-            updated:  session.updated  || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
-            created:  session.created  || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
+            updated: session.updated || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
+            created: session.created || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
           };
-        } catch {
-          return null; // corrupt / not a real authbook
-        }
+        } catch { return null; }
       })
     );
-    for (const r of decoded) {
+    for (const r of results) {
       if (r.status === 'fulfilled' && r.value) books.push(r.value);
     }
   }
-
   return books;
-}
-
-// ─── Write helpers ────────────────────────────────────────────────────────────
-
-async function writeToAppDir(filename, bytes) {
-  const { Filesystem, Directory } = await getFS();
-  const b64  = bytesToBase64(bytes);
-  const path = `${SAVE_SUBDIR}/${filename}`;
-
-  try {
-    await Filesystem.mkdir({ path: SAVE_SUBDIR, directory: Directory.External, recursive: true }).catch(() => {});
-    await Filesystem.writeFile({ path, data: b64, directory: Directory.External });
-    return { path, directory: 'External' };
-  } catch (extErr) {
-    console.warn('[storage] External dir failed, falling back to internal:', extErr.message);
-  }
-
-  await Filesystem.mkdir({ path: SAVE_SUBDIR, directory: Directory.Data, recursive: true }).catch(() => {});
-  await Filesystem.writeFile({ path, data: b64, directory: Directory.Data });
-  return { path, directory: 'Data' };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Check whether the app currently has full external storage read permission.
- *
- * Returns:
- *   'granted'  — can read all files
- *   'denied'   — permission was denied (show banner)
- *   'prompt'   — not yet asked (show banner)
- *
- * On Android 13+ (API 33), READ_MEDIA_* permissions are used; on older
- * versions READ_EXTERNAL_STORAGE is used.  The native plugin exposes
- * `checkStoragePermission()` which handles the version branching.
- *
- * If the plugin method is missing we assume 'granted' so the UI doesn't
- * show a spurious banner.
+ * Check current storage-read permission status.
+ * Returns 'granted' | 'denied' | 'prompt'.
+ * Returns 'granted' if the plugin method doesn't exist yet (safe default).
  */
 export async function checkStoragePermission() {
   if (!isAndroid()) return 'granted';
@@ -217,20 +114,15 @@ export async function checkStoragePermission() {
     const plugin = await getPlugin();
     if (typeof plugin.checkStoragePermission !== 'function') return 'granted';
     const { status } = await plugin.checkStoragePermission();
-    return status; // 'granted' | 'denied' | 'prompt'
-  } catch {
-    return 'granted';
-  }
+    return status ?? 'granted';
+  } catch { return 'granted'; }
 }
 
 /**
- * Request full external-storage read permission from the user.
- *
- * On Android 11+ (API 30+) this targets MANAGE_EXTERNAL_STORAGE (opens the
- * system "Allow all file access" settings page).  On older versions it
- * requests READ_EXTERNAL_STORAGE via the standard runtime-permission flow.
- *
- * Returns the new permission status: 'granted' | 'denied'.
+ * Request full external-storage permission.
+ * On API 30+ opens "Allow all file access" settings page.
+ * On API ≤29 triggers the runtime READ_EXTERNAL_STORAGE dialog.
+ * Returns 'granted' | 'denied'.
  */
 export async function requestFullStoragePermission() {
   if (!isAndroid()) return 'granted';
@@ -238,20 +130,16 @@ export async function requestFullStoragePermission() {
     const plugin = await getPlugin();
     if (typeof plugin.requestStoragePermission !== 'function') return 'granted';
     const { status } = await plugin.requestStoragePermission();
-    return status;
-  } catch {
-    return 'denied';
-  }
+    return status ?? 'denied';
+  } catch { return 'denied'; }
 }
 
-/**
- * No-op — kept for App.js compatibility.
- */
+/** No-op — kept for App.js compatibility. */
 export async function initStoragePermissions() {}
 
 /**
  * Save silently.
- *   - Existing file (content:// URI): overwrite directly via SAF
+ *   - Existing SAF file (content://): overwrite directly
  *   - New file: open SAF CREATE_DOCUMENT picker
  */
 export async function saveBook(session) {
@@ -287,10 +175,8 @@ export async function saveBook(session) {
 }
 
 /**
- * Save As — opens SAF CREATE_DOCUMENT so the user picks the destination.
- *
- * IMPORTANT: Caller must close all overlays and wait ≥300 ms before calling,
- * otherwise the SAF picker opens behind the overlay.
+ * Save As — opens SAF CREATE_DOCUMENT picker.
+ * Caller must close all overlays ≥300ms before calling.
  */
 export async function saveAsBook(session) {
   try {
@@ -317,9 +203,7 @@ export async function saveAsBook(session) {
   }
 }
 
-/**
- * Open a file via the native SAF picker.
- */
+/** Open a file via the native SAF picker. */
 export async function openBook() {
   try {
     if (isElectron()) {
@@ -345,27 +229,76 @@ export async function openBook() {
   }
 }
 
-/** Decode bytes from the MainActivity intent handler. */
+/** Decode bytes coming from the MainActivity intent handler. */
 export async function openBookFromBytes(base64, uri) {
   return decodeBytes(base64ToBytes(base64), uri);
 }
 
 /**
- * Scan the WHOLE device for .authbook files.
+ * Scan the device for .authbook files.
  *
- * Strategy (automatic, no user action required unless permission is denied):
- *   1. Try plugin.scanForAuthbooks() — searches MediaStore + common dirs
- *   2. Fall back to readAppDir() if the plugin method doesn't exist yet
+ * Phase 1 — plugin.listPersistedBooks():
+ *   Reads ContentResolver.getPersistedUriPermissions() and re-reads every
+ *   .authbook URI the app already has persistent access to. Returns instantly.
+ *   NO extra permission required — this is the main source of results.
  *
- * For the permission banner to appear in the UI, callers should first call
- * checkStoragePermission() and show the banner when status !== 'granted'.
- * After the user grants permission via requestFullStoragePermission(), call
- * this function again.
+ * Phase 2 — plugin.scanForAuthbooks():
+ *   MediaStore query that finds .authbook files anywhere on the device.
+ *   Needs READ_EXTERNAL_STORAGE (≤API32) or works without it on API33+ via
+ *   MediaStore. De-duplicates against Phase 1 results by URI.
+ *
+ * Both plugin methods fall back gracefully if not implemented yet in the
+ * native build — Phase 1 falls back to an empty list, Phase 2 is skipped.
  */
 export async function listSavedBooks() {
   if (!isAndroid()) return [];
+
   try {
-    return await scanWholeDevice();
+    const plugin = await getPlugin();
+    const seen   = new Set();
+    let   books  = [];
+
+    // ── Phase 1: persisted SAF URIs (instant, always available) ──────────
+    try {
+      if (typeof plugin.listPersistedBooks === 'function') {
+        const { files } = await plugin.listPersistedBooks();
+        if (files?.length) {
+          const decoded = await decodeFileList(files);
+          for (const b of decoded) {
+            if (b.filePath && !seen.has(b.filePath)) {
+              seen.add(b.filePath);
+              books.push(b);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[storage] listPersistedBooks failed:', e.message);
+    }
+
+    // ── Phase 2: MediaStore broad scan (needs perm on ≤API32) ─────────────
+    try {
+      if (typeof plugin.scanForAuthbooks === 'function') {
+        const { files } = await plugin.scanForAuthbooks();
+        if (files?.length) {
+          // Only decode files we haven't already seen from Phase 1
+          const newFiles = files.filter(f => !seen.has(f.uri));
+          if (newFiles.length) {
+            const decoded = await decodeFileList(newFiles);
+            for (const b of decoded) {
+              if (b.filePath && !seen.has(b.filePath)) {
+                seen.add(b.filePath);
+                books.push(b);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[storage] scanForAuthbooks failed:', e.message);
+    }
+
+    return books;
   } catch (e) {
     logError('listSavedBooks', e);
     return [];
