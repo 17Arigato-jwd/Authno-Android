@@ -1,19 +1,3 @@
-/**
- * storage.js — Unified file I/O for AuthNo
- *
- * On-Device scanning — two-phase approach:
- *
- *   Phase 1 (INSTANT, always works, no permission needed):
- *     Read getPersistedUriPermissions() — every file the user has ever
- *     opened or saved via SAF already has a persisted content:// URI.
- *     This gives back results immediately.
- *
- *   Phase 2 (broader scan, needs READ_EXTERNAL_STORAGE / MediaStore):
- *     plugin.scanForAuthbooks() — MediaStore query finds .authbook files
- *     anywhere on the device that weren't opened via SAF.
- *     Falls back gracefully if the plugin method is unavailable.
- */
-
 import { isElectron, isAndroid } from './platform';
 import { logError } from './ErrorLogger';
 import {
@@ -21,14 +5,10 @@ import {
   detectFormat, fromLegacySession, base64ToBytes, bytesToBase64,
 } from './authbook';
 
-// ─── Lazy loaders ─────────────────────────────────────────────────────────────
-
 async function getPlugin() {
   const { registerPlugin } = await import('@capacitor/core');
   return registerPlugin('AuthnoFilePicker');
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('writerSettings')) ?? {}; }
@@ -72,7 +52,13 @@ async function decodeBytes(bytes, filePath) {
   }
 }
 
-// ─── Decode a list of { uri, base64, size?, lastModified? } entries ──────────
+// Wraps a plugin call with a timeout so a missing native handler never hangs forever
+function withTimeout(promise, ms = 8000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
 
 async function decodeFileList(files) {
   const CONCURRENCY = 4;
@@ -103,45 +89,26 @@ async function decodeFileList(files) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Check current storage-read permission status.
- * Returns 'granted' | 'denied' | 'prompt'.
- * Returns 'granted' if the plugin method doesn't exist yet (safe default).
- */
 export async function checkStoragePermission() {
   if (!isAndroid()) return 'granted';
   try {
     const plugin = await getPlugin();
-    if (typeof plugin.checkStoragePermission !== 'function') return 'granted';
-    const { status } = await plugin.checkStoragePermission();
+    const { status } = await withTimeout(plugin.checkStoragePermission(), 4000);
     return status ?? 'granted';
   } catch { return 'granted'; }
 }
 
-/**
- * Request full external-storage permission.
- * On API 30+ opens "Allow all file access" settings page.
- * On API ≤29 triggers the runtime READ_EXTERNAL_STORAGE dialog.
- * Returns 'granted' | 'denied'.
- */
 export async function requestFullStoragePermission() {
   if (!isAndroid()) return 'granted';
   try {
     const plugin = await getPlugin();
-    if (typeof plugin.requestStoragePermission !== 'function') return 'granted';
-    const { status } = await plugin.requestStoragePermission();
+    const { status } = await withTimeout(plugin.requestStoragePermission(), 60000);
     return status ?? 'denied';
   } catch { return 'denied'; }
 }
 
-/** No-op — kept for App.js compatibility. */
 export async function initStoragePermissions() {}
 
-/**
- * Save silently.
- *   - Existing SAF file (content://): overwrite directly
- *   - New file: open SAF CREATE_DOCUMENT picker
- */
 export async function saveBook(session) {
   try {
     if (isElectron()) {
@@ -150,23 +117,18 @@ export async function saveBook(session) {
         return window.electron.saveBookBytes({ filePath: session.filePath, base64: b64 });
       return window.electron.saveAsBytesBook({ base64: b64, defaultName: safeName(session) });
     }
-
     if (isAndroid()) {
       const bytes  = await encodeSession(session);
       const plugin = await getPlugin();
-
       if (session.filePath?.startsWith('content://')) {
         await plugin.writeBytesToUri({ uri: session.filePath, base64: bytesToBase64(bytes) });
         return { success: true, filePath: session.filePath };
       }
-
       const result = await plugin.createDocument({ fileName: safeName(session) });
       if (!result?.uri) return { success: false, cancelled: true };
-
       await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
       return { success: true, filePath: result.uri };
     }
-
     return { success: true };
   } catch (e) {
     logError('saveBook', e, { sessionTitle: session?.title, filePath: session?.filePath });
@@ -174,28 +136,20 @@ export async function saveBook(session) {
   }
 }
 
-/**
- * Save As — opens SAF CREATE_DOCUMENT picker.
- * Caller must close all overlays ≥300ms before calling.
- */
 export async function saveAsBook(session) {
   try {
     if (isElectron()) {
       const b64 = bytesToBase64(await encodeSession(session));
       return window.electron.saveAsBytesBook({ base64: b64, defaultName: safeName(session) });
     }
-
     if (isAndroid()) {
       const bytes  = await encodeSession(session);
       const plugin = await getPlugin();
-
       const result = await plugin.createDocument({ fileName: safeName(session) });
       if (!result?.uri) return { success: false, cancelled: true };
-
       await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
       return { success: true, filePath: result.uri };
     }
-
     return { success: true };
   } catch (e) {
     logError('saveAsBook', e, { sessionTitle: session?.title });
@@ -203,7 +157,6 @@ export async function saveAsBook(session) {
   }
 }
 
-/** Open a file via the native SAF picker. */
 export async function openBook() {
   try {
     if (isElectron()) {
@@ -211,14 +164,12 @@ export async function openBook() {
       if (!result) return null;
       return decodeBytes(base64ToBytes(result.base64), result.filePath);
     }
-
     if (isAndroid()) {
       const plugin = await getPlugin();
       const result = await plugin.openDocument();
       if (!result?.uri) return null;
       return decodeBytes(base64ToBytes(result.base64), result.uri);
     }
-
     const file = await _pickFileViaInput();
     if (!file) return null;
     const bytes = await _readFileBytes(file);
@@ -229,73 +180,46 @@ export async function openBook() {
   }
 }
 
-/** Decode bytes coming from the MainActivity intent handler. */
 export async function openBookFromBytes(base64, uri) {
   return decodeBytes(base64ToBytes(base64), uri);
 }
 
-/**
- * Scan the device for .authbook files.
- *
- * Phase 1 — plugin.listPersistedBooks():
- *   Reads ContentResolver.getPersistedUriPermissions() and re-reads every
- *   .authbook URI the app already has persistent access to. Returns instantly.
- *   NO extra permission required — this is the main source of results.
- *
- * Phase 2 — plugin.scanForAuthbooks():
- *   MediaStore query that finds .authbook files anywhere on the device.
- *   Needs READ_EXTERNAL_STORAGE (≤API32) or works without it on API33+ via
- *   MediaStore. De-duplicates against Phase 1 results by URI.
- *
- * Both plugin methods fall back gracefully if not implemented yet in the
- * native build — Phase 1 falls back to an empty list, Phase 2 is skipped.
- */
 export async function listSavedBooks() {
   if (!isAndroid()) return [];
-
   try {
     const plugin = await getPlugin();
     const seen   = new Set();
-    let   books  = [];
+    const books  = [];
 
-    // ── Phase 1: persisted SAF URIs (instant, always available) ──────────
+    // Phase 1 — persisted SAF URIs (instant, no permission needed)
     try {
-      if (typeof plugin.listPersistedBooks === 'function') {
-        const { files } = await plugin.listPersistedBooks();
-        if (files?.length) {
-          const decoded = await decodeFileList(files);
-          for (const b of decoded) {
-            if (b.filePath && !seen.has(b.filePath)) {
-              seen.add(b.filePath);
-              books.push(b);
-            }
+      const { files } = await withTimeout(plugin.listPersistedBooks(), 8000);
+      if (files?.length) {
+        for (const b of await decodeFileList(files)) {
+          if (b?.filePath && !seen.has(b.filePath)) {
+            seen.add(b.filePath);
+            books.push(b);
           }
         }
       }
     } catch (e) {
-      console.warn('[storage] listPersistedBooks failed:', e.message);
+      console.warn('[storage] listPersistedBooks failed or timed out:', e.message);
     }
 
-    // ── Phase 2: MediaStore broad scan (needs perm on ≤API32) ─────────────
+    // Phase 2 — full device scan (needs MANAGE_EXTERNAL_STORAGE)
     try {
-      if (typeof plugin.scanForAuthbooks === 'function') {
-        const { files } = await plugin.scanForAuthbooks();
-        if (files?.length) {
-          // Only decode files we haven't already seen from Phase 1
-          const newFiles = files.filter(f => !seen.has(f.uri));
-          if (newFiles.length) {
-            const decoded = await decodeFileList(newFiles);
-            for (const b of decoded) {
-              if (b.filePath && !seen.has(b.filePath)) {
-                seen.add(b.filePath);
-                books.push(b);
-              }
-            }
+      const { files } = await withTimeout(plugin.scanForAuthbooks(), 30000);
+      if (files?.length) {
+        const newFiles = files.filter(f => f.base64 && !seen.has(f.uri));
+        for (const b of await decodeFileList(newFiles)) {
+          if (b?.filePath && !seen.has(b.filePath)) {
+            seen.add(b.filePath);
+            books.push(b);
           }
         }
       }
     } catch (e) {
-      console.warn('[storage] scanForAuthbooks failed:', e.message);
+      console.warn('[storage] scanForAuthbooks failed or timed out:', e.message);
     }
 
     return books;
@@ -305,33 +229,22 @@ export async function listSavedBooks() {
   }
 }
 
-/** No-op — kept for App.js API compatibility. */
 export async function restoreSafBooks(sessions) {
   return sessions ?? [];
 }
 
-// ─── File input helpers (web / Electron) ─────────────────────────────────────
-
 function _pickFileViaInput(accept = '.authbook,*/*') {
   return new Promise((resolve) => {
     const input = document.createElement('input');
-    input.type          = 'file';
-    input.accept        = accept;
-    input.style.display = 'none';
+    input.type = 'file'; input.accept = accept; input.style.display = 'none';
     input.onchange = (e) => resolve(e.target.files?.[0] ?? null);
-
     const onFocus = () => {
-      setTimeout(() => {
-        if (!input.files?.length) resolve(null);
-        window.removeEventListener('focus', onFocus);
-      }, 400);
+      setTimeout(() => { if (!input.files?.length) resolve(null); window.removeEventListener('focus', onFocus); }, 400);
     };
     window.addEventListener('focus', onFocus);
     document.body.appendChild(input);
     input.click();
-    setTimeout(() => {
-      if (document.body.contains(input)) document.body.removeChild(input);
-    }, 60000);
+    setTimeout(() => { if (document.body.contains(input)) document.body.removeChild(input); }, 60000);
   });
 }
 
