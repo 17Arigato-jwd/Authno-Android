@@ -672,7 +672,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
           onChange({
             displayName: '', avatarDataUrl: null,
             accentHex: '#3b82f6', enableGradient: false,
-            lightMode: false, startupBehavior: 'last', restoreOpenBooks: true,
+            lightMode: false, startupBehavior: 'home', restoreOpenBooks: true,
           });
           setConfirm(null);
         },
@@ -745,7 +745,7 @@ export const DEFAULT_SETTINGS = {
   accentHex: '#5a00d9',
   enableGradient: false,
   lightMode: false,
-  startupBehavior: 'last',
+  startupBehavior: 'home',
   restoreOpenBooks: true,
   dailyWordGoal: 500,
 };

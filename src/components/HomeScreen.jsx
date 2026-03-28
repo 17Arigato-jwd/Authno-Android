@@ -1,7 +1,7 @@
 // HomeScreen.jsx — Launch dashboard shown when startupBehavior === 'home'
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { Menu } from 'lucide-react';
 import { FlameButton } from './Streak';
-import { openBook } from '../utils/storage';
 import { useError } from '../utils/ErrorContext';
 import Logo from '../logo.svg';
 
@@ -26,13 +26,37 @@ function timeAgo(dateStr) {
 }
 
 function folderFromPath(filePath) {
-  if (!filePath) return 'Internal';
+  if (!filePath) return 'Internal Storage';
+  // SAF content:// URI — decode and extract the last meaningful segment
   if (filePath.startsWith('content://')) {
-    const parts = decodeURIComponent(filePath).split('/');
-    return parts[parts.length - 2] || 'Device';
+    try {
+      const decoded = decodeURIComponent(filePath);
+      // Common pattern: .../tree/primary:Download/AuthNo/file.authbook
+      const colonIdx = decoded.lastIndexOf(':');
+      if (colonIdx !== -1) {
+        const afterColon = decoded.slice(colonIdx + 1);
+        const parts = afterColon.replace(/\\/g, '/').split('/');
+        // Remove the filename itself
+        if (parts.length >= 2) return parts[parts.length - 2];
+        if (parts.length === 1) return parts[0];
+      }
+      // Fallback: second-to-last path segment
+      const parts = decoded.replace(/\\/g, '/').split('/');
+      return parts[parts.length - 2] || 'Device Storage';
+    } catch {
+      return 'Device Storage';
+    }
   }
+  // Regular file path
   const parts = filePath.replace(/\\/g, '/').split('/');
-  return parts[parts.length - 2] || 'Device';
+  return parts[parts.length - 2] || 'Internal Storage';
+}
+
+function formatFileSize(bytes) {
+  if (bytes == null || bytes === 0) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function wordCount(content) {
@@ -171,7 +195,7 @@ function BookCard({ title, meta, onClick, accentHex }) {
           flexWrap: 'nowrap',
           overflow: 'hidden',
         }}>
-          {meta.map((item, i) => (
+          {meta.filter(Boolean).map((item, i) => (
             <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: i === 0 ? 0 : 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {i > 0 && <span style={{ opacity: 0.4 }}>·</span>}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item}</span>
@@ -199,14 +223,24 @@ export default function HomeScreen({
   streakEnabled,
 }) {
   const { showError } = useError();
-  const [activeTab, setActiveTab] = useState('recent');
+  const [activeTab, setActiveTab] = useState('device');
   const [deviceBooks, setDeviceBooks] = useState([]);
   const [loadingDevice, setLoadingDevice] = useState(false);
 
-  // Load on-device books when that tab is first opened
+  // Load on-device books on mount and whenever the device tab is active
+  useEffect(() => {
+    setLoadingDevice(true);
+    import('../utils/storage').then(({ listSavedBooks }) =>
+      listSavedBooks()
+        .then(setDeviceBooks)
+        .catch(() => setDeviceBooks([]))
+        .finally(() => setLoadingDevice(false))
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload when switching to device tab (refreshes if new files were added)
   useEffect(() => {
     if (activeTab !== 'device') return;
-    if (deviceBooks.length > 0) return;
     setLoadingDevice(true);
     import('../utils/storage').then(({ listSavedBooks }) =>
       listSavedBooks()
@@ -251,44 +285,26 @@ export default function HomeScreen({
       overflowX: 'hidden',
     }}>
 
-      {/* ── Header bar ──────────────────────────────────────────────────── */}
-      <header style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '12px 16px',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--app-bg)',
-        flexShrink: 0,
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-      }}>
+      {/* ── Header bar — matches Editor header exactly ───────────────── */}
+      <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+        style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
+
         {/* Left: sidebar toggle + title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onToggleSidebar}
-            style={{
-              background: 'none',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '8px',
-              padding: '6px',
-              cursor: 'pointer',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
+            aria-label="Sessions"
           >
-            <BurgerIcon style={{ width: '20px', height: '20px' }} />
+            <Menu className="w-5 h-5 text-white" />
           </button>
-          <span style={{ fontSize: '20px', fontWeight: 700, color: '#fff' }}>
+          <span className="text-white text-lg font-semibold truncate">
             Welcome Back
           </span>
         </div>
 
         {/* Right: flame + burger menu */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="flex items-center gap-2 shrink-0">
           {streakEnabled && (
             <FlameButton
               current={current}
@@ -300,19 +316,9 @@ export default function HomeScreen({
           <button
             ref={burgerBtnRef}
             onClick={onToggleMenu}
-            style={{
-              background: 'none',
-              border: '2px solid #fff',
-              borderRadius: '8px',
-              padding: '6px',
-              cursor: 'pointer',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition"
           >
-            <BurgerIcon style={{ width: '20px', height: '20px' }} />
+            <BurgerIcon className="text-white" />
           </button>
         </div>
       </header>
@@ -366,8 +372,8 @@ export default function HomeScreen({
             padding: '0 20px',
           }}>
             {[
-              { id: 'recent', label: 'Recent' },
               { id: 'device', label: 'On Device' },
+              { id: 'recent', label: 'Recent' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -395,30 +401,7 @@ export default function HomeScreen({
           {/* Tab content */}
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: 'calc(100vh - 420px)' }}>
 
-            {/* Recent tab */}
-            {activeTab === 'recent' && (
-              recentBooks.length === 0
-                ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-5)', fontSize: '14px' }}>
-                    No books yet — create one to get started.
-                  </div>
-                )
-                : recentBooks.map(book => (
-                  <BookCard
-                    key={book.id}
-                    title={book.title}
-                    meta={[
-                      '.authbook',
-                      timeAgo(book.updated || book.created),
-                      `${wordCount(book.content).toLocaleString()} words`,
-                    ]}
-                    onClick={() => onSelect(book.id)}
-                    accentHex={accentHex}
-                  />
-                ))
-            )}
-
-            {/* On Device tab */}
+            {/* On Device tab — reads directly from device storage */}
             {activeTab === 'device' && (
               loadingDevice
                 ? (
@@ -437,14 +420,38 @@ export default function HomeScreen({
                       key={book.id || book.filePath || i}
                       title={book.title}
                       meta={[
-                        '.authbook',
-                        timeAgo(book.updated || book.created),
                         folderFromPath(book.filePath),
+                        formatFileSize(book.fileSize),
+                        timeAgo(book.updated || book.created),
                       ]}
                       onClick={() => onSelect(book.id, book)}
                       accentHex={accentHex}
                     />
                   ))
+            )}
+
+            {/* Recent tab — in-memory/localStorage sessions */}
+            {activeTab === 'recent' && (
+              recentBooks.length === 0
+                ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-5)', fontSize: '14px' }}>
+                    No books yet — create one to get started.
+                  </div>
+                )
+                : recentBooks.map(book => (
+                  <BookCard
+                    key={book.id}
+                    title={book.title}
+                    meta={[
+                      folderFromPath(book.filePath),
+                      formatFileSize(book.fileSize),
+                      timeAgo(book.updated || book.created),
+                      `${wordCount(book.content).toLocaleString()} words`,
+                    ]}
+                    onClick={() => onSelect(book.id)}
+                    accentHex={accentHex}
+                  />
+                ))
             )}
           </div>
         </div>

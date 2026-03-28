@@ -125,7 +125,9 @@ async function readAppDir() {
           const { data } = await Filesystem.readFile({
             path: `${SAVE_SUBDIR}/${f.name}`, directory: dir,
           });
-          books.push(await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`));
+          const decoded = await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`);
+          // Attach file size (bytes) from FileInfo if available
+          books.push({ ...decoded, fileSize: f.size ?? null });
         } catch { /* skip corrupt */ }
       }
     } catch { /* directory not available */ }
