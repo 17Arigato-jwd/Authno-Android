@@ -256,11 +256,38 @@ export async function openBookFromBytes(base64, uri) {
   return decodeBytes(base64ToBytes(base64), uri);
 }
 
-/** Scan app directories for saved books on startup. */
+/** Scan device for all .authbook files — app dir + full device scan. */
 export async function listSavedBooks() {
   if (!isAndroid()) return [];
   try {
-    return await readAppDir();
+    // 1. App's own save directory (always works)
+    const books = await readAppDir();
+    const seenUris = new Set(books.map(b => b.filePath).filter(Boolean));
+
+    // 2. Full device scan via native plugin (MediaStore + dir walk)
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
+      const result = await plugin.scanDevice();
+      const files = result?.files ?? [];
+
+      for (const f of files) {
+        const uri  = f.uri  ?? '';
+        const path = f.path ?? '';
+        // Deduplicate: skip if we already have this file
+        if (seenUris.has(uri) || seenUris.has(path)) continue;
+        seenUris.add(uri);
+
+        try {
+          const { base64 } = await plugin.readBytesFromUri({ uri });
+          const decoded = await decodeBytes(base64ToBytes(base64), uri);
+          // Store native path separately so the UI can extract a readable folder
+          books.push({ ...decoded, filePath: uri, fileSize: f.size, _nativePath: path });
+        } catch { /* skip corrupt or unreadable files */ }
+      }
+    } catch { /* native scan unavailable — app dir results are still returned */ }
+
+    return books;
   } catch (e) {
     logError('listSavedBooks', e);
     return [];
