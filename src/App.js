@@ -13,6 +13,7 @@ import { isAndroid } from "./utils/platform";
 import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
+import HomeScreen from "./components/HomeScreen";
 import { Onboarding, hasSeenOnboarding } from "./components/Onboarding";
 
 const BurgerIcon = ({ className }) => (
@@ -25,7 +26,7 @@ const BurgerIcon = ({ className }) => (
 function Editor({
   current, onEditTitle, onEditContent,
   onToggleMenu, accentHex, goalWords, onStreakUpdate,
-  onToggleSidebar, burgerBtnRef, streakEnabled,
+  onToggleSidebar, burgerBtnRef,
 }) {
   const [title, setTitle] = useState(current?.title || "");
   const editorRef = useRef(null);
@@ -65,9 +66,7 @@ function Editor({
           />
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {streakEnabled && (
-            <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
-          )}
+          <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
           <button
             ref={burgerBtnRef}
             onClick={onToggleMenu}
@@ -251,6 +250,9 @@ function AppInner() {
       setCurrentId(blank.id);
     } else if (behavior === "none") {
       setCurrentId(null);
+    } else if (behavior === "home") {
+      setCurrentId(null);
+      setView("home");
     }
   }, [sessions, settings]);
 
@@ -412,6 +414,7 @@ function AppInner() {
     const id = Date.now().toString(), now = new Date().toISOString();
     setSessions((s) => [{ id, title: "Untitled Book", preview: "A new story...", content: "", type: "book", created: now, updated: now }, ...s]);
     setCurrentId(id);
+    setView("editor");
     if (android) setDrawerOpen(false);
   };
   const newStoryboard = () => {
@@ -420,7 +423,17 @@ function AppInner() {
     setCurrentId(id);
     if (android) setDrawerOpen(false);
   };
-  const handleSelect = (id) => { setCurrentId(id); if (android) setDrawerOpen(false); };
+  const handleSelect = (id, sessionObj) => {
+    if (sessionObj) {
+      // Book from On Device tab — merge into sessions if not already present
+      setSessions((prev) =>
+        prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]
+      );
+    }
+    setCurrentId(id);
+    setView("editor");
+    if (android) setDrawerOpen(false);
+  };
   const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId ? { ...x, title: t } : x));
   const handleEditContent = (c) => setSessions((s) => s.map((x) =>
     x.id === currentId ? { ...x, content: c, preview: c.replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." } : x
@@ -493,6 +506,20 @@ function AppInner() {
 
       {view === "layout" ? (
         <EditLayout sessions={sessions} setSessions={setSessions} />
+      ) : view === "home" ? (
+        <HomeScreen
+          sessions={sessions}
+          accentHex={customization.accentHex}
+          onNewBook={newBook}
+          onSelect={handleSelect}
+          onToggleSidebar={() => setDrawerOpen((v) => !v)}
+          onToggleMenu={handleToggleMenu}
+          burgerBtnRef={burgerBtnRef}
+          current={current}
+          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          onStreakUpdate={handleStreakUpdate}
+          streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+        />
       ) : (
         <Editor
           current={current}
@@ -501,14 +528,10 @@ function AppInner() {
           onToggleMenu={handleToggleMenu}
           accentHex={customization.accentHex}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
-          streakEnabled={
-            // Per-book override (streak.streakEnabled) takes priority over global setting.
-            // If the book has no override (null/undefined), fall back to the global toggle.
-            current?.streak?.streakEnabled ?? settings.streakEnabled ?? true
-          }
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           burgerBtnRef={burgerBtnRef}
+          streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
       )}
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Palette, Database, BookOpen,
   Camera, Check, Trash2, RefreshCw, AlertTriangle,
-  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target, Flame,
+  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target,
 } from 'lucide-react';
 import { buildPalette } from './Background';
 import { ColorPicker } from './ColorPicker';
@@ -344,9 +344,9 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer }) {
 
 function StartupPanel({ settings, onChange, accentHex }) {
   const options = [
-    { id: 'last',  icon: BookMarked, title: 'Reopen last book',    description: 'Pick up exactly where you left off' },
-    { id: 'blank', icon: FilePlus,   title: 'Open a blank book',   description: 'Start fresh every time you launch'  },
-    { id: 'none',  icon: BookOpen,   title: 'Show empty editor',   description: 'No book loaded — choose manually'   },
+    { id: 'last',  icon: BookMarked, title: 'Reopen last book',    description: 'Pick up exactly where you left off'      },
+    { id: 'blank', icon: FilePlus,   title: 'Open a blank book',   description: 'Start fresh every time you launch'       },
+    { id: 'home',  icon: BookOpen,   title: 'Show home screen',    description: 'Browse and choose a book on launch'      },
   ];
 
   return (
@@ -416,67 +416,61 @@ function StartupPanel({ settings, onChange, accentHex }) {
 }
 
 function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSessionChange }) {
-  const globalGoal        = settings.dailyWordGoal ?? 500;
-  const globalStreakOn    = settings.streakEnabled ?? true;
+  const globalGoal = settings.dailyWordGoal ?? 500;
 
-  // ── Selector: 'global' sentinel + individual books ───────────────────────
-  // 'global' is always the first and default option.
+  // ── Per-book selection ────────────────────────────────────────────────────
+  // Default to the first book in the list; persists across panel re-opens via
+  // localStorage so the user doesn't lose their place.
   const books = sessions.filter(s => s.type !== 'storyboard');
-  const GLOBAL_ID = '__global__';
-
   const [selectedId, setSelectedId] = useState(() => {
     const saved = localStorage.getItem('streakSettings_selectedBookId');
-    // Only restore a saved book id — never a stale id that no longer exists
-    if (saved && saved !== GLOBAL_ID && books.some(b => b.id === saved)) return saved;
-    return GLOBAL_ID; // default: global
+    if (saved && books.some(b => b.id === saved)) return saved;
+    return books[0]?.id ?? null;
   });
 
-  // Keep selectedId valid when sessions change (book deleted, etc.)
+  // Keep selectedId valid if sessions change (e.g. book deleted)
   useEffect(() => {
-    if (selectedId !== GLOBAL_ID && !books.some(b => b.id === selectedId)) {
-      setSelectedId(GLOBAL_ID);
+    if (selectedId && !books.some(b => b.id === selectedId)) {
+      setSelectedId(books[0]?.id ?? null);
     }
   }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSelect = (id) => {
+  const handleSelectBook = (id) => {
     setSelectedId(id);
     localStorage.setItem('streakSettings_selectedBookId', id);
   };
 
-  const isGlobal    = selectedId === GLOBAL_ID;
-  const selectedBook = isGlobal ? null : (books.find(b => b.id === selectedId) ?? null);
+  const selectedBook = books.find(b => b.id === selectedId) ?? null;
 
-  // Streak enabled state for the current selection
-  const bookStreakOn   = selectedBook?.streak?.streakEnabled ?? null; // null = not overridden
-  const effectiveOn   = isGlobal
-    ? globalStreakOn
-    : (bookStreakOn !== null ? bookStreakOn : globalStreakOn);
-
-  // Goal for the current selection
-  const bookGoal      = selectedBook?.streak?.goalWords ?? null;
-  const effectiveGoal = isGlobal ? globalGoal : (bookGoal ?? globalGoal);
-  const hasGoalOverride = !isGlobal && bookGoal !== null && bookGoal !== globalGoal;
-
+  // Effective goal: per-book override → global setting
+  const bookGoal    = selectedBook?.streak?.goalWords ?? null;
+  const effectiveGoal = bookGoal ?? globalGoal;
   const [inputVal, setInputVal] = useState(String(effectiveGoal));
 
-  // Sync inputVal when selection changes
+  // Sync inputVal when selected book changes
   useEffect(() => {
-    setInputVal(String(effectiveGoal));
+    setInputVal(String(selectedBook?.streak?.goalWords ?? globalGoal));
   }, [selectedId, globalGoal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const commit = () => {
     const n = parseInt(inputVal, 10);
     if (isNaN(n) || n <= 0) { setInputVal(String(effectiveGoal)); return; }
-    if (isGlobal) {
-      onChange({ dailyWordGoal: n });
-    } else if (selectedBook && onSessionChange) {
+
+    if (selectedBook && onSessionChange) {
+      // Save goal into the book's own streak object
       onSessionChange(selectedBook.id, {
-        streak: { ...(selectedBook.streak ?? {}), goalWords: n },
+        streak: {
+          ...(selectedBook.streak ?? {}),
+          goalWords: n,
+        },
       });
+    } else {
+      // No book selected — fall back to global goal
+      onChange({ dailyWordGoal: n });
     }
   };
 
-  const resetGoalToGlobal = () => {
+  const resetToGlobal = () => {
     if (!selectedBook || !onSessionChange) return;
     const updated = { ...(selectedBook.streak ?? {}) };
     delete updated.goalWords;
@@ -484,163 +478,68 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
     setInputVal(String(globalGoal));
   };
 
-  const handleToggleStreak = (val) => {
-    if (isGlobal) {
-      onChange({ streakEnabled: val });
-    } else if (selectedBook && onSessionChange) {
-      onSessionChange(selectedBook.id, {
-        streak: { ...(selectedBook.streak ?? {}), streakEnabled: val },
-      });
-    }
-  };
-
   const presets = [100, 300, 500, 1000, 1500];
-
-  // Dim goal controls when streak is off for the current selection
-  const goalDisabled = !effectiveOn;
+  const hasOverride = bookGoal !== null && bookGoal !== globalGoal;
 
   return (
     <div>
-      <SectionTitle>Writing Goal &amp; Streak</SectionTitle>
+      <SectionTitle>Writing Goal</SectionTitle>
       <SectionSubtitle>
-        Configure streak tracking and daily word goals globally or per book.
+        Set a daily word goal per book. Each book can have its own target, or use the global default.
       </SectionSubtitle>
 
-      {/* ── Selector: Global default + individual books ─────────────────── */}
-      <Label>Applies to</Label>
-      <div style={{ position: 'relative', marginBottom: '8px' }}>
-        <select
-          value={selectedId}
-          onChange={e => handleSelect(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '10px 36px 10px 14px',
-            background: 'var(--input-bg)',
-            border: `1px solid ${accentHex}55`,
-            borderRadius: '10px',
-            color: 'var(--text-1)',
-            fontSize: '14px',
-            fontWeight: 500,
-            outline: 'none',
-            cursor: 'pointer',
-            appearance: 'none',
-            WebkitAppearance: 'none',
-            transition: 'border-color 0.15s',
-          }}
-          onFocus={e => e.target.style.borderColor = accentHex}
-          onBlur={e  => e.target.style.borderColor = `${accentHex}55`}
-        >
-          {/* Global is always first and default */}
-          <option value="__global__" style={{ background: '#1a1b1e', color: '#fff' }}>
-            🌐 Global default (all books)
-          </option>
-          {books.map(b => (
-            <option key={b.id} value={b.id} style={{ background: '#1a1b1e', color: '#fff' }}>
-              📖 {b.title || 'Untitled Book'}
-            </option>
-          ))}
-        </select>
-        <div style={{
-          position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-          pointerEvents: 'none', color: accentHex, fontSize: '12px',
-        }}>▾</div>
-      </div>
+      {/* ── Book selector ──────────────────────────────────────────────── */}
+      {books.length > 0 && (
+        <div style={{ marginBottom: '20px' }}>
+          <Label>Book</Label>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={selectedId ?? ''}
+              onChange={e => handleSelectBook(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 36px 10px 14px',
+                background: 'var(--input-bg)',
+                border: `1px solid ${accentHex}55`,
+                borderRadius: '10px',
+                color: 'var(--text-1)',
+                fontSize: '14px',
+                fontWeight: 500,
+                outline: 'none',
+                cursor: 'pointer',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                transition: 'border-color 0.15s',
+              }}
+              onFocus={e => e.target.style.borderColor = accentHex}
+              onBlur={e => e.target.style.borderColor = `${accentHex}55`}
+            >
+              {books.map(b => (
+                <option key={b.id} value={b.id} style={{ background: '#1a1b1e', color: '#fff' }}>
+                  {b.title || 'Untitled Book'}
+                </option>
+              ))}
+            </select>
+            {/* Custom chevron */}
+            <div style={{
+              position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+              pointerEvents: 'none', color: accentHex, fontSize: '12px',
+            }}>▾</div>
+          </div>
 
-      {/* Status hint under the dropdown */}
-      {!isGlobal && selectedBook && (
-        <div style={{ marginBottom: '20px', fontSize: '12px', color: 'var(--text-5)' }}>
-          {bookStreakOn === null
-            ? `Inheriting global settings`
-            : bookStreakOn
-              ? `Custom streak settings for this book`
-              : `Streak disabled for this book`}
-        </div>
-      )}
-      {isGlobal && (
-        <div style={{ marginBottom: '20px', fontSize: '12px', color: 'var(--text-5)' }}>
-          Changes here apply to all books that don't have their own override.
-        </div>
-      )}
-
-      {/* ── Streak enable / disable toggle ──────────────────────────────── */}
-      <SettingRow
-        icon={Flame}
-        title="Streak Tracking"
-        description={
-          isGlobal
-            ? 'Show the flame button and track daily writing streaks'
-            : bookStreakOn === null
-              ? `Following global setting (currently ${globalStreakOn ? 'on' : 'off'})`
-              : 'Override for this book only'
-        }
-        accentHex={accentHex}
-      >
-        <Toggle
-          checked={effectiveOn}
-          onChange={handleToggleStreak}
-          accentHex={accentHex}
-        />
-      </SettingRow>
-
-      {/* Allow resetting a per-book streak override back to inheriting global */}
-      {!isGlobal && bookStreakOn !== null && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px', marginBottom: '4px' }}>
-          <button
-            onClick={() => {
-              if (!selectedBook || !onSessionChange) return;
-              const updated = { ...(selectedBook.streak ?? {}) };
-              delete updated.streakEnabled;
-              onSessionChange(selectedBook.id, { streak: updated });
-            }}
-            style={{
-              fontSize: '11px', color: 'var(--text-4)',
-              background: 'none', border: 'none', cursor: 'pointer',
-              textDecoration: 'underline', padding: 0,
-            }}
-          >
-            Reset to global
-          </button>
-        </div>
-      )}
-
-      <Divider />
-
-      {/* ── Goal input (dimmed when streak is off) ───────────────────────── */}
-      <div style={{ opacity: goalDisabled ? 0.4 : 1, pointerEvents: goalDisabled ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
-        <Label>
-          Daily Word Goal
-          {isGlobal ? ' (Global Default)' : ` — ${selectedBook?.title || 'Untitled'}`}
-        </Label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-          <input
-            type="number"
-            min="1"
-            value={inputVal}
-            onChange={e => setInputVal(e.target.value)}
-            onBlur={commit}
-            onKeyDown={e => e.key === 'Enter' && commit()}
-            style={{
-              width: '110px', padding: '10px 14px',
-              background: 'var(--input-bg)',
-              border: `1px solid ${hasGoalOverride ? accentHex : 'var(--border)'}`,
-              borderRadius: '8px', color: 'var(--text-2)',
-              fontSize: '20px', fontWeight: 700,
-              outline: 'none', transition: 'border-color 0.15s',
-            }}
-            onFocus={e => e.target.style.borderColor = accentHex}
-          />
-          <span style={{ fontSize: '14px', color: 'var(--text-4)' }}>words per day</span>
-        </div>
-
-        {/* Per-book goal override indicator */}
-        {!isGlobal && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <span style={{ fontSize: '12px', color: hasGoalOverride ? accentHex : 'var(--text-5)' }}>
-              {hasGoalOverride ? '📌 Custom goal for this book' : `Using global default (${globalGoal} words)`}
+          {/* Per-book vs global indicator */}
+          <div style={{
+            marginTop: '8px', display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: '12px', color: hasOverride ? accentHex : 'var(--text-5)' }}>
+              {hasOverride
+                ? `📌 Custom goal for this book`
+                : `Using global default (${globalGoal} words)`}
             </span>
-            {hasGoalOverride && (
+            {hasOverride && (
               <button
-                onClick={resetGoalToGlobal}
+                onClick={resetToGlobal}
                 style={{
                   fontSize: '11px', color: 'var(--text-4)',
                   background: 'none', border: 'none', cursor: 'pointer',
@@ -651,58 +550,92 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
               </button>
             )}
           </div>
-        )}
-
-        {/* Quick presets */}
-        <Label>Quick Presets</Label>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '28px' }}>
-          {presets.map(p => (
-            <button
-              key={p}
-              onClick={() => {
-                setInputVal(String(p));
-                if (isGlobal) {
-                  onChange({ dailyWordGoal: p });
-                } else if (selectedBook && onSessionChange) {
-                  onSessionChange(selectedBook.id, {
-                    streak: { ...(selectedBook.streak ?? {}), goalWords: p },
-                  });
-                }
-              }}
-              style={{
-                padding: '6px 16px', borderRadius: '20px',
-                border: `1.5px solid ${effectiveGoal === p ? accentHex : 'rgba(255,255,255,0.12)'}`,
-                background: effectiveGoal === p ? `${accentHex}20` : 'transparent',
-                color: effectiveGoal === p ? accentHex : 'var(--text-4)',
-                cursor: 'pointer', fontSize: '13px',
-                fontWeight: effectiveGoal === p ? 600 : 400,
-                transition: 'all 0.15s',
-              }}
-            >
-              {p}
-            </button>
-          ))}
         </div>
+      )}
 
-        <Divider />
-
-        {/* Context */}
+      {books.length === 0 && (
         <div style={{
-          background: 'var(--surface)',
+          marginBottom: '20px', padding: '12px 14px',
+          background: 'var(--surface)', borderRadius: '8px',
           border: '1px solid var(--border-sm)',
-          borderRadius: '10px', padding: '14px 16px',
+          fontSize: '13px', color: 'var(--text-4)',
         }}>
-          <div style={{ fontSize: '12px', color: 'var(--text-4)', lineHeight: 1.7 }}>
-            <div>📖 <strong style={{ color: 'var(--text-3)' }}>150 words</strong> — A short journal entry</div>
-            <div>✍️ <strong style={{ color: 'var(--text-3)' }}>500 words</strong> — A focused session</div>
-            <div>🔥 <strong style={{ color: 'var(--text-3)' }}>1000 words</strong> — A strong daily output</div>
-            <div>⚡ <strong style={{ color: 'var(--text-3)' }}>1500 words</strong> — An Average Webnovel Chapter</div>
-          </div>
+          No books yet. Create a book to set a per-book goal.
         </div>
+      )}
 
-        <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--text-5)' }}>
-          Goals are saved inside each <code style={{ color: 'var(--text-4)' }}>.authbook</code> file and persist with your book.
+      {/* ── Goal input ─────────────────────────────────────────────────── */}
+      <Label>Daily Word Goal{selectedBook ? ` — ${selectedBook.title || 'Untitled'}` : ' (Global Default)'}</Label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+        <input
+          type="number"
+          min="1"
+          value={inputVal}
+          onChange={e => setInputVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => e.key === 'Enter' && commit()}
+          style={{
+            width: '110px', padding: '10px 14px',
+            background: 'var(--input-bg)',
+            border: `1px solid ${hasOverride ? accentHex : 'var(--border)'}`,
+            borderRadius: '8px', color: 'var(--text-2)',
+            fontSize: '20px', fontWeight: 700,
+            outline: 'none', transition: 'border-color 0.15s',
+          }}
+          onFocus={e => e.target.style.borderColor = accentHex}
+        />
+        <span style={{ fontSize: '14px', color: 'var(--text-4)' }}>words per day</span>
+      </div>
+
+      {/* Quick presets */}
+      <Label>Quick Presets</Label>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '28px' }}>
+        {presets.map(p => (
+          <button
+            key={p}
+            onClick={() => {
+              setInputVal(String(p));
+              if (selectedBook && onSessionChange) {
+                onSessionChange(selectedBook.id, {
+                  streak: { ...(selectedBook.streak ?? {}), goalWords: p },
+                });
+              } else {
+                onChange({ dailyWordGoal: p });
+              }
+            }}
+            style={{
+              padding: '6px 16px', borderRadius: '20px',
+              border: `1.5px solid ${effectiveGoal === p ? accentHex : 'rgba(255,255,255,0.12)'}`,
+              background: effectiveGoal === p ? `${accentHex}20` : 'transparent',
+              color: effectiveGoal === p ? accentHex : 'var(--text-4)',
+              cursor: 'pointer', fontSize: '13px',
+              fontWeight: effectiveGoal === p ? 600 : 400,
+              transition: 'all 0.15s',
+            }}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      <Divider />
+
+      {/* Context */}
+      <div style={{
+        background: 'var(--surface)',
+        border: '1px solid var(--border-sm)',
+        borderRadius: '10px', padding: '14px 16px',
+      }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-4)', lineHeight: 1.7 }}>
+          <div>📖 <strong style={{ color: 'var(--text-3)' }}>150 words</strong> — A short journal entry</div>
+          <div>✍️ <strong style={{ color: 'var(--text-3)' }}>500 words</strong> — A focused session</div>
+          <div>🔥 <strong style={{ color: 'var(--text-3)' }}>1000 words</strong> — A strong daily output</div>
+          <div>⚡ <strong style={{ color: 'var(--text-3)' }}>1500 words</strong> — An Average Webnovel Chapter</div>
         </div>
+      </div>
+
+      <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--text-5)' }}>
+        Goals are saved inside each <code style={{ color: 'var(--text-4)' }}>.authbook</code> file and persist with your book.
       </div>
     </div>
   );
@@ -815,7 +748,6 @@ export const DEFAULT_SETTINGS = {
   startupBehavior: 'last',
   restoreOpenBooks: true,
   dailyWordGoal: 500,
-  streakEnabled: true,
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, sessions = [], onSessionChange }) {
