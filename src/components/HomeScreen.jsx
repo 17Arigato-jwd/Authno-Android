@@ -1,5 +1,5 @@
-// HomeScreen.jsx — Launch dashboard shown when startupBehavior === 'home'
-import { useState, useEffect, useCallback } from 'react';
+// HomeScreen.jsx
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import { FlameButton } from './Streak';
 import { useError } from '../utils/ErrorContext';
@@ -30,8 +30,7 @@ function folderFromPath(filePath) {
       const decoded = decodeURIComponent(filePath);
       const colonIdx = decoded.lastIndexOf(':');
       if (colonIdx !== -1) {
-        const afterColon = decoded.slice(colonIdx + 1);
-        const parts = afterColon.replace(/\\/g, '/').split('/');
+        const parts = decoded.slice(colonIdx + 1).replace(/\\/g, '/').split('/');
         if (parts.length >= 2) return parts[parts.length - 2];
         if (parts.length === 1) return parts[0];
       }
@@ -52,46 +51,40 @@ function formatFileSize(bytes) {
 }
 
 const glassCard = {
-  background: 'rgba(0,0,0,0.45)',
-  backdropFilter: 'blur(20px)',
-  WebkitBackdropFilter: 'blur(20px)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(20px)',
+  WebkitBackdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)',
   borderRadius: '20px',
 };
 
 const bookCardStyle = {
   display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px',
-  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-  border: '1px solid rgba(0,0,0,0.7)', borderRadius: '16px',
-  cursor: 'pointer', transition: 'background 0.15s ease, border-color 0.15s ease',
+  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(0,0,0,0.7)',
+  borderRadius: '16px', cursor: 'pointer',
+  transition: 'background 0.15s ease, border-color 0.15s ease',
 };
 
 function ActionTile({ icon, label, onClick, accentHex, comingSoon }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <button
-      onClick={comingSoon ? undefined : onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
+    <button onClick={comingSoon ? undefined : onClick}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
         gap: '10px', width: '90px', flexShrink: 0, background: 'none', border: 'none',
-        cursor: comingSoon ? 'default' : 'pointer', padding: '4px', opacity: comingSoon ? 0.45 : 1,
-      }}
-    >
-      <div style={{
-        width: '72px', height: '72px', borderRadius: '18px',
+        cursor: comingSoon ? 'default' : 'pointer', padding: '4px', opacity: comingSoon ? 0.45 : 1 }}>
+      <div style={{ width: '72px', height: '72px', borderRadius: '18px',
         background: hovered && !comingSoon ? `${accentHex}22` : 'rgba(0,0,0,0.55)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
         border: `1.5px solid ${hovered && !comingSoon ? accentHex + '55' : 'rgba(255,255,255,0.1)'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'all 0.15s ease', fontSize: '28px',
-      }}>{icon}</div>
-      <span style={{
-        fontSize: '11px', fontWeight: 500,
+        transition: 'all 0.15s ease', fontSize: '28px' }}>
+        {icon}
+      </div>
+      <span style={{ fontSize: '11px', fontWeight: 500,
         color: comingSoon ? 'var(--text-5)' : 'var(--text-3)',
-        textAlign: 'center', lineHeight: 1.3, maxWidth: '80px',
-      }}>{label}</span>
+        textAlign: 'center', lineHeight: 1.3, maxWidth: '80px' }}>
+        {label}
+      </span>
     </button>
   );
 }
@@ -99,38 +92,26 @@ function ActionTile({ icon, label, onClick, accentHex, comingSoon }) {
 function BookCard({ title, meta, onClick, accentHex }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <div
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        ...bookCardStyle,
+    <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={{ ...bookCardStyle,
         borderColor: hovered ? `${accentHex}40` : 'rgba(0,0,0,0.7)',
-        background: hovered ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)',
-      }}
-    >
-      <div style={{
-        width: '52px', height: '52px', flexShrink: 0, borderRadius: '12px',
+        background: hovered ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)' }}>
+      <div style={{ width: '52px', height: '52px', flexShrink: 0, borderRadius: '12px',
         background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.08)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-      }}>
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <img src={Logo} alt="book" style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.9 }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: '17px', fontWeight: 700, color: '#fff',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '4px',
-        }}>{title || 'Untitled Book'}</div>
-        <div style={{
-          fontSize: '12px', color: 'var(--text-5)',
-          display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', overflow: 'hidden',
-        }}>
+        <div style={{ fontSize: '17px', fontWeight: 700, color: '#fff',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '4px' }}>
+          {title || 'Untitled Book'}
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-5)',
+          display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', overflow: 'hidden' }}>
           {meta.filter(Boolean).map((item, i) => (
-            <span key={i} style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              flexShrink: i === 0 ? 0 : 1,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
+            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px',
+              flexShrink: i === 0 ? 0 : 1, overflow: 'hidden',
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {i > 0 && <span style={{ opacity: 0.4 }}>·</span>}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item}</span>
             </span>
@@ -143,23 +124,18 @@ function BookCard({ title, meta, onClick, accentHex }) {
 
 function PermissionBanner({ onRequest, accentHex }) {
   return (
-    <div style={{
-      margin: '4px 0 8px', padding: '14px 16px', borderRadius: '14px',
+    <div style={{ margin: '4px 0 8px', padding: '14px 16px', borderRadius: '14px',
       background: 'rgba(0,0,0,0.55)', border: `1px solid ${accentHex}55`,
-      display: 'flex', flexDirection: 'column', gap: '10px',
-    }}>
+      display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.5 }}>
-        To find all <strong style={{ color: '#fff' }}>.authbook</strong> files on your device
-        (like Acrobat does with PDFs), AuthNo needs storage access.
+        Grant <strong style={{ color: '#fff' }}>All Files Access</strong> so AuthNo can
+        find every .authbook file on your device — like Acrobat does with PDFs.
       </p>
-      <button
-        onClick={onRequest}
-        style={{
-          alignSelf: 'flex-start', padding: '8px 18px', borderRadius: '10px',
-          background: accentHex, border: 'none', color: '#fff',
-          fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-        }}
-      >Grant Storage Access</button>
+      <button onClick={onRequest} style={{ alignSelf: 'flex-start', padding: '8px 18px',
+        borderRadius: '10px', background: accentHex, border: 'none',
+        color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+        Grant Storage Access
+      </button>
     </div>
   );
 }
@@ -175,6 +151,11 @@ export default function HomeScreen({
   const [loadingDevice,     setLoadingDevice]     = useState(false);
   const [storagePermission, setStoragePermission] = useState(null);
 
+  // Prevents the activeTab effect from firing a second scan on initial mount.
+  // The mount effect handles the first scan. After that, isMounted is true
+  // and tab-change scans work normally.
+  const isMounted = useRef(false);
+
   const scanDevice = useCallback(async () => {
     setLoadingDevice(true);
     try {
@@ -188,28 +169,39 @@ export default function HomeScreen({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const requestStoragePermission = useCallback(async () => {
+  const requestPermission = useCallback(async () => {
     try {
       const { requestFullStoragePermission } = await import('../utils/storage');
       const status = await requestFullStoragePermission();
       setStoragePermission(status);
-      if (status === 'granted') await scanDevice();
+      if (status === 'granted') scanDevice();
     } catch { setStoragePermission('denied'); }
   }, [scanDevice]);
 
-  // On mount: check perm + scan
+  // ── Single mount effect — ONE scan, permission check first ────────────────
   useEffect(() => {
     (async () => {
+      // Step 1: check permission (fast, <3s). Show banner immediately if denied.
       try {
         const { checkStoragePermission } = await import('../utils/storage');
         setStoragePermission(await checkStoragePermission());
-      } catch { setStoragePermission('granted'); }
-      scanDevice();
+      } catch {
+        setStoragePermission('denied');
+      }
+
+      // Step 2: scan (Phase 1 always runs; Phase 2 only if permission granted)
+      await scanDevice();
+
+      // Mark as mounted so the activeTab effect can fire on future tab changes
+      isMounted.current = true;
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Rescan when tab switches to device
+  // ── Rescan ONLY on tab changes after initial mount ────────────────────────
+  // isMounted.current is false during the first render, so this effect is a
+  // no-op on mount and only fires when the user actually switches tabs.
   useEffect(() => {
+    if (!isMounted.current) return;
     if (activeTab === 'device') scanDevice();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -233,65 +225,60 @@ export default function HomeScreen({
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },
   ];
 
-  const needsPermission = storagePermission === 'denied' || storagePermission === 'prompt';
+  const needsPermission = storagePermission === 'denied';
 
   return (
-    // !! position:relative + zIndex:1 is REQUIRED !!
-    // The Background component is position:fixed zIndex:0. Without z-index here
-    // the entire HomeScreen paints behind the background and appears invisible.
-    <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column',
-      minWidth: 0, height: '100%',
-      overflowY: 'auto', overflowX: 'hidden',
-      position: 'relative', zIndex: 1,
-    }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
+      height: '100%', overflowY: 'auto', overflowX: 'hidden',
+      position: 'relative', zIndex: 1 }}>
 
-      {/* ── Header — same structure as Editor header ────────────────────── */}
-      <header
-        className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-        style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}
-      >
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+        style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2 min-w-0">
-          <button
-            onClick={onToggleSidebar}
+          <button onClick={onToggleSidebar}
             className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
-            aria-label="Sessions"
-          >
+            aria-label="Sessions">
             <Menu className="w-5 h-5 text-white" />
           </button>
           <span className="text-white text-lg font-semibold truncate">Welcome Back</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {streakEnabled && (
-            <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+            <FlameButton current={current} accentHex={accentHex}
+              goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
           )}
-          <button ref={burgerBtnRef} onClick={onToggleMenu} className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition">
+          <button ref={burgerBtnRef} onClick={onToggleMenu}
+            className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition">
             <BurgerIcon className="text-white" />
           </button>
         </div>
       </header>
 
-      {/* ── Content ────────────────────────────────────────────────────────── */}
+      {/* Content */}
       <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
 
-        {/* Actions card */}
+        {/* Actions */}
         <div style={{ ...glassCard, padding: '20px' }}>
-          <h2 style={{ margin: '0 0 18px 0', fontSize: '20px', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+          <h2 style={{ margin: '0 0 18px 0', fontSize: '20px', fontWeight: 800,
+            color: '#fff', letterSpacing: '-0.3px' }}>
             What would you like to do?
           </h2>
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto',
+            paddingBottom: '4px', scrollbarWidth: 'none' }}>
             <style>{`.home-actions::-webkit-scrollbar{display:none}`}</style>
-            <div className="home-actions" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+            <div className="home-actions" style={{ display: 'flex', gap: '8px',
+              overflowX: 'auto', paddingBottom: '4px' }}>
               {actions.map((a, i) => (
-                <ActionTile key={i} icon={a.icon} label={a.label} onClick={a.onClick} accentHex={accentHex} comingSoon={a.comingSoon} />
+                <ActionTile key={i} icon={a.icon} label={a.label} onClick={a.onClick}
+                  accentHex={accentHex} comingSoon={a.comingSoon} />
               ))}
             </div>
           </div>
         </div>
 
-        {/* Tabs card */}
+        {/* Tabs */}
         <div style={{ ...glassCard, padding: '0', overflow: 'hidden', flex: 1, minHeight: 0 }}>
-          {/* Tab bar */}
           <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '0 20px' }}>
             {[{ id: 'device', label: 'On Device' }, { id: 'recent', label: 'Recent' }].map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
@@ -299,31 +286,44 @@ export default function HomeScreen({
                 fontWeight: activeTab === tab.id ? 700 : 400,
                 color: activeTab === tab.id ? '#fff' : 'var(--text-4)', cursor: 'pointer',
                 borderBottom: activeTab === tab.id ? `2px solid ${accentHex}` : '2px solid transparent',
-                marginBottom: '-1px', transition: 'color 0.15s, border-color 0.15s',
-              }}>{tab.label}</button>
+                marginBottom: '-1px', transition: 'color 0.15s, border-color 0.15s' }}>
+                {tab.label}
+              </button>
             ))}
           </div>
 
-          {/* Tab body */}
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: 'calc(100vh - 420px)' }}>
+          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column',
+            gap: '10px', overflowY: 'auto', maxHeight: 'calc(100vh - 420px)' }}>
 
             {activeTab === 'device' && (
               <>
-                {needsPermission && <PermissionBanner accentHex={accentHex} onRequest={requestStoragePermission} />}
+                {/* Permission banner — shown as soon as check completes, NOT after scan */}
+                {needsPermission && (
+                  <PermissionBanner accentHex={accentHex} onRequest={requestPermission} />
+                )}
+
                 {loadingDevice ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-5)', fontSize: '14px' }}>Scanning device…</div>
+                  <div style={{ textAlign: 'center', padding: '40px 20px',
+                    color: 'var(--text-5)', fontSize: '14px' }}>
+                    Scanning device…
+                  </div>
                 ) : deviceBooks.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-5)', fontSize: '14px', lineHeight: 1.6 }}>
+                  <div style={{ textAlign: 'center', padding: '40px 20px',
+                    color: 'var(--text-5)', fontSize: '14px', lineHeight: 1.6 }}>
                     No .authbook files found on device.
-                    {needsPermission && <><br /><span style={{ fontSize: '12px' }}>Grant storage access above to scan all folders.</span></>}
+                    {needsPermission && (
+                      <><br /><span style={{ fontSize: '12px' }}>
+                        Grant storage access above to scan all folders.
+                      </span></>
+                    )}
                   </div>
                 ) : deviceBooks.map((book, i) => (
                   <BookCard
                     key={book.id || book.filePath || i}
                     title={book.title}
                     meta={[
-                      folderFromPath(book.filePath),         // folder name (replaces word count)
-                      formatFileSize(book.fileSize),          // KB / MB / GB
+                      folderFromPath(book.filePath),
+                      formatFileSize(book.fileSize),
                       timeAgo(book.updated || book.created),
                     ]}
                     onClick={() => onSelect(book.id, book)}
@@ -335,20 +335,14 @@ export default function HomeScreen({
 
             {activeTab === 'recent' && (
               recentBooks.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-5)', fontSize: '14px' }}>
+                <div style={{ textAlign: 'center', padding: '40px 20px',
+                  color: 'var(--text-5)', fontSize: '14px' }}>
                   No books yet — create one to get started.
                 </div>
               ) : recentBooks.map(book => (
-                <BookCard
-                  key={book.id}
-                  title={book.title}
-                  meta={[
-                    '.authbook',                              // fixed type label (no filepath/filesize)
-                    timeAgo(book.updated || book.created),
-                  ]}
-                  onClick={() => onSelect(book.id)}
-                  accentHex={accentHex}
-                />
+                <BookCard key={book.id} title={book.title}
+                  meta={['.authbook', timeAgo(book.updated || book.created)]}
+                  onClick={() => onSelect(book.id)} accentHex={accentHex} />
               ))
             )}
 

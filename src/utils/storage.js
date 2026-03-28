@@ -35,76 +35,84 @@ async function decodeBytes(bytes, filePath) {
   try {
     const fmt = detectFormat(bytes);
     if (fmt === 'vchs') {
-      const book    = await unpackSession(bytes);
+      const book = await unpackSession(bytes);
       const session = bookToSession(book);
       if (book.warnings?.length) console.warn('[authbook]', book.warnings);
       return { ...session, filePath };
     }
     if (fmt === 'legacy-json') {
-      const raw     = JSON.parse(new TextDecoder().decode(bytes));
+      const raw = JSON.parse(new TextDecoder().decode(bytes));
       const session = bookToSession(fromLegacySession(raw));
       return { ...session, filePath, _legacy: true };
     }
-    throw new Error('Not a valid .authbook file (unrecognised format)');
+    throw new Error('Not a valid .authbook file');
   } catch (e) {
     logError('decodeSession', e, { filePath });
     throw e;
   }
 }
 
-// Wraps a plugin call with a timeout so a missing native handler never hangs forever
-function withTimeout(promise, ms = 8000) {
+// Hard timeout — prevents any plugin call from hanging forever.
+// If the native side never responds, we reject after ms milliseconds.
+function withTimeout(promise, ms) {
   return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`plugin timed out after ${ms}ms`)), ms)
+    ),
   ]);
 }
 
 async function decodeFileList(files) {
-  const CONCURRENCY = 4;
   const books = [];
+  const CONCURRENCY = 4;
   for (let i = 0; i < files.length; i += CONCURRENCY) {
-    const chunk = files.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
-      chunk.map(async (f) => {
+      files.slice(i, i + CONCURRENCY).map(async (f) => {
         try {
-          const bytes   = base64ToBytes(f.base64);
+          const bytes = base64ToBytes(f.base64);
           const session = await decodeBytes(bytes, f.uri);
           return {
-            ...session,
-            filePath: f.uri,
-            fileSize: f.size ?? null,
+            ...session, filePath: f.uri, fileSize: f.size ?? null,
             updated: session.updated || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
             created: session.created || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
           };
         } catch { return null; }
       })
     );
-    for (const r of results) {
+    for (const r of results)
       if (r.status === 'fulfilled' && r.value) books.push(r.value);
-    }
   }
   return books;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// Returns 'granted' | 'denied'.
+// Returns 'denied' on ANY failure — so the UI shows the permission banner
+// rather than silently proceeding as if all is fine.
 export async function checkStoragePermission() {
   if (!isAndroid()) return 'granted';
   try {
     const plugin = await getPlugin();
-    const { status } = await withTimeout(plugin.checkStoragePermission(), 4000);
-    return status ?? 'granted';
-  } catch { return 'granted'; }
+    const result = await withTimeout(plugin.checkStoragePermission(), 3000);
+    return result?.status === 'granted' ? 'granted' : 'denied';
+  } catch {
+    return 'denied'; // timeout or bridge not ready → show banner
+  }
 }
 
+// Opens the system "All Files Access" settings page.
+// Resolves after the user returns with 'granted' | 'denied'.
 export async function requestFullStoragePermission() {
   if (!isAndroid()) return 'granted';
   try {
     const plugin = await getPlugin();
-    const { status } = await withTimeout(plugin.requestStoragePermission(), 60000);
-    return status ?? 'denied';
-  } catch { return 'denied'; }
+    const result = await withTimeout(plugin.requestStoragePermission(), 120000);
+    return result?.status === 'granted' ? 'granted' : 'denied';
+  } catch {
+    return 'denied';
+  }
 }
 
 export async function initStoragePermissions() {}
@@ -172,8 +180,7 @@ export async function openBook() {
     }
     const file = await _pickFileViaInput();
     if (!file) return null;
-    const bytes = await _readFileBytes(file);
-    return decodeBytes(bytes, file.name);
+    return decodeBytes(await _readFileBytes(file), file.name);
   } catch (e) {
     logError('openBook', e);
     throw e;
@@ -191,10 +198,14 @@ export async function listSavedBooks() {
     const seen   = new Set();
     const books  = [];
 
-    // Phase 1 — persisted SAF URIs (instant, no permission needed)
+    // ── Phase 1: Persisted SAF URIs ──────────────────────────────────────
+    // Every file ever opened/saved via the SAF picker has a persistent
+    // content:// grant stored by Android. No permission needed.
+    // Timeout 3s — reading a list of URIs from ContentResolver is instant;
+    // if it takes longer the bridge is broken and we move on.
     try {
-      const { files } = await withTimeout(plugin.listPersistedBooks(), 8000);
-      if (files?.length) {
+      const { files } = await withTimeout(plugin.listPersistedBooks(), 3000);
+      if (Array.isArray(files) && files.length > 0) {
         for (const b of await decodeFileList(files)) {
           if (b?.filePath && !seen.has(b.filePath)) {
             seen.add(b.filePath);
@@ -203,23 +214,31 @@ export async function listSavedBooks() {
         }
       }
     } catch (e) {
-      console.warn('[storage] listPersistedBooks failed or timed out:', e.message);
+      console.warn('[storage] Phase 1 skipped:', e.message);
     }
 
-    // Phase 2 — full device scan (needs MANAGE_EXTERNAL_STORAGE)
+    // ── Phase 2: Full filesystem scan ─────────────────────────────────────
+    // Requires MANAGE_EXTERNAL_STORAGE (All Files Access).
+    // We check permission HERE in JS before calling the plugin — this means
+    // if permission is denied we skip Phase 2 immediately (no timeout wait).
+    // The 25s timeout only matters if the recursive scan itself stalls.
     try {
-      const { files } = await withTimeout(plugin.scanForAuthbooks(), 30000);
-      if (files?.length) {
-        const newFiles = files.filter(f => f.base64 && !seen.has(f.uri));
-        for (const b of await decodeFileList(newFiles)) {
-          if (b?.filePath && !seen.has(b.filePath)) {
-            seen.add(b.filePath);
-            books.push(b);
+      const perm = await withTimeout(plugin.checkStoragePermission(), 2000);
+      if (perm?.status === 'granted') {
+        const { files } = await withTimeout(plugin.scanForAuthbooks(), 25000);
+        if (Array.isArray(files) && files.length > 0) {
+          const newFiles = files.filter(f => f.uri && !seen.has(f.uri));
+          for (const b of await decodeFileList(newFiles)) {
+            if (b?.filePath && !seen.has(b.filePath)) {
+              seen.add(b.filePath);
+              books.push(b);
+            }
           }
         }
       }
+      // If perm !== 'granted': skip Phase 2 silently. The UI shows the banner.
     } catch (e) {
-      console.warn('[storage] scanForAuthbooks failed or timed out:', e.message);
+      console.warn('[storage] Phase 2 skipped:', e.message);
     }
 
     return books;
@@ -229,9 +248,7 @@ export async function listSavedBooks() {
   }
 }
 
-export async function restoreSafBooks(sessions) {
-  return sessions ?? [];
-}
+export async function restoreSafBooks(sessions) { return sessions ?? []; }
 
 function _pickFileViaInput(accept = '.authbook,*/*') {
   return new Promise((resolve) => {
@@ -239,7 +256,10 @@ function _pickFileViaInput(accept = '.authbook,*/*') {
     input.type = 'file'; input.accept = accept; input.style.display = 'none';
     input.onchange = (e) => resolve(e.target.files?.[0] ?? null);
     const onFocus = () => {
-      setTimeout(() => { if (!input.files?.length) resolve(null); window.removeEventListener('focus', onFocus); }, 400);
+      setTimeout(() => {
+        if (!input.files?.length) resolve(null);
+        window.removeEventListener('focus', onFocus);
+      }, 400);
     };
     window.addEventListener('focus', onFocus);
     document.body.appendChild(input);
