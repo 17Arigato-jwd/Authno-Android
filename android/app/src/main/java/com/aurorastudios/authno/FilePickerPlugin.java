@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.ContentUris;
 import android.content.UriPermission;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -175,6 +176,55 @@ public class FilePickerPlugin extends Plugin {
     // ── Phase 2: Full Device Scan (MANAGE_EXTERNAL_STORAGE) ───────────────
     // Recursive walk of external storage. Requires All Files Access on API 30+.
     // Skips files already covered by Phase 1 (JS deduplicates by URI anyway).
+
+    @PluginMethod
+    public void scanWithMediaStore(PluginCall call) {
+        new Thread(() -> {
+            JSArray files = new JSArray();
+            Uri collection = MediaStore.Files.getContentUri("external");
+            String[] projection = {
+                MediaStore.Files.FileColumns._ID,
+                MediaStore.Files.FileColumns.DISPLAY_NAME,
+                MediaStore.Files.FileColumns.SIZE,
+                MediaStore.Files.FileColumns.DATE_MODIFIED,
+            };
+            // Filter by extension — MediaStore doesn't have a MIME type for .authbook,
+            // so match by display name suffix.
+            String selection  = MediaStore.Files.FileColumns.DISPLAY_NAME + " LIKE ?";
+            String[] selArgs  = { "%.authbook" };
+            String sortOrder  = MediaStore.Files.FileColumns.DATE_MODIFIED + " DESC";
+
+            try (Cursor c = getActivity().getContentResolver().query(
+                    collection, projection, selection, selArgs, sortOrder)) {
+                if (c != null) {
+                    int idCol   = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID);
+                    int nameCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME);
+                    int sizeCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE);
+                    int dateCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED);
+                    while (c.moveToNext()) {
+                        Uri uri = ContentUris.withAppendedId(collection, c.getLong(idCol));
+                        try {
+                            byte[] bytes = readAllBytes(uri);
+                            JSObject entry = new JSObject();
+                            entry.put("uri",          uri.toString());   // content:// — works with writeBytesToUri
+                            entry.put("name",         c.getString(nameCol));
+                            entry.put("base64",       Base64.encodeToString(bytes, Base64.NO_WRAP));
+                            entry.put("size",         c.getLong(sizeCol));
+                            entry.put("lastModified", c.getLong(dateCol) * 1000L);
+                            files.put(entry);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            final JSArray result = files;
+            getActivity().runOnUiThread(() -> {
+                JSObject ret = new JSObject();
+                ret.put("files", result);
+                call.resolve(ret);
+            });
+        }).start();
+    }
 
     @PluginMethod
     public void scanForAuthbooks(PluginCall call) {
