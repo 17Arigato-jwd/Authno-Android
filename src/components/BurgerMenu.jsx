@@ -129,13 +129,11 @@ export default function BurgerMenu({
     try {
       const session = await openBook();
       if (session) {
-        setSessions((prev) => {
-          if (prev.some((s) => s.id === session.id)) { onOpen?.(session.id); return prev; }
-          onOpen?.(session.id);
-          return [session, ...prev];
-        });
+        setSessions((prev) =>
+          prev.some((s) => s.id === session.id) ? prev : [session, ...prev]
+        );
+        onOpen?.(session.id);
       }
-      // null = user cancelled picker — silent no-op
     } catch (err) {
       showError('openBook', err);
     } finally {

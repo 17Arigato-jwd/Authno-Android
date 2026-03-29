@@ -552,7 +552,7 @@ function AppInner() {
         current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
-        onOpen={(id) => { setCurrentId(id); if (android) setDrawerOpen(false); }}
+        onOpen={(id) => { setCurrentId(id); setView("editor"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex}
         anchorRef={burgerBtnRef}
       />
