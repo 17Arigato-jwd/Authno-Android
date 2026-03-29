@@ -10,7 +10,7 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
-import { listSavedBooks, saveBook, restoreSafBooks, openBookFromBytes, initStoragePermissions } from "./utils/storage";
+import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex } from "./utils/storage";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
@@ -205,21 +205,9 @@ function AppInner() {
 
     if (android) {
       initStoragePermissions();
-      const localRaw = localStorage.getItem("offlineWriterSessions");
-      const localSessions = localRaw ? JSON.parse(localRaw) : [];
-
-      restoreSafBooks(localSessions)
-        .then((refreshed) => {
-          setSessions(refreshed);
-          return listSavedBooks();
-        })
-        .then((legacyBooks) => {
-          if (!legacyBooks.length) return;
-          setSessions((prev) => {
-            const fresh = legacyBooks.filter((b) => !prev.some((s) => s.id === b.id));
-            return fresh.length ? [...fresh, ...prev] : prev;
-          });
-        });
+      // Restore the book index from the physical .authno-library file.
+      // This brings back the On Device list after a fresh install (no scan needed).
+      initBookIndex();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -369,6 +357,12 @@ function AppInner() {
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       sessions.forEach((s) => {
+        // Only auto-save books that already have a confirmed content:// URI.
+        // Sessions without one need an explicit Save to pick a destination first.
+        // Without this guard, saveBook() opens the SAF picker for every new/unsaved
+        // book — unexpected dialogs appearing silently every 2 seconds.
+        if (!s.filePath?.startsWith('content://')) return;
+
         saveBook(s)
           .then((result) => {
             if (result?.filePath && result.filePath !== s.filePath) {

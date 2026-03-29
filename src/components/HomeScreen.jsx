@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import { FlameButton } from './Streak';
 import { useError } from '../utils/ErrorContext';
+import { folderFromPath } from '../utils/storage';
 import Logo from '../logo.svg';
 
 const BurgerIcon = ({ className, style }) => (
@@ -21,25 +22,6 @@ function timeAgo(dateStr) {
   if (secs < 86400)  return `${Math.floor(secs / 3600)}h ago`;
   if (secs < 604800) return `${Math.floor(secs / 86400)}d ago`;
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function folderFromPath(filePath) {
-  if (!filePath) return 'Internal Storage';
-  if (filePath.startsWith('content://')) {
-    try {
-      const decoded = decodeURIComponent(filePath);
-      const colonIdx = decoded.lastIndexOf(':');
-      if (colonIdx !== -1) {
-        const parts = decoded.slice(colonIdx + 1).replace(/\\/g, '/').split('/');
-        if (parts.length >= 2) return parts[parts.length - 2];
-        if (parts.length === 1) return parts[0];
-      }
-      const parts = decoded.replace(/\\/g, '/').split('/');
-      return parts[parts.length - 2] || 'Device Storage';
-    } catch { return 'Device Storage'; }
-  }
-  const parts = filePath.replace(/\\/g, '/').split('/');
-  return parts[parts.length - 2] || 'Internal Storage';
 }
 
 function formatFileSize(bytes) {
@@ -122,94 +104,49 @@ function BookCard({ title, meta, onClick, accentHex }) {
   );
 }
 
-function PermissionBanner({ onRequest, accentHex }) {
-  return (
-    <div style={{ margin: '4px 0 8px', padding: '14px 16px', borderRadius: '14px',
-      background: 'rgba(0,0,0,0.55)', border: `1px solid ${accentHex}55`,
-      display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-3)', lineHeight: 1.5 }}>
-        Grant <strong style={{ color: '#fff' }}>All Files Access</strong> so AuthNo can
-        find every .authbook file on your device — like Acrobat does with PDFs.
-      </p>
-      <button onClick={onRequest} style={{ alignSelf: 'flex-start', padding: '8px 18px',
-        borderRadius: '10px', background: accentHex, border: 'none',
-        color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
-        Grant Storage Access
-      </button>
-    </div>
-  );
-}
-
 export default function HomeScreen({
   sessions, accentHex, onNewBook, onSelect,
   onToggleSidebar, onToggleMenu, burgerBtnRef,
   current, goalWords, onStreakUpdate, streakEnabled,
 }) {
   const { showError } = useError();
-  const [activeTab,         setActiveTab]         = useState('device');
-  const [deviceBooks,       setDeviceBooks]       = useState([]);
-  const [loadingDevice,     setLoadingDevice]     = useState(false);
-  const [storagePermission, setStoragePermission] = useState(null);
+  const [activeTab,   setActiveTab]  = useState('recent');
+  const [indexBooks,  setIndexBooks]  = useState([]);
+  const [pruning,     setPruning]     = useState(false);
+  const pruneRan = useRef(false);
 
-  // Prevents the activeTab effect from firing a second scan on initial mount.
-  // The mount effect handles the first scan. After that, isMounted is true
-  // and tab-change scans work normally.
-  const isMounted = useRef(false);
+  // Load index from localStorage instantly (synchronous under the hood)
+  const loadIndex = useCallback(() => {
+    import('../utils/storage').then(({ listKnownBooks }) => setIndexBooks(listKnownBooks()));
+  }, []);
 
-  const scanDevice = useCallback(async () => {
-    setLoadingDevice(true);
+  // Run background prune once per app session
+  const runPrune = useCallback(async () => {
+    if (pruneRan.current) return;
+    pruneRan.current = true;
+    setPruning(true);
     try {
-      const { listSavedBooks } = await import('../utils/storage');
-      setDeviceBooks(await listSavedBooks());
-    } catch (err) {
-      showError('listSavedBooks', err);
-      setDeviceBooks([]);
-    } finally {
-      setLoadingDevice(false);
-    }
+      const { pruneBookIndex } = await import('../utils/storage');
+      setIndexBooks(await pruneBookIndex());
+    } catch { /* silent */ } finally { setPruning(false); }
+  }, []);
+
+  // On mount: load index immediately, then kick off background prune
+  useEffect(() => {
+    loadIndex();
+    runPrune();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const requestPermission = useCallback(async () => {
-    try {
-      const { requestFullStoragePermission } = await import('../utils/storage');
-      const status = await requestFullStoragePermission();
-      setStoragePermission(status);
-      if (status === 'granted') scanDevice();
-    } catch { setStoragePermission('denied'); }
-  }, [scanDevice]);
-
-  // ── Single mount effect — ONE scan, permission check first ────────────────
+  // Refresh index whenever user switches to On Device tab (picks up newly opened files)
   useEffect(() => {
-    (async () => {
-      // Step 1: check permission (fast, <3s). Show banner immediately if denied.
-      try {
-        const { checkStoragePermission } = await import('../utils/storage');
-        setStoragePermission(await checkStoragePermission());
-      } catch {
-        setStoragePermission('denied');
-      }
-
-      // Step 2: scan (Phase 1 always runs; Phase 2 only if permission granted)
-      await scanDevice();
-
-      // Mark as mounted so the activeTab effect can fire on future tab changes
-      isMounted.current = true;
-    })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Rescan ONLY on tab changes after initial mount ────────────────────────
-  // isMounted.current is false during the first render, so this effect is a
-  // no-op on mount and only fires when the user actually switches tabs.
-  useEffect(() => {
-    if (!isMounted.current) return;
-    if (activeTab === 'device') scanDevice();
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (activeTab === 'device') loadIndex();
+  }, [activeTab, loadIndex]);
 
   const handleOpenExisting = async () => {
     try {
       const { openBook: openBookFn } = await import('../utils/storage');
       const session = await openBookFn();
-      if (session) onSelect(session.id, session);
+      if (session) { onSelect(session.id, session); loadIndex(); }
     } catch (err) { showError('openBook', err); }
   };
 
@@ -225,7 +162,9 @@ export default function HomeScreen({
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },
   ];
 
-  const needsPermission = storagePermission === 'denied';
+  const recentBooks = [...sessions]
+    .filter(s => s.type !== 'storyboard')
+    .sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
@@ -277,10 +216,10 @@ export default function HomeScreen({
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — Recent is default, On Device reads from index (instant, no scan) */}
         <div style={{ ...glassCard, padding: '0', overflow: 'hidden', flex: 1, minHeight: 0 }}>
           <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '0 20px' }}>
-            {[{ id: 'device', label: 'On Device' }, { id: 'recent', label: 'Recent' }].map(tab => (
+            {[{ id: 'recent', label: 'Recent' }, { id: 'device', label: 'On Device' }].map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
                 background: 'none', border: 'none', padding: '14px 16px 12px', fontSize: '14px',
                 fontWeight: activeTab === tab.id ? 700 : 400,
@@ -295,55 +234,51 @@ export default function HomeScreen({
           <div style={{ padding: '16px', display: 'flex', flexDirection: 'column',
             gap: '10px', overflowY: 'auto', maxHeight: 'calc(100vh - 420px)' }}>
 
-            {activeTab === 'device' && (
-              <>
-                {/* Permission banner — shown as soon as check completes, NOT after scan */}
-                {needsPermission && (
-                  <PermissionBanner accentHex={accentHex} onRequest={requestPermission} />
-                )}
-
-                {loadingDevice ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px',
-                    color: 'var(--text-5)', fontSize: '14px' }}>
-                    Scanning device…
-                  </div>
-                ) : deviceBooks.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px',
-                    color: 'var(--text-5)', fontSize: '14px', lineHeight: 1.6 }}>
-                    No .authbook files found on device.
-                    {needsPermission && (
-                      <><br /><span style={{ fontSize: '12px' }}>
-                        Grant storage access above to scan all folders.
-                      </span></>
-                    )}
-                  </div>
-                ) : deviceBooks.map((book, i) => (
-                  <BookCard
-                    key={book.id || book.filePath || i}
-                    title={book.title}
-                    meta={[
-                      folderFromPath(book.filePath),
-                      formatFileSize(book.fileSize),
-                      timeAgo(book.updated || book.created),
-                    ]}
-                    onClick={() => onSelect(book.id, book)}
-                    accentHex={accentHex}
-                  />
-                ))}
-              </>
-            )}
-
+            {/* Recent tab */}
             {activeTab === 'recent' && (
               recentBooks.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 20px',
                   color: 'var(--text-5)', fontSize: '14px' }}>
-                  No books yet — create one to get started.
+                  No books yet — create one or open an existing file.
                 </div>
               ) : recentBooks.map(book => (
                 <BookCard key={book.id} title={book.title}
                   meta={['.authbook', timeAgo(book.updated || book.created)]}
                   onClick={() => onSelect(book.id)} accentHex={accentHex} />
               ))
+            )}
+
+            {/* On Device tab — reads the book index, no scan */}
+            {activeTab === 'device' && (
+              <>
+                {pruning && (
+                  <div style={{ textAlign: 'right', fontSize: '11px',
+                    color: 'var(--text-5)', opacity: 0.5, paddingBottom: '2px' }}>
+                    Verifying files…
+                  </div>
+                )}
+                {indexBooks.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px',
+                    color: 'var(--text-5)', fontSize: '14px', lineHeight: 1.7 }}>
+                    No files tracked yet.
+                    <span style={{ fontSize: '12px', display: 'block', marginTop: '6px' }}>
+                      Open or save an .authbook file and it will appear here automatically.
+                    </span>
+                  </div>
+                ) : indexBooks.map((book, i) => (
+                  <BookCard
+                    key={book.id || book.filePath || i}
+                    title={book.title}
+                    meta={[
+                      folderFromPath(book.filePath),
+                      formatFileSize(book.fileSize),
+                      timeAgo(book.lastOpened || book.updated),
+                    ]}
+                    onClick={() => onSelect(book.id, book)}
+                    accentHex={accentHex}
+                  />
+                ))}
+              </>
             )}
 
           </div>

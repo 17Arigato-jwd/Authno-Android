@@ -2,25 +2,19 @@
  * storage.js — Unified file I/O for AuthNo
  *
  * Android save strategy:
- *   Save (existing SAF file)  → overwrite silently via writeBytesToUri (no picker)
- *   Save (file:// from scan)  → open SAF CREATE_DOCUMENT picker (cannot write
- *                               back to a raw file:// path without MANAGE_EXTERNAL_STORAGE;
- *                               after the user picks, the URI becomes a proper content://)
- *   Save (new file)           → open SAF CREATE_DOCUMENT picker so user chooses location
- *                               (Downloads, Drive, SD card, etc.)
- *   Save As                   → same SAF picker, always
- *   Open                      → SAF ACTION_OPEN_DOCUMENT picker (Android)
- *                               <input type="file"> (web / Electron fallback)
+ *   Save (existing content:// file) → overwrite silently via writeBytesToUri (no picker)
+ *   Save (new file)                 → open SAF CREATE_DOCUMENT picker; user picks location
+ *   Save As                         → always open SAF picker
+ *   Open                            → SAF ACTION_OPEN_DOCUMENT picker
  *
- * listSavedBooks scans in three phases — see function JSDoc for details.
- *
- * Fix applied (v15 → v16):
- *   saveBook() was silently writing new files to the app-specific internal
- *   directory (writeToAppDir) instead of opening the SAF picker. This made
- *   files invisible in the Files app and returned a relative path as filePath,
- *   which caused every subsequent save to create a NEW duplicate rather than
- *   overwriting the original. Restored the SAF picker path for new files and
- *   for file:// URIs that come back from the Phase 2 full-device scan.
+ * Book Index:
+ *   A lightweight metadata array (title, filePath, folder, size, timestamps) is stored in:
+ *     1. localStorage ('authnoBookIndex')    — fast reads, lost on app data wipe
+ *     2. AuthNo/.authno-library (External)   — physical file, survives reinstalls
+ *   Every open/save automatically upserts the index.
+ *   initBookIndex() merges the physical file back into localStorage on startup.
+ *   pruneBookIndex() verifies reachability in the background and removes stale entries.
+ *   No full-device scan is ever performed.
  */
 
 import { isElectron, isAndroid } from './platform';
@@ -44,7 +38,143 @@ async function getPlugin() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const SAVE_SUBDIR = 'AuthNo';
+const SAVE_SUBDIR        = 'AuthNo';
+const BOOK_INDEX_LS_KEY  = 'authnoBookIndex';
+const BOOK_INDEX_FILE    = 'AuthNo/.authno-library';
+const MAX_INDEX_ENTRIES  = 300;
+
+// ─── Book Index ───────────────────────────────────────────────────────────────
+
+export function folderFromPath(filePath) {
+  if (!filePath) return 'Internal Storage';
+  if (filePath.startsWith('content://')) {
+    try {
+      const decoded  = decodeURIComponent(filePath);
+      const colonIdx = decoded.lastIndexOf(':');
+      if (colonIdx !== -1) {
+        const parts = decoded.slice(colonIdx + 1).replace(/\\/g, '/').split('/');
+        if (parts.length >= 2) return parts[parts.length - 2];
+        if (parts.length === 1 && parts[0]) return parts[0];
+      }
+      const parts = decoded.replace(/\\/g, '/').split('/');
+      return parts[parts.length - 2] || 'Device Storage';
+    } catch { return 'Device Storage'; }
+  }
+  const parts = filePath.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 2] || 'Internal Storage';
+}
+
+function readIndexFromLS() {
+  try {
+    const raw    = localStorage.getItem(BOOK_INDEX_LS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function writeIndexToLS(items) {
+  localStorage.setItem(BOOK_INDEX_LS_KEY, JSON.stringify(items.slice(0, MAX_INDEX_ENTRIES)));
+}
+
+async function writeIndexToFile(items) {
+  if (!isAndroid()) return;
+  try {
+    const { Filesystem, Directory } = await getFS();
+    await Filesystem.mkdir({ path: SAVE_SUBDIR, directory: Directory.External, recursive: true }).catch(() => {});
+    const bytes = new TextEncoder().encode(JSON.stringify(items.slice(0, MAX_INDEX_ENTRIES)));
+    await Filesystem.writeFile({ path: BOOK_INDEX_FILE, data: bytesToBase64(bytes), directory: Directory.External });
+  } catch (e) { console.warn('[storage] Could not write book index file:', e?.message); }
+}
+
+async function readIndexFromFile() {
+  if (!isAndroid()) return null;
+  try {
+    const { Filesystem, Directory } = await getFS();
+    const { data } = await Filesystem.readFile({ path: BOOK_INDEX_FILE, directory: Directory.External });
+    const parsed   = JSON.parse(new TextDecoder().decode(base64ToBytes(data)));
+    return Array.isArray(parsed) ? parsed : null;
+  } catch { return null; }
+}
+
+function mergeIndexArrays(primary, secondary) {
+  const seen   = new Set(primary.map(e => e.filePath));
+  const merged = [...primary];
+  for (const entry of secondary) {
+    if (entry.filePath && !seen.has(entry.filePath)) { merged.push(entry); seen.add(entry.filePath); }
+  }
+  merged.sort((a, b) => new Date(b.lastOpened || 0) - new Date(a.lastOpened || 0));
+  return merged.slice(0, MAX_INDEX_ENTRIES);
+}
+
+/**
+ * Merge the physical .authno-library file back into localStorage.
+ * Call once on Android startup — restores the book list after a fresh install.
+ */
+export async function initBookIndex() {
+  if (!isAndroid()) return;
+  try {
+    const fileIndex = await readIndexFromFile();
+    if (!fileIndex || fileIndex.length === 0) return;
+    const lsIndex = readIndexFromLS();
+    writeIndexToLS(lsIndex.length === 0 ? fileIndex : mergeIndexArrays(lsIndex, fileIndex));
+  } catch (e) { console.warn('[storage] initBookIndex failed:', e?.message); }
+}
+
+function upsertBookIndex(entry) {
+  if (!entry?.filePath) return;
+  const now  = new Date().toISOString();
+  const next = readIndexFromLS().filter(b => b.filePath !== entry.filePath);
+  next.unshift({
+    id:         entry.id          || entry.filePath,
+    title:      entry.title       || 'Untitled Book',
+    filePath:   entry.filePath,
+    folder:     entry.folder      || folderFromPath(entry.filePath),
+    fileSize:   entry.fileSize    ?? null,
+    created:    entry.created     ?? null,
+    updated:    entry.updated     ?? now,
+    lastOpened: entry.lastOpened  ?? now,
+  });
+  const capped = next.slice(0, MAX_INDEX_ENTRIES);
+  writeIndexToLS(capped);
+  writeIndexToFile(capped); // fire-and-forget
+}
+
+/** Return the book index from localStorage. Instant — no filesystem access. */
+export function listKnownBooks() {
+  return readIndexFromLS();
+}
+
+/**
+ * Background reachability check. Removes stale entries.
+ * Only checks content:// entries not opened in the last 30 days — avoids
+ * reading large files that were just used. Safe to call without await.
+ */
+export async function pruneBookIndex() {
+  const index = readIndexFromLS();
+  if (!index.length || !isAndroid()) return index;
+
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const toCheck = index.filter(e =>
+    e.filePath?.startsWith('content://') &&
+    new Date(e.lastOpened || 0).getTime() < thirtyDaysAgo
+  );
+  if (toCheck.length === 0) return index;
+
+  let plugin = null;
+  try { plugin = await getPlugin(); } catch { return index; }
+
+  const stale = new Set();
+  for (const entry of toCheck) {
+    try { await plugin.readBytesFromUri({ uri: entry.filePath }); }
+    catch { stale.add(entry.filePath); console.log('[storage] Pruning unreachable:', entry.filePath); }
+  }
+  if (stale.size === 0) return index;
+
+  const pruned = index.filter(e => !stale.has(e.filePath));
+  writeIndexToLS(pruned);
+  writeIndexToFile(pruned);
+  return pruned;
+}
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('writerSettings')) ?? {}; }
@@ -88,119 +218,12 @@ async function decodeBytes(bytes, filePath) {
   }
 }
 
-// Prevents any plugin call from hanging forever when the native side
-// doesn't respond (e.g. method not implemented yet).
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`plugin timed out after ${ms}ms`)), ms)
-    ),
-  ]);
-}
-
-// ─── App-dir helpers (Capacitor Filesystem) ───────────────────────────────────
-// Used ONLY for silent auto-save (background backup) and Phase 0 re-discovery.
-// These directories are app-specific — zero permissions required.
-// NOT used as the primary save path for new files — that always opens the SAF
-// picker so the user gets a real, visible content:// URI back.
-
-async function writeToAppDir(filename, bytes) {
-  const { Filesystem, Directory } = await getFS();
-  const b64  = bytesToBase64(bytes);
-  const path = `${SAVE_SUBDIR}/${filename}`;
-
-  // Try External first (visible in Files app under Android/data/…)
-  try {
-    await Filesystem.mkdir({
-      path: SAVE_SUBDIR, directory: Directory.External, recursive: true,
-    }).catch(() => {});
-    await Filesystem.writeFile({ path, data: b64, directory: Directory.External });
-    return { path, directory: 'External' };
-  } catch (extErr) {
-    console.warn('[storage] External dir failed, falling back to internal:', extErr.message);
-  }
-
-  // Fall back to internal Data dir (always available, not visible in Files app)
-  await Filesystem.mkdir({
-    path: SAVE_SUBDIR, directory: Directory.Data, recursive: true,
-  }).catch(() => {});
-  await Filesystem.writeFile({ path, data: b64, directory: Directory.Data });
-  return { path, directory: 'Data' };
-}
-
-/**
- * Read all .authbook files from the app-specific directory.
- * Checks External first, then Data (for books saved before a directory change).
- */
-async function readAppDir() {
-  const { Filesystem, Directory } = await getFS();
-  const books = [];
-
-  for (const dir of [Directory.External, Directory.Data]) {
-    try {
-      await Filesystem.mkdir({ path: SAVE_SUBDIR, directory: dir, recursive: true }).catch(() => {});
-      const { files } = await Filesystem.readdir({ path: SAVE_SUBDIR, directory: dir });
-      for (const f of files) {
-        if (!f.name.endsWith('.authbook')) continue;
-        try {
-          const { data } = await Filesystem.readFile({
-            path: `${SAVE_SUBDIR}/${f.name}`, directory: dir,
-          });
-          books.push(await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`));
-        } catch { /* skip corrupt */ }
-      }
-    } catch { /* directory not available */ }
-  }
-  return books;
-}
-
-// ─── Plugin file list decoder ─────────────────────────────────────────────────
-
-async function decodeFileList(files) {
-  const books = [];
-  const CONCURRENCY = 4;
-  for (let i = 0; i < files.length; i += CONCURRENCY) {
-    const results = await Promise.allSettled(
-      files.slice(i, i + CONCURRENCY).map(async (f) => {
-        try {
-          const bytes   = base64ToBytes(f.base64);
-          const session = await decodeBytes(bytes, f.uri);
-          return {
-            ...session, filePath: f.uri, fileSize: f.size ?? null,
-            updated: session.updated || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
-            created: session.created || (f.lastModified ? new Date(f.lastModified).toISOString() : null),
-          };
-        } catch { return null; }
-      })
-    );
-    for (const r of results)
-      if (r.status === 'fulfilled' && r.value) books.push(r.value);
-  }
-  return books;
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function checkStoragePermission() {
-  if (!isAndroid()) return 'granted';
-  try {
-    const plugin = await getPlugin();
-    const result = await withTimeout(plugin.checkStoragePermission(), 3000);
-    return result?.status === 'granted' ? 'granted' : 'denied';
-  } catch { return 'denied'; }
-}
-
-export async function requestFullStoragePermission() {
-  if (!isAndroid()) return 'granted';
-  try {
-    const plugin = await getPlugin();
-    const result = await withTimeout(plugin.requestStoragePermission(), 120000);
-    return result?.status === 'granted' ? 'granted' : 'denied';
-  } catch { return 'denied'; }
-}
-
+/** No-ops — kept for compatibility. */
 export async function initStoragePermissions() {}
+export async function checkStoragePermission() { return 'granted'; }
+export async function requestFullStoragePermission() { return 'granted'; }
 
 /**
  * Save a session.
@@ -214,9 +237,6 @@ export async function initStoragePermissions() {}
  *   no filePath (new book)             → open SAF CREATE_DOCUMENT picker so the user picks
  *                                        where to save. Returns a real content:// URI so that
  *                                        every subsequent auto-save overwrites the same file.
- *
- * Note: writeToAppDir is intentionally NOT used here as the primary save path.
- * It is only used by saveBookToAppDir() for silent background backup (if you add one).
  */
 export async function saveBook(session) {
   try {
@@ -234,17 +254,20 @@ export async function saveBook(session) {
       // ── Existing SAF file (content:// URI) — overwrite silently, no picker ──
       if (session.filePath?.startsWith('content://')) {
         await plugin.writeBytesToUri({ uri: session.filePath, base64: bytesToBase64(bytes) });
+        upsertBookIndex({ id: session.id, title: session.title, filePath: session.filePath,
+          fileSize: bytes.length, created: session.created, updated: new Date().toISOString(),
+          lastOpened: session.lastOpened });
         return { success: true, filePath: session.filePath };
       }
 
-      // ── New file OR file:// URI from Phase 2 scan — open SAF picker ──────────
-      // file:// URIs cannot be written back to via ContentResolver without
-      // MANAGE_EXTERNAL_STORAGE. Opening the picker turns them into a proper
-      // content:// URI and persists the grant for future silent saves.
+      // ── New file — open SAF picker so user picks destination ──────────────
       const result = await plugin.createDocument({ fileName: safeName(session) });
       if (!result?.uri) return { success: false, cancelled: true };
 
       await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
+      upsertBookIndex({ id: session.id, title: session.title, filePath: result.uri,
+        fileSize: bytes.length, created: session.created, updated: new Date().toISOString(),
+        lastOpened: new Date().toISOString() });
       return { success: true, filePath: result.uri };
     }
 
@@ -274,6 +297,9 @@ export async function saveAsBook(session) {
       if (!result?.uri) return { success: false, cancelled: true };
 
       await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
+      upsertBookIndex({ id: session.id, title: session.title, filePath: result.uri,
+        fileSize: bytes.length, created: session.created, updated: new Date().toISOString(),
+        lastOpened: new Date().toISOString() });
       return { success: true, filePath: result.uri };
     }
 
@@ -296,7 +322,11 @@ export async function openBook() {
       const plugin = await getPlugin();
       const result = await plugin.openDocument();
       if (!result?.uri) return null;
-      return decodeBytes(base64ToBytes(result.base64), result.uri);
+      const session = await decodeBytes(base64ToBytes(result.base64), result.uri);
+      upsertBookIndex({ id: session.id, title: session.title, filePath: result.uri,
+        fileSize: result.size ?? null, created: session.created, updated: session.updated,
+        lastOpened: new Date().toISOString() });
+      return session;
     }
 
     // Web / other platforms: HTML file input
@@ -312,73 +342,18 @@ export async function openBook() {
 
 /** Decode bytes from the MainActivity intent handler (file tapped in Files app). */
 export async function openBookFromBytes(base64, uri) {
-  return decodeBytes(base64ToBytes(base64), uri);
+  const session = await decodeBytes(base64ToBytes(base64), uri);
+  if (uri) upsertBookIndex({ id: session.id, title: session.title, filePath: uri,
+    created: session.created, updated: session.updated, lastOpened: new Date().toISOString() });
+  return session;
 }
 
 /**
- * Scan for .authbook files in three phases:
- *
- * Phase 0 — App-specific directory (Capacitor Filesystem).
- *   Always works. Finds files auto-saved by saveBook() or writeToAppDir().
- *   No permissions required. Completes in <1s.
- *
- * Phase 1 — Persisted SAF URIs.
- *   Finds any file ever opened/saved-as via the SAF picker.
- *   Android keeps these grants across app restarts — no extra permissions needed.
- *   3s timeout.
- *
- * Phase 2 — MediaStore scan (no special permission needed).
- *   Queries Android's MediaStore index for any .authbook file visible to the
- *   app. Works on all API levels with only READ_EXTERNAL_STORAGE (≤32) or
- *   no extra permission for metadata (33+). Returns content:// URIs so that
- *   saveBook() can overwrite them silently on subsequent saves.
- *   10s timeout.
+ * Return books from the index (no filesystem scan).
+ * Kept for backward compatibility with App.js.
  */
 export async function listSavedBooks() {
-  if (!isAndroid()) return [];
-  try {
-    const seen  = new Set();
-    const books = [];
-
-    const add = (b) => {
-      if (b?.filePath && !seen.has(b.filePath)) {
-        seen.add(b.filePath);
-        books.push(b);
-      }
-    };
-
-    // Phase 0: app-specific directory — always available, no permissions
-    try {
-      for (const b of await readAppDir()) add(b);
-    } catch (e) {
-      console.warn('[storage] Phase 0 skipped:', e.message);
-    }
-
-    // Phase 1: persisted SAF URIs — instant, no permissions
-    try {
-      const plugin = await getPlugin();
-      const { files } = await withTimeout(plugin.listPersistedBooks(), 3000);
-      if (Array.isArray(files) && files.length > 0)
-        for (const b of await decodeFileList(files)) add(b);
-    } catch (e) {
-      console.warn('[storage] Phase 1 skipped:', e.message);
-    }
-
-    // Phase 2: MediaStore scan — no special permission needed, returns content:// URIs
-    try {
-      const plugin = await getPlugin();
-      const { files } = await withTimeout(plugin.scanWithMediaStore(), 10000);
-      if (Array.isArray(files) && files.length > 0)
-        for (const b of await decodeFileList(files.filter(f => !seen.has(f.uri)))) add(b);
-    } catch (e) {
-      console.warn('[storage] Phase 2 skipped:', e.message);
-    }
-
-    return books;
-  } catch (e) {
-    logError('listSavedBooks', e);
-    return [];
-  }
+  return listKnownBooks();
 }
 
 /** No-op — kept for App.js API compatibility. */
