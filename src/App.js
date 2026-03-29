@@ -256,6 +256,17 @@ function AppInner() {
     }
   }, [sessions, settings]);
 
+  // Persist sessions to localStorage whenever they change so they survive app restarts.
+  useEffect(() => {
+    if (sessions.length > 0)
+      localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
+  }, [sessions]);
+
+  // Persist the current open book ID so startup-behavior 'last' can restore it.
+  useEffect(() => {
+    if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId);
+  }, [currentId]);
+
   useEffect(() => {
     if (window.electron) localStorage.setItem("openBooks", JSON.stringify(sessions));
   }, [sessions]);
