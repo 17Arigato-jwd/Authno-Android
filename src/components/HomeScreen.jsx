@@ -385,8 +385,8 @@ export default function HomeScreen({
           </div>
         </div>
 
-        {/* Tab card */}
-        <div style={{ ...theme.glassCard, padding: '0', overflow: 'hidden', flex: 1, minHeight: 0 }}>
+        {/* Tab card — minHeight keeps at least 2 book cards visible in landscape */}
+        <div style={{ ...theme.glassCard, padding: '0', overflow: 'hidden', flex: 1, minHeight: '250px' }}>
 
           {/* Tab bar */}
           <div style={{
@@ -408,20 +408,24 @@ export default function HomeScreen({
             ))}
           </div>
 
-          {/* Pull-to-refresh region */}
-          <div style={{ position: 'relative', overflow: 'hidden' }}>
+          {/* Pull-to-refresh region — handlers live here so dragging outside the
+               card list (e.g. over empty space below the cards) doesn't cancel the pull */}
+          <div
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            style={{ position: 'relative', overflow: 'hidden' }}
+          >
             <RefreshSpinner pullY={pullY} refreshing={refreshing} accentHex={accentHex} theme={theme} />
 
             <div
               ref={scrollRef}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
               style={{
                 padding: '16px',
                 display: 'flex', flexDirection: 'column', gap: '10px',
                 overflowY: 'auto',
                 maxHeight: 'calc(100vh - 420px)',
+                minHeight: '170px',
                 transform: `translateY(${listNudge}px)`,
                 transition: (pullY === 0 && !refreshing)
                   ? 'transform 0.3s cubic-bezier(.22,1,.36,1)'
