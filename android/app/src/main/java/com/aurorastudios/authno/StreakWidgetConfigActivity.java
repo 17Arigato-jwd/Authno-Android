@@ -40,6 +40,14 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
     private int widgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Re-read SharedPreferences in case the user just opened the app to sync
+        setContentView(new android.widget.FrameLayout(this)); // clear old UI
+        buildUI();
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
