@@ -61,8 +61,24 @@ public class StreakWidgetProvider extends AppWidgetProvider {
                 ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
         String bookId    = prefs.getString(WIDGET_BOOK_PREFIX + widgetId, null);
-        String booksJson = prefs.getString(KEY_BOOKS_JSON, "[]");
         String accentHex = prefs.getString(KEY_ACCENT_COLOR, "#5a00d9");
+
+        // Try the native-written file first (written by Filesystem plugin from JS),
+        // fall back to SharedPreferences for backwards compatibility.
+        String booksJson = null;
+        try {
+            java.io.File f = new java.io.File(ctx.getFilesDir(), "authno_books.json");
+            if (f.exists()) {
+                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(f));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                String s = sb.toString().trim();
+                if (!s.isEmpty()) booksJson = s;
+            }
+        } catch (Exception ignored) {}
+        if (booksJson == null) booksJson = prefs.getString(KEY_BOOKS_JSON, "[]");
 
         // Look up the linked book in the stored JSON array
         JSONObject book = findBook(booksJson, bookId);
