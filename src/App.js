@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import Logo from "./logo.svg";
 import { Background } from "./components/Background";
 import { RotateCw, Menu } from "lucide-react";
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import EditorToolbar from "./components/EditorToolbar";
 import BurgerMenu from "./components/BurgerMenu";
 import Sidebar from "./components/Sidebar";
@@ -11,7 +12,8 @@ import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/Customi
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
-import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex } from "./utils/storage";
+import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
+import FileIntegrityModal from "./components/FileIntegrityModal";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
@@ -118,6 +120,7 @@ function AppInner() {
   const [view, setView]           = useState("editor");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [brokenFiles, setBrokenFiles] = useState([]);
 
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -209,6 +212,15 @@ function AppInner() {
       // Restore the book index from the physical .authno-library file.
       // This brings back the On Device list after a fresh install (no scan needed).
       initBookIndex();
+
+      // Scan file paths on startup and flag any that are no longer accessible.
+      const saved = localStorage.getItem("offlineWriterSessions");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        checkFileIntegrity(parsed).then(broken => {
+          if (broken.length > 0) setBrokenFiles(broken);
+        });
+      }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -246,10 +258,25 @@ function AppInner() {
   }, [sessions, settings]);
 
   // Persist sessions to localStorage whenever they change so they survive app restarts.
-  useEffect(() => {
-    if (sessions.length > 0)
-      localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
-  }, [sessions]);
+    useEffect(() => {
+      if (sessions.length > 0) {
+        localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
+
+        // Also write a native-readable file so the widget config activity can
+        // show the book list without needing the app to be opened first.
+        if (isAndroid()) {
+          const slim = sessions
+            .filter(s => s.type !== 'storyboard')
+            .map(s => ({ id: s.id, title: s.title || 'Untitled Book', streak: s.streak ?? {} }));
+          Filesystem.writeFile({
+            path: 'authno_books.json',
+            data: JSON.stringify(slim),
+            directory: Directory.Data,
+            encoding: 'utf8',
+          }).catch(() => {});
+        }
+      }
+    }, [sessions]);
 
   // Sync book data to the native widget layer whenever sessions or accent colour changes.
   useEffect(() => {
@@ -376,6 +403,13 @@ function AppInner() {
 
         saveBook(s)
           .then((result) => {
+            if (result?.staleUri) {
+              // Wipe the broken URI so the next explicit Save prompts for a new location
+              setSessions((prev) =>
+                prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))
+              );
+              return;
+            }
             if (result?.filePath && result.filePath !== s.filePath) {
               setSessions((prev) =>
                 prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
@@ -475,6 +509,22 @@ function AppInner() {
         <Onboarding
           accentHex={customization.accentHex}
           onDone={() => setShowOnboarding(false)}
+        />
+      )}
+
+      {brokenFiles.length > 0 && (
+        <FileIntegrityModal
+          brokenSessions={brokenFiles}
+          accentHex={customization.accentHex}
+          onRemove={(id) => {
+            setSessions(prev => prev.filter(s => s.id !== id));
+            setBrokenFiles(prev => prev.filter(s => s.id !== id));
+          }}
+          onSaveAs={async (session) => {
+            await saveAsBook(session);
+            setBrokenFiles(prev => prev.filter(s => s.id !== session.id));
+          }}
+          onDismiss={() => setBrokenFiles([])}
         />
       )}
 

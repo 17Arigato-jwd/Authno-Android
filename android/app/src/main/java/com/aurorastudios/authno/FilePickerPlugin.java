@@ -121,6 +121,29 @@ public class FilePickerPlugin extends Plugin {
         } catch (Exception e) { call.reject("Write failed: " + e.getMessage()); }
     }
 
+    // ── Check if URI is still accessible ──────────────────────────────────
+
+    @PluginMethod
+    public void checkUri(PluginCall call) {
+        String uriStr = call.getString("uri");
+        if (uriStr == null) { call.reject("uri required"); return; }
+        try {
+            ParcelFileDescriptor pfd = getActivity().getContentResolver()
+                    .openFileDescriptor(Uri.parse(uriStr), "r");
+            if (pfd == null) throw new Exception("null descriptor");
+            pfd.close();
+            JSObject ret = new JSObject();
+            ret.put("accessible", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            JSObject ret = new JSObject();
+            ret.put("accessible", false);
+            ret.put("reason", e.getMessage());
+            call.resolve(ret);
+        }
+    }
+
+
     // ── Read binary bytes from existing URI ───────────────────────────────
 
     @PluginMethod

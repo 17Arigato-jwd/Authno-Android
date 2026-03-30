@@ -141,7 +141,7 @@ function _loadHistory() {
 
 function _getAppVersion() {
   try {
-    return localStorage.getItem('authno_version') || '1.1.6-beta.1';
+    return localStorage.getItem('authno_version') || '1.1.8-beta.2';
   } catch { return 'unknown'; }
 }
 

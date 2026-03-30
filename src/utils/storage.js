@@ -176,8 +176,17 @@ export async function saveBook(session) {
 
       // Existing SAF file — overwrite silently, no picker
       if (session.filePath?.startsWith('content://')) {
-        await plugin.writeBytesToUri({ uri: session.filePath, base64: bytesToBase64(bytes) });
-        return { success: true, filePath: session.filePath };
+        try {
+          await plugin.writeBytesToUri({ uri: session.filePath, base64: bytesToBase64(bytes) });
+          return { success: true, filePath: session.filePath };
+        } catch (writeErr) {
+          const msg = writeErr?.message ?? '';
+          if (msg.includes('Permission') || msg.includes('No content provider')) {
+            // URI is permanently inaccessible — signal caller to clear it
+            return { success: false, staleUri: true };
+          }
+          throw writeErr;
+        }
       }
 
       // New file — open SAF picker so user chooses location
@@ -266,6 +275,30 @@ export async function restoreSafBooks(sessions) {
   return sessions ?? [];
 }
 
+/**
+ * Checks each session that has a filePath and returns an array of
+ * sessions whose files are no longer accessible.
+ */
+export async function checkFileIntegrity(sessions) {
+  if (!isAndroid()) return [];
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    const plugin = registerPlugin('AuthnoFilePicker');
+    const broken = [];
+    for (const s of sessions) {
+      if (!s.filePath?.startsWith('content://')) continue;
+      try {
+        const result = await plugin.checkUri({ uri: s.filePath });
+        if (!result?.accessible) broken.push(s);
+      } catch {
+        broken.push(s);
+      }
+    }
+    return broken;
+  } catch {
+    return [];
+  }
+}
 // ─── File input helpers ───────────────────────────────────────────────────────
 
 function _pickFileViaInput(accept = '.authbook,*/*') {

@@ -78,7 +78,8 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
     private void buildUI() {
         SharedPreferences prefs =
                 getSharedPreferences(StreakWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE);
-        String booksJson = prefs.getString(StreakWidgetProvider.KEY_BOOKS_JSON, "[]");
+        String booksJson = readBooksFile();
+        if (booksJson == null) booksJson = prefs.getString(StreakWidgetProvider.KEY_BOOKS_JSON, "[]");
         String accentHex = prefs.getString(StreakWidgetProvider.KEY_ACCENT_COLOR, "#5a00d9");
         int accent = parseColor(accentHex);
 
@@ -150,6 +151,23 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
         result.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
         setResult(RESULT_OK, result);
         finish();
+    }
+
+
+    private String readBooksFile() {
+        try {
+            java.io.File f = new java.io.File(getFilesDir(), "authno_books.json");
+            if (!f.exists()) return null;
+            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(f));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+            String json = sb.toString().trim();
+            return json.isEmpty() ? null : json;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ── Book list adapter ──────────────────────────────────────────────────────
