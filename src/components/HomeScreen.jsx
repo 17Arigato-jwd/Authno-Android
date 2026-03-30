@@ -336,7 +336,7 @@ export default function HomeScreen({
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
       height: '100%', overflowY: 'auto', overflowX: 'hidden',
-      position: 'relative', zIndex: 1,
+      position: 'relative', zIndex: 1, userSelect: 'none',
     }}>
 
       {/* Header */}
