@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark frosted-glass card background for the streak widget -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#E6131417" />   <!-- #E6 ≈ 90 % opacity dark -->
+    <corners android:radius="20dp" />
+</shape>

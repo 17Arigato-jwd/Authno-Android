@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  streak_widget.xml
+  Home-screen widget layout for the AuthNo Streak Widget.
+
+  All views must be RemoteViews-compatible (no custom views).
+  The calendar is rendered as a Bitmap and set on the ImageView by
+  StreakWidgetRenderer — no GridView/RecyclerView needed.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="14dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- ── Header row: book title + streak number ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <!-- Book icon -->
+        <TextView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:text="📖"
+            android:textSize="18sp"
+            android:gravity="center"
+            android:layout_marginEnd="10dp" />
+
+        <!-- Title (takes all remaining space) -->
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="AuthNo"
+            android:textColor="#f2f3f5"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <!-- Streak count (large) -->
+        <TextView
+            android:id="@+id/widget_streak_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"
+            android:textColor="#5a00d9"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:lineSpacingExtra="-2dp" />
+
+        <!-- Flame emoji next to number -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔥"
+            android:textSize="14sp"
+            android:layout_marginStart="2dp"
+            android:gravity="bottom"
+            android:paddingBottom="4dp" />
+
+    </LinearLayout>
+
+    <!-- Streak sub-label (e.g. "7 days streak 🔥") -->
+    <TextView
+        android:id="@+id/widget_streak_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="no streak yet"
+        android:textColor="#72767d"
+        android:textSize="10sp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- ── Today's progress ── -->
+    <ProgressBar
+        android:id="@+id/widget_progress_bar"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="#5a00d9"
+        android:progressBackgroundTint="#2e3035"
+        android:layout_marginBottom="3dp" />
+
+    <TextView
+        android:id="@+id/widget_progress_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0 / 300 words today"
+        android:textColor="#72767d"
+        android:textSize="10sp"
+        android:layout_marginBottom="8dp" />
+
+    <!-- ── Calendar bitmap ── -->
+    <ImageView
+        android:id="@+id/widget_calendar"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scaleType="fitXY"
+        android:adjustViewBounds="true" />
+
+</LinearLayout>

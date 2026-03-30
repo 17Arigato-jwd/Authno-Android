@@ -15,15 +15,23 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(FilePickerPlugin.class);
+        // ── Register the widget data bridge so React can call WidgetData.syncBooks() ──
+        registerPlugin(WidgetDataPlugin.class);
         super.onCreate(savedInstanceState);
-        getBridge().getWebView().post(() -> handleAuthBookIntent(getIntent()));
+        getBridge().getWebView().post(() -> {
+            handleAuthBookIntent(getIntent());
+            handleWidgetDeepLink(getIntent());
+        });
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        getBridge().getWebView().post(() -> handleAuthBookIntent(intent));
+        getBridge().getWebView().post(() -> {
+            handleAuthBookIntent(intent);
+            handleWidgetDeepLink(intent);
+        });
     }
 
     /**
@@ -65,5 +73,33 @@ public class MainActivity extends BridgeActivity {
             String js = "window.dispatchEvent(new CustomEvent('open-authbook-android-error'))";
             getBridge().getWebView().evaluateJavascript(js, null);
         }
+    }
+
+    /**
+     * Handles taps on the home-screen Streak Widget.
+     *
+     * The widget puts a "widgetBookId" extra on the launch intent.
+     * We forward it to the React layer as a CustomEvent so App.js can navigate
+     * straight to that book's editor.
+     *
+     * React side — add this listener in App.js (see widgetBridge.js):
+     *   window.addEventListener('open-book-from-widget', e => {
+     *     handleSelect(e.detail.bookId);
+     *   });
+     */
+    private void handleWidgetDeepLink(Intent intent) {
+        if (intent == null) return;
+        String bookId = intent.getStringExtra("widgetBookId");
+        if (bookId == null || bookId.isEmpty()) return;
+
+        // Clear the extra so rotating the screen doesn't re-fire it
+        intent.removeExtra("widgetBookId");
+
+        String safeId = bookId.replace("'", "\\'");
+        String js =
+            "window.dispatchEvent(new CustomEvent('open-book-from-widget', {" +
+            "  detail: { bookId: '" + safeId + "' }" +
+            "}))";
+        getBridge().getWebView().evaluateJavascript(js, null);
     }
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  streak_widget_info.xml
+  Metadata that the Android launcher reads to know how to offer and size
+  the AuthNo Streak Widget.
+
+  minWidth/minHeight are set to a 3×3-cell default (approx 250×250 dp on
+  most launchers).  The widget is freely resizable in both dimensions.
+-->
+<appwidget-provider
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:minWidth="250dp"
+    android:minHeight="250dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="200dp"
+
+    android:updatePeriodMillis="1800000"
+
+    android:initialLayout="@layout/streak_widget"
+
+    android:configure="com.aurorastudios.authno.StreakWidgetConfigActivity"
+
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+
+    android:previewImage="@mipmap/ic_launcher"
+    android:description="@string/widget_description" />

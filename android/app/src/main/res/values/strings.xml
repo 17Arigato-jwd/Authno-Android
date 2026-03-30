@@ -4,4 +4,9 @@
     <string name="title_activity_main">AuthNo</string>
     <string name="package_name">com.aurorastudios.authno</string>
     <string name="custom_url_scheme">com.aurorastudios.authno</string>
+
+    <!-- Streak Widget -->
+    <string name="widget_label">AuthNo Streak</string>
+    <string name="widget_config_label">Link a Book</string>
+    <string name="widget_description">Shows your writing streak calendar for a linked book. Tap to open AuthNo.</string>
 </resources>
