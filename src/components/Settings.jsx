@@ -424,14 +424,15 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
   const books = sessions.filter(s => s.type !== 'storyboard');
   const [selectedId, setSelectedId] = useState(() => {
     const saved = localStorage.getItem('streakSettings_selectedBookId');
+    if (saved === '__global__') return '__global__';
     if (saved && books.some(b => b.id === saved)) return saved;
-    return books[0]?.id ?? null;
+    return '__global__';
   });
 
   // Keep selectedId valid if sessions change (e.g. book deleted)
   useEffect(() => {
-    if (selectedId && !books.some(b => b.id === selectedId)) {
-      setSelectedId(books[0]?.id ?? null);
+    if (selectedId !== '__global__' && selectedId && !books.some(b => b.id === selectedId)) {
+      setSelectedId('__global__');
     }
   }, [sessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -440,7 +441,7 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
     localStorage.setItem('streakSettings_selectedBookId', id);
   };
 
-  const selectedBook = books.find(b => b.id === selectedId) ?? null;
+  const selectedBook = selectedId === '__global__' ? null : (books.find(b => b.id === selectedId) ?? null);
 
   // Effective goal: per-book override → global setting
   const bookGoal    = selectedBook?.streak?.goalWords ?? null;
@@ -514,6 +515,9 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
               onFocus={e => e.target.style.borderColor = accentHex}
               onBlur={e => e.target.style.borderColor = `${accentHex}55`}
             >
+              <option value="__global__" style={{ background: '#1a1b1e', color: '#fff' }}>
+                🌐 Global (default for all books)
+              </option>
               {books.map(b => (
                 <option key={b.id} value={b.id} style={{ background: '#1a1b1e', color: '#fff' }}>
                   {b.title || 'Untitled Book'}
