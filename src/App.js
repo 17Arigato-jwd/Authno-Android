@@ -10,6 +10,7 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
+import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex } from "./utils/storage";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
@@ -249,6 +250,16 @@ function AppInner() {
     if (sessions.length > 0)
       localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
   }, [sessions]);
+
+  // Sync book data to the native widget layer whenever sessions or accent colour changes.
+  useEffect(() => {
+    syncWidget(sessions, customization.accentHex);
+  }, [sessions, customization.accentHex]);
+
+  // Open the correct book when the app is launched by tapping a home-screen widget.
+  useWidgetDeepLink((bookId) => {
+    handleSelect(bookId);
+  });
 
   // Persist the current open book ID so startup-behavior 'last' can restore it.
   useEffect(() => {
