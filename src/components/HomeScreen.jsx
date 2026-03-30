@@ -162,10 +162,6 @@ export default function HomeScreen({
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },
   ];
 
-  const recentBooks = [...sessions]
-    .filter(s => s.type !== 'storyboard')
-    .sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
-
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
       height: '100%', overflowY: 'auto', overflowX: 'hidden',
