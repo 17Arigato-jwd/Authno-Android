@@ -58,7 +58,7 @@ function Editor({
           )}
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { const t = e.target.value; setTitle(t); onEditTitle(t); }}
             onBlur={() => onEditTitle(title)}
             className="bg-transparent text-white text-lg font-semibold focus:outline-none border-b border-transparent focus:border-white/20 truncate min-w-0"
             style={{ maxWidth: android ? "40vw" : "60vw" }}

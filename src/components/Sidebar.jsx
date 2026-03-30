@@ -260,16 +260,12 @@ export default function Sidebar({
         alert("This book is already open!"); return;
       }
       const book = {
-        id: Date.now().toString(),
-        title: result.title || "Untitled Book",
-        content: result.content || "",
+        ...result,                                   // keep everything from the binary
+        id: result.id || Date.now().toString(),      // preserve original id
         preview: (result.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...",
-        filePath: result.filePath,
-        type: "book",
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
       };
       setSessions((p) => [book, ...p]);
+      onSelect?.(book.id);                           // actually select the opened book
       if (android) onDrawerClose?.();
     } catch (err) {
       console.error("Error opening book:", err);
