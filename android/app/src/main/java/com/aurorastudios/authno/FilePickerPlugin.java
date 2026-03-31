@@ -24,11 +24,13 @@ import java.io.InputStream;
 /**
  * AuthnoFilePicker — SAF wrapper for VCHS-ECS .authbook files
  *
- * Exposes four methods to JS:
+ * Exposes five methods to JS:
  *   createDocument(fileName)       → "Save As" picker  → { uri }
  *   openDocument()                 → "Open" picker     → { uri, base64, name, size }
  *   writeBytesToUri(uri, base64)   → write binary to existing SAF URI
  *   readBytesFromUri(uri)          → read binary from existing SAF URI → { base64 }
+ *   getPendingIntent()             → retrieve a file opened via cold-start intent
+ *                                    → { hasPending, base64?, uri? }
  *
  * All file content crosses the JS/Java bridge as base64 because VCHS-ECS files
  * are binary and the Capacitor bridge only carries JSON-serialisable types.
@@ -37,6 +39,52 @@ import java.io.InputStream;
  */
 @CapacitorPlugin(name = "AuthnoFilePicker")
 public class FilePickerPlugin extends Plugin {
+
+    /**
+     * Cold-start pending intent storage.
+     *
+     * When the app is launched by tapping an .authbook file (ACTION_VIEW), the
+     * WebView may not have finished loading by the time MainActivity tries to
+     * dispatch the CustomEvent via evaluateJavascript — meaning the event fires
+     * before React's listeners are registered and is silently lost.
+     *
+     * To fix this, MainActivity also stores the file data here.  App.js calls
+     * getPendingIntent() on mount (after all useEffect listeners are registered)
+     * to pick up any file that arrived during the cold-start race window.
+     * The data is cleared once retrieved so it is only processed once.
+     */
+    static volatile String pendingBase64 = null;
+    static volatile String pendingUri    = null;
+
+    // ── Pending cold-start intent ──────────────────────────────────────────
+
+    /**
+     * Called by App.js on mount to retrieve a file that was opened via a
+     * cold-start ACTION_VIEW intent (tapping an .authbook in a file manager
+     * or share sheet while the app was not running).
+     *
+     * Returns { hasPending: true, base64, uri } if data is waiting, or
+     * { hasPending: false } if nothing is pending.  Clears the stored data
+     * atomically so the file is never processed twice.
+     */
+    @PluginMethod
+    public void getPendingIntent(PluginCall call) {
+        String b64 = pendingBase64;
+        String uri = pendingUri;
+        // Clear before resolving so a second call always returns hasPending=false
+        pendingBase64 = null;
+        pendingUri    = null;
+
+        JSObject ret = new JSObject();
+        if (b64 != null) {
+            ret.put("hasPending", true);
+            ret.put("base64", b64);
+            ret.put("uri",    uri != null ? uri : "");
+        } else {
+            ret.put("hasPending", false);
+        }
+        call.resolve(ret);
+    }
 
     // ── Create Document (Save As) ──────────────────────────────────────────
 

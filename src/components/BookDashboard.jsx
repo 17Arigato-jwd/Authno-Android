@@ -25,10 +25,18 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   ArrowLeft, Upload, Edit3, Plus, Search, ChevronDown, ChevronUp,
   ArrowUp, SlidersHorizontal, BookOpen, Settings2, Image as ImageIcon,
-  BarChart2, FileText, X, Menu,
+  BarChart2, FileText, X,
 } from 'lucide-react';
 import { FlameButton } from './Streak';
 import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
+
+// Matches the BurgerIcon used in the Editor header in App.js (three-line SVG,
+// border-2 border-white) so the button looks identical across all screens.
+const BurgerIcon = ({ className }) => (
+  <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
+    <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
 
 // ─── MIME normaliser ──────────────────────────────────────────────────────────
 // Some Android gallery/file-picker implementations return an empty file.type for
@@ -82,17 +90,48 @@ function formatWords(n) {
   return String(n);
 }
 
-function currentStreakDays(streak) {
-  if (!streak?.log) return 0;
-  let count = 0;
-  const d = new Date();
-  while (true) {
-    const key = d.toISOString().slice(0, 10);
-    if (!streak.log[key]) break;
-    count++;
-    d.setDate(d.getDate() - 1);
+/**
+ * Analyse a streak log and return the longest ever continuous streak plus
+ * whether that streak is still active (ends today or yesterday).
+ *
+ * The log is a flat object keyed by 'YYYY-MM-DD'.  Multiple chapters write
+ * into the same shared log so duplicate dates are inherently deduplicated.
+ *
+ * Returns { days: number, active: boolean }
+ *   days   — length of the longest continuous run of logged dates ever
+ *   active — true if that longest run is still ongoing (ends today/yesterday)
+ */
+function analyseStreak(streak) {
+  if (!streak?.log) return { days: 0, active: false };
+
+  // Collect every unique date string that has a truthy entry, sort ascending
+  const dates = Object.keys(streak.log)
+    .filter(k => streak.log[k])
+    .sort(); // lexicographic sort works perfectly for ISO dates
+
+  if (dates.length === 0) return { days: 0, active: false };
+
+  // Walk the sorted dates and find the longest run of consecutive days
+  let maxRun = 1, curRun = 1;
+  let maxEnd = dates[0]; // date string where the longest run ends
+  for (let i = 1; i < dates.length; i++) {
+    const prev = new Date(dates[i - 1]);
+    const curr = new Date(dates[i]);
+    const diffDays = Math.round((curr - prev) / 86400000);
+    if (diffDays === 1) {
+      curRun++;
+      if (curRun >= maxRun) { maxRun = curRun; maxEnd = dates[i]; }
+    } else {
+      curRun = 1;
+    }
   }
-  return count;
+
+  // The streak is active if its last date is today or yesterday
+  const todayStr     = new Date().toISOString().slice(0, 10);
+  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const active = maxEnd === todayStr || maxEnd === yesterdayStr;
+
+  return { days: maxRun, active };
 }
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
@@ -351,7 +390,9 @@ export default function BookDashboard({
     [chapters]
   );
 
-  const streakDays = useMemo(() => currentStreakDays(session?.streak), [session?.streak]);
+  const streak         = useMemo(() => analyseStreak(session?.streak), [session?.streak]);
+  const streakDays     = streak.days;
+  const streakActive   = streak.active;
 
   const visibleChapters = useMemo(() => {
     let list = chapters;
@@ -472,7 +513,7 @@ export default function BookDashboard({
             <button ref={burgerBtnRef} onClick={onToggleMenu}
               className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition"
               style={{ background: 'none', cursor: 'pointer', color: 'var(--text-1)' }}>
-              <Menu className="w-5 h-5" />
+              <BurgerIcon className="text-white" />
             </button>
           </div>
         </header>
@@ -533,17 +574,26 @@ export default function BookDashboard({
               {session?.title || 'Untitled Book'}
             </h1>
 
-            {/* Streak badge */}
+            {/* Streak badge — shows the longest ever continuous streak.
+                Active (ends today/yesterday): flame + accent gradient.
+                Expired: grey, no flame, label changes to "Best Streak". */}
             {streakDays > 0 && (
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                background: 'linear-gradient(135deg, #FF6B2B, #FF8C00)',
+                background: streakActive
+                  ? 'linear-gradient(135deg, #FF6B2B, #FF8C00)'
+                  : (light ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.10)'),
                 borderRadius: '20px', padding: '5px 13px',
-                fontSize: '13px', fontWeight: 700, color: '#fff',
+                fontSize: '13px', fontWeight: 700,
+                color: streakActive ? '#fff' : 'var(--text-4)',
                 marginBottom: '12px',
-                boxShadow: '0 2px 10px rgba(255,107,43,0.4)',
+                boxShadow: streakActive ? '0 2px 10px rgba(255,107,43,0.4)' : 'none',
+                border: streakActive
+                  ? 'none'
+                  : `1px solid ${light ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.12)'}`,
               }}>
-                <FlameIcon size={15} /> Streak {streakDays}Day{streakDays !== 1 ? 's' : ''}
+                {streakActive && <FlameIcon size={15} />}
+                {streakActive ? 'Streak' : 'Best Streak'} {streakDays} Day{streakDays !== 1 ? 's' : ''}
               </div>
             )}
 

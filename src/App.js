@@ -477,6 +477,33 @@ function AppInner() {
     window.addEventListener("open-authbook-android", legacyHandler);
     window.addEventListener("open-authbook-android-error", errHandler);
 
+    // ── Cold-start file intent recovery ────────────────────────────────────
+    // When the app is launched cold by tapping an .authbook file, the WebView
+    // is not yet loaded when handleAuthBookIntent fires in MainActivity.  The
+    // CustomEvent dispatched via evaluateJavascript lands before these listeners
+    // are registered and is silently lost.
+    //
+    // Fix: MainActivity also stores the file data in FilePickerPlugin static
+    // fields.  We call getPendingIntent() NOW — after the listeners above are
+    // registered — to pick up any file that arrived in that cold-start window.
+    // For warm starts the event already fired correctly; getPendingIntent() will
+    // return hasPending=false and this is a no-op.
+    if (android) {
+      (async () => {
+        try {
+          const { registerPlugin } = await import('@capacitor/core');
+          const plugin = registerPlugin('AuthnoFilePicker');
+          const result = await plugin.getPendingIntent();
+          if (result?.hasPending && result.base64) {
+            // Re-use the same handler so the dedup / setCurrentId logic is shared
+            window.dispatchEvent(new CustomEvent('open-authbook-android-bytes', {
+              detail: { base64: result.base64, uri: result.uri || '' },
+            }));
+          }
+        } catch (_) { /* plugin not available in dev/web builds — ignore */ }
+      })();
+    }
+
     return () => {
       window.removeEventListener("open-authbook-android-bytes", bytesHandler);
       window.removeEventListener("open-authbook-android", legacyHandler);

@@ -38,9 +38,16 @@ public class MainActivity extends BridgeActivity {
      * Handles ACTION_VIEW intents — tapping an .authbook file in a file manager.
      *
      * VCHS-ECS files are binary. We read raw bytes, base64-encode them, and
-     * pass them to JS via a CustomEvent. The JS side (storage.js) detects the
-     * format, runs migration if it is a legacy JSON file, then dispatches the
-     * decoded session into App.js via the existing 'open-authbook-android' event.
+     * pass them to JS via two mechanisms:
+     *
+     *   1. CustomEvent via evaluateJavascript — works for warm starts (app
+     *      already running), where React's listeners are already registered.
+     *
+     *   2. FilePickerPlugin static fields — fallback for cold starts, where the
+     *      WebView may not have finished loading when this runs.  App.js calls
+     *      FilePickerPlugin.getPendingIntent() on mount to retrieve the data.
+     *
+     * Using both ensures the file is always loaded regardless of timing.
      */
     private void handleAuthBookIntent(Intent intent) {
         if (intent == null) return;
@@ -61,6 +68,11 @@ public class MainActivity extends BridgeActivity {
             String base64  = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
             String uriStr  = uri.toString().replace("'", "\\'");
 
+            // Store for cold-start retrieval (App.js polls getPendingIntent() on mount).
+            FilePickerPlugin.pendingBase64 = base64;
+            FilePickerPlugin.pendingUri    = uriStr;
+
+            // Also dispatch immediately — handles warm starts where React is already live.
             // JS will call storage.openBookFromBytes(base64, uri) which handles
             // both legacy JSON and new VCHS-ECS binary, then fires the event.
             String js =

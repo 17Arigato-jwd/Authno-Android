@@ -334,6 +334,9 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
     publisher:   book.meta.publisher   || '',
     isbn:        book.meta.isbn        || '',
     coverMime:   book.cover ? (book.meta.coverMime || 'image/jpeg') : '',
+    // Cover is stored directly in META so it shares META's RS parity protection
+    // and avoids a separate COVR section that previously collided in the parity map.
+    coverData:   book.cover || null,
   };
 
   // Build MNFT
@@ -352,7 +355,8 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
   const streak = book.streak || { log: {}, dailyBaseline: {}, goalHistory: [] };
   const notes  = book.notes  || [];
 
-  // Primary sections in fixed order: MNFT META STRK GEN_ CHAP... [COVR]
+  // Primary sections in fixed order: MNFT META STRK GEN_ CHAP...
+  // Cover is embedded in META (as coverData / coverMime) — no separate COVR section.
   const primaries = [
     { tag: 'MNFT', idx: 0, raw: enc.encode(JSON.stringify(mnft))   },
     { tag: 'META', idx: 0, raw: enc.encode(JSON.stringify(meta))   },
@@ -362,12 +366,6 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
       tag: 'CHAP', idx: c.chap_idx,
       raw: enc.encode(c.content || ''),
     })),
-    // COVR section — stored as JSON string containing base64 so it survives
-    // the TextDecoder round-trip in unpackSession (raw image bytes are not valid UTF-8)
-    ...(book.cover ? [{
-      tag: 'COVR', idx: 0,
-      raw: enc.encode(JSON.stringify({ mime: book.meta.coverMime || 'image/jpeg', data: book.cover })),
-    }] : []),
   ];
 
   const encoded = primaries.map(p => {
@@ -498,8 +496,14 @@ export async function unpackSession(bytes) {
   // Build parity map: chap_idx → parity bytes
   const parityMap = {};
   for (const e of entries) {
-    if (e.tag === 'RSPX' && e.payload.length > 6)
-      parityMap[e.chapIdx] = e.payload.slice(6);
+    if (e.tag === 'RSPX' && e.payload.length > 6) {
+      // RSPX payload = 4-byte primary tag + 2-byte primary idx + parity bytes.
+      // Use a composite "TAG:idx" key so non-chapter sections (MNFT, META, STRK,
+      // GEN_) — which all share chapIdx=0 — each get their own slot instead of
+      // overwriting each other.  Previously only the last idx=0 entry survived.
+      const primaryTag = new TextDecoder().decode(e.payload.slice(0, 4));
+      parityMap[`${primaryTag}:${e.chapIdx}`] = e.payload.slice(6);
+    }
   }
 
   // Decode each primary section
@@ -509,7 +513,7 @@ export async function unpackSession(bytes) {
     let payload = e.payload;
     const actualCrc = crc32(payload);
     if (actualCrc !== e.secCrc) {
-      const parity = parityMap[e.chapIdx];
+      const parity = parityMap[`${e.tag}:${e.chapIdx}`];
       if (parity) {
         const { data, recovered } = rsDecode(payload, parity, rsLevel);
         if (recovered && crc32(data) === e.secCrc) {
@@ -544,17 +548,22 @@ export async function unpackSession(bytes) {
   const notes  = getJ('GEN_', 0, []);
   const mnft   = getJ('MNFT', 0, { chapters: [] });
 
-  // COVR section — stored as JSON { mime, data } where data is base64
-  let cover     = null;
+  // Cover is now stored inside META (coverData / coverMime).
+  // Fall back to the legacy COVR section so old files still open correctly.
+  let cover     = meta.coverData || null;
   let coverMime = meta.coverMime || '';
-  try {
-    const covrStr = sections['COVR']?.[0];
-    if (covrStr) {
-      const parsed = JSON.parse(covrStr);
-      cover     = parsed.data || null;
-      coverMime = parsed.mime || coverMime;
-    }
-  } catch { /* no cover or corrupt — ignore */ }
+  if (!cover) {
+    try {
+      const covrStr = sections['COVR']?.[0];
+      if (covrStr) {
+        const parsed = JSON.parse(covrStr);
+        cover     = parsed.data || null;
+        coverMime = parsed.mime || coverMime;
+      }
+    } catch { /* no legacy cover or corrupt — ignore */ }
+  }
+  // Strip coverData from the meta object we return; callers use cover/coverMime instead.
+  const { coverData: _cd, ...cleanMeta } = meta;
 
   const chapters = (mnft.chapters || []).map(ch => ({
     chap_idx: ch.chap_idx,
@@ -565,7 +574,7 @@ export async function unpackSession(bytes) {
     updated:  ch.updated  || new Date().toISOString(),
   })).sort((a, b) => a.order - b.order);
 
-  return { meta, chapters, streak, notes, cover, coverMime, rsLevel, warnings: warn, rsRecovered: rsRec, status };
+  return { meta: cleanMeta, chapters, streak, notes, cover, coverMime, rsLevel, warnings: warn, rsRecovered: rsRec, status };
 }
 
 // ─── App-facing helpers ───────────────────────────────────────────────────────
