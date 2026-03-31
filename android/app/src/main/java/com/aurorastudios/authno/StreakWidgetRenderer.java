@@ -74,8 +74,8 @@ public class StreakWidgetRenderer {
                     streak_days > 0 ? accent : TEXT_DIM);
 
             // Streak label
-            String label = streak_days == 1 ? "day streak 🔥"
-                         : streak_days  > 1 ? "days streak 🔥"
+            String label = streak_days == 1 ? "day streak"
+                         : streak_days  > 1 ? "days streak"
                          : "no streak yet";
             views.setTextViewText(R.id.widget_streak_label, label);
 

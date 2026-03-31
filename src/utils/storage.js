@@ -339,15 +339,44 @@ function _stripHtml(html) {
   return (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function _triggerDownload(filename, content, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 5000);
+async function _triggerDownload(filename, content, mimeType) {
+  if (isAndroid()) {
+    // ── Android / Capacitor WebView ──────────────────────────────────────────
+    // <a download> is silently blocked inside a WebView. Instead write the file
+    // to the cache directory then hand the URI to the OS share sheet so the user
+    // can save / open it with any compatible app (Files, Drive, etc.).
+    const { Filesystem, Directory } = await getFS();
+    const { Share } = await import('@capacitor/share');
+
+    // Encode content to base64 (Filesystem.writeFile expects a base64 string)
+    let b64;
+    if (typeof content === 'string') {
+      // TextEncoder → UTF-8 bytes → base64
+      const bytes = new TextEncoder().encode(content);
+      let binary = '';
+      bytes.forEach(b => { binary += String.fromCharCode(b); });
+      b64 = btoa(binary);
+    } else {
+      // Uint8Array (epub binary)
+      let binary = '';
+      content.forEach(b => { binary += String.fromCharCode(b); });
+      b64 = btoa(binary);
+    }
+
+    await Filesystem.writeFile({ path: filename, data: b64, directory: Directory.Cache });
+    const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });
+    await Share.share({ title: filename, url: uri, dialogTitle: `Save ${filename}` });
+  } else {
+    // ── Web / Electron ───────────────────────────────────────────────────────
+    const blob = new Blob([content], { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 5000);
+  }
 }
 
 function _safeName(session) {
@@ -367,7 +396,7 @@ export async function exportAsTxt(session) {
     lines.push(`\n${'─'.repeat(40)}\n${ch.title}\n${'─'.repeat(40)}\n`);
     lines.push(_stripHtml(ch.content));
   }
-  _triggerDownload(`${_safeName(session)}.txt`, lines.join('\n'), 'text/plain');
+  await _triggerDownload(`${_safeName(session)}.txt`, lines.join('\n'), 'text/plain');
 }
 
 /**
@@ -407,7 +436,7 @@ export async function exportAsHtml(session) {
 </body>
 </html>`;
 
-  _triggerDownload(`${_safeName(session)}.html`, html, 'text/html');
+  await _triggerDownload(`${_safeName(session)}.html`, html, 'text/html');
 }
 
 /**
@@ -564,5 +593,5 @@ export async function exportAsEpub(session) {
   let at = 0;
   for (const b of allParts) { out.set(b, at); at += b.length; }
 
-  _triggerDownload(`${_safeName(session)}.epub`, out, 'application/epub+zip');
+  await _triggerDownload(`${_safeName(session)}.epub`, out, 'application/epub+zip');
 }

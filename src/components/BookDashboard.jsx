@@ -25,9 +25,27 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   ArrowLeft, Upload, Edit3, Plus, Search, ChevronDown, ChevronUp,
   ArrowUp, SlidersHorizontal, BookOpen, Settings2, Image as ImageIcon,
-  BarChart2, FileText, X,
+  BarChart2, FileText, X, Menu,
 } from 'lucide-react';
 import { FlameButton } from './Streak';
+import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
+
+// ─── MIME normaliser ──────────────────────────────────────────────────────────
+// Some Android gallery/file-picker implementations return an empty file.type for
+// JPEG images (and occasionally other formats). Fall back to extension detection
+// so the data-URL src is never "data:;base64,…" which renders as a black box.
+function normaliseMime(file) {
+  if (file.type) return file.type;
+  const ext = (file.name || '').split('.').pop().toLowerCase();
+  const MAP = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    png: 'image/png',  gif: 'image/gif',
+    webp: 'image/webp', bmp: 'image/bmp',
+    heic: 'image/heic', heif: 'image/heif',
+    avif: 'image/avif',
+  };
+  return MAP[ext] || 'image/jpeg';
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,13 +108,6 @@ function useLightMode() {
   return light;
 }
 
-// ─── BurgerIcon ───────────────────────────────────────────────────────────────
-const BurgerIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-
 // ─── ExportPanel (inline sub-panel) ──────────────────────────────────────────
 function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, onExportEpub, light }) {
   const glass = {
@@ -108,10 +119,10 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
   };
 
   const formats = [
-    { icon: '📄', label: 'Plain Text (.txt)', sub: 'Raw text, no formatting', action: onExportTxt, ready: true },
-    { icon: '🌐', label: 'HTML (.html)',       sub: 'Styled web document',     action: onExportHtml, ready: true },
-    { icon: '📚', label: 'ePub (.epub)',        sub: 'Standard e-book format',  action: onExportEpub, ready: true },
-    { icon: '📕', label: 'PDF (.pdf)',          sub: 'Coming soon',             action: null,         ready: false },
+    { icon: <WordsIcon size={26} />, label: 'Plain Text (.txt)', sub: 'Raw text, no formatting', action: onExportTxt, ready: true },
+    { icon: <GlobeIcon size={26} />, label: 'HTML (.html)',       sub: 'Styled web document',     action: onExportHtml, ready: true },
+    { icon: <BookIcon  size={26} />, label: 'ePub (.epub)',        sub: 'Standard e-book format',  action: onExportEpub, ready: true },
+    { icon: <BookIcon  size={26} />, label: 'PDF (.pdf)',          sub: 'Coming soon',             action: null,         ready: false },
   ];
 
   return (
@@ -140,7 +151,7 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
                 textAlign: 'left', opacity: f.ready ? 1 : 0.45,
                 transition: 'background 0.12s',
               }}>
-              <span style={{ fontSize: '24px', lineHeight: 1, width: '30px', textAlign: 'center' }}>{f.icon}</span>
+              <span style={{ width: '30px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{f.icon}</span>
               <div>
                 <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-1)' }}>{f.label}</div>
                 <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>{f.sub}</div>
@@ -277,7 +288,7 @@ function CoverPicker({ onPick }) {
     reader.onload = (ev) => {
       // Strip the data URL prefix to store pure base64
       const b64 = ev.target.result.split(',')[1];
-      onPick(b64, file.type);
+      onPick(b64, normaliseMime(file));
     };
     reader.readAsDataURL(file);
   };
@@ -458,11 +469,10 @@ export default function BookDashboard({
               <FlameButton current={session} accentHex={accentHex}
                 goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
             )}
-            <button ref={burgerBtnRef} onClick={onToggleMenu} style={{
-              background: 'none', border: '2px solid rgba(255,255,255,0.5)',
-              borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: 'var(--text-1)',
-            }}>
-              <BurgerIcon />
+            <button ref={burgerBtnRef} onClick={onToggleMenu}
+              className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition"
+              style={{ background: 'none', cursor: 'pointer', color: 'var(--text-1)' }}>
+              <Menu className="w-5 h-5" />
             </button>
           </div>
         </header>
@@ -502,7 +512,7 @@ export default function BookDashboard({
                           if (!file) return;
                           const reader = new FileReader();
                           reader.onload = (ev) => {
-                            onUpdateSession({ coverBase64: ev.target.result.split(',')[1], coverMime: file.type });
+                            onUpdateSession({ coverBase64: ev.target.result.split(',')[1], coverMime: normaliseMime(file) });
                           };
                           reader.readAsDataURL(file);
                         }} />
@@ -533,7 +543,7 @@ export default function BookDashboard({
                 marginBottom: '12px',
                 boxShadow: '0 2px 10px rgba(255,107,43,0.4)',
               }}>
-                🔥 Streak [{streakDays}Day{streakDays !== 1 ? 's' : ''}]
+                <FlameIcon size={15} /> Streak {streakDays}Day{streakDays !== 1 ? 's' : ''}
               </div>
             )}
 
@@ -583,14 +593,14 @@ export default function BookDashboard({
             }}>
               <div style={{ flex: 1, padding: '14px 16px', ...statDivider }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
-                  <span style={{ fontSize: '18px' }}>📗</span>
+                  <BookIcon size={20} />
                   <span style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }}>{chapters.length}</span>
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>Chapters</span>
               </div>
               <div style={{ flex: 1, padding: '14px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
-                  <span style={{ fontSize: '18px' }}>📘</span>
+                  <WordsIcon size={20} />
                   <span style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }}>{formatWords(totalWords)}</span>
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>Words</span>

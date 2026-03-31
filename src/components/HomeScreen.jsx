@@ -1,7 +1,7 @@
 // HomeScreen.jsx
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Menu } from 'lucide-react';
-import { FlameButton } from './Streak';
+import { PencilIcon, FolderIcon } from './GradientIcons';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
 import Logo from '../logo.svg';
@@ -329,8 +329,8 @@ export default function HomeScreen({
   };
 
   const actions = [
-    { icon: '✏️', label: 'Create a New Book',        onClick: onNewBook },
-    { icon: '📂', label: 'Edit an Existing Book',    onClick: handleOpenExisting },
+    { icon: <PencilIcon size={28} accentHex={accentHex} />, label: 'Create a New Book',        onClick: onNewBook },
+    { icon: <FolderIcon size={28} />,                        label: 'Edit an Existing Book',    onClick: handleOpenExisting },
     { icon: '🔊', label: 'Read Aloud (Coming Soon)', comingSoon: true },
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },
@@ -359,10 +359,6 @@ export default function HomeScreen({
           <span className="text-white text-lg font-semibold truncate">Welcome Back</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {streakEnabled && (
-            <FlameButton current={current} accentHex={accentHex}
-              goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
-          )}
           <button ref={burgerBtnRef} onClick={onToggleMenu}
             className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition">
             <BurgerIcon className="text-white" />

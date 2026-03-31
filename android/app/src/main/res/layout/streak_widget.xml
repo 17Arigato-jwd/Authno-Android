@@ -26,14 +26,14 @@
         android:gravity="center_vertical"
         android:layout_marginBottom="8dp">
 
-        <!-- Book icon -->
-        <TextView
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:text="📖"
-            android:textSize="18sp"
-            android:gravity="center"
-            android:layout_marginEnd="10dp" />
+        <!-- Book icon (gradient SVG drawn as vector drawable) -->
+        <ImageView
+            android:id="@+id/widget_book_icon"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_book_gradient"
+            android:layout_marginEnd="10dp"
+            android:contentDescription="Book" />
 
         <!-- Title (takes all remaining space) -->
         <TextView
@@ -59,19 +59,20 @@
             android:textStyle="bold"
             android:lineSpacingExtra="-2dp" />
 
-        <!-- Flame emoji next to number -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔥"
-            android:textSize="14sp"
+        <!-- Flame icon (gradient SVG vector drawable) -->
+        <ImageView
+            android:id="@+id/widget_flame_icon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_flame_gradient"
             android:layout_marginStart="2dp"
             android:gravity="bottom"
-            android:paddingBottom="4dp" />
+            android:paddingBottom="4dp"
+            android:contentDescription="Streak fire" />
 
     </LinearLayout>
 
-    <!-- Streak sub-label (e.g. "7 days streak 🔥") -->
+    <!-- Streak sub-label (e.g. "7 days streak") -->
     <TextView
         android:id="@+id/widget_streak_label"
         android:layout_width="match_parent"

@@ -3,6 +3,7 @@ import Logo from "./logo.svg";
 import { Background } from "./components/Background";
 import { RotateCw, Menu } from "lucide-react";
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { App as CapApp } from '@capacitor/app';
 import EditorToolbar from "./components/EditorToolbar";
 import BurgerMenu from "./components/BurgerMenu";
 import Sidebar from "./components/Sidebar";
@@ -245,6 +246,26 @@ function AppInner() {
       document.removeEventListener("touchend", onEnd);
     };
   }, [android]);
+
+  // ── Android hardware back button ─────────────────────────────────────────
+  useEffect(() => {
+    if (!android) return;
+    let listener;
+    CapApp.addListener('backButton', () => {
+      // 1. Close any overlay first
+      if (menuOpen)      { setMenuOpen(false);    return; }
+      if (drawerOpen)    { setDrawerOpen(false);  return; }
+      if (settingsOpen)  { setSettingsOpen(false); return; }
+      if (customizerOpen){ setCustomizerOpen(false); return; }
+      // 2. Navigate back through screens
+      if (view === 'editor')        { setView('book-dashboard'); return; }
+      if (view === 'book-dashboard'){ setView('home');           return; }
+      if (view === 'layout')        { setView('home');           return; }
+      // 3. On home screen — minimize rather than kill the app
+      CapApp.minimizeApp();
+    }).then(h => { listener = h; });
+    return () => { listener?.remove(); };
+  }, [android, menuOpen, drawerOpen, settingsOpen, customizerOpen, view]);
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
