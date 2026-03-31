@@ -271,13 +271,19 @@ export function fromLegacySession(session) {
   return {
     meta: {
       formatVersion: FORMAT_VERSION,
-      id:      session.id      || String(Date.now()),
-      title:   session.title   || 'Untitled',
-      type:    session.type    || 'book',
-      created: session.created || new Date().toISOString(),
-      updated: session.updated || new Date().toISOString(),
-      authors: [],
-      devices: [],
+      id:          session.id          || String(Date.now()),
+      title:       session.title       || 'Untitled',
+      type:        session.type        || 'book',
+      created:     session.created     || new Date().toISOString(),
+      updated:     session.updated     || new Date().toISOString(),
+      authors:     [],
+      devices:     [],
+      genre:       session.genre       || '',
+      description: session.description || '',
+      language:    session.language    || 'en',
+      publisher:   session.publisher   || '',
+      isbn:        session.isbn        || '',
+      coverMime:   session.coverMime   || '',
     },
     chapters: [{
       chap_idx: 1,
@@ -320,8 +326,14 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
     ...book.meta,
     formatVersion: FORMAT_VERSION,
     updated: now,
-    authors: _mergeAuthors(book.meta.authors || [], authorName, now),
-    devices: _mergeDevices(book.meta.devices || [], deviceId, platform, now),
+    authors:     _mergeAuthors(book.meta.authors || [], authorName, now),
+    devices:     _mergeDevices(book.meta.devices || [], deviceId, platform, now),
+    genre:       book.meta.genre       || '',
+    description: book.meta.description || '',
+    language:    book.meta.language    || 'en',
+    publisher:   book.meta.publisher   || '',
+    isbn:        book.meta.isbn        || '',
+    coverMime:   book.cover ? (book.meta.coverMime || 'image/jpeg') : '',
   };
 
   // Build MNFT
@@ -340,7 +352,7 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
   const streak = book.streak || { log: {}, dailyBaseline: {}, goalHistory: [] };
   const notes  = book.notes  || [];
 
-  // Primary sections in fixed order: MNFT META STRK GEN_ CHAP...
+  // Primary sections in fixed order: MNFT META STRK GEN_ CHAP... [COVR]
   const primaries = [
     { tag: 'MNFT', idx: 0, raw: enc.encode(JSON.stringify(mnft))   },
     { tag: 'META', idx: 0, raw: enc.encode(JSON.stringify(meta))   },
@@ -350,6 +362,12 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
       tag: 'CHAP', idx: c.chap_idx,
       raw: enc.encode(c.content || ''),
     })),
+    // COVR section — stored as JSON string containing base64 so it survives
+    // the TextDecoder round-trip in unpackSession (raw image bytes are not valid UTF-8)
+    ...(book.cover ? [{
+      tag: 'COVR', idx: 0,
+      raw: enc.encode(JSON.stringify({ mime: book.meta.coverMime || 'image/jpeg', data: book.cover })),
+    }] : []),
   ];
 
   const encoded = primaries.map(p => {
@@ -526,6 +544,18 @@ export async function unpackSession(bytes) {
   const notes  = getJ('GEN_', 0, []);
   const mnft   = getJ('MNFT', 0, { chapters: [] });
 
+  // COVR section — stored as JSON { mime, data } where data is base64
+  let cover     = null;
+  let coverMime = meta.coverMime || '';
+  try {
+    const covrStr = sections['COVR']?.[0];
+    if (covrStr) {
+      const parsed = JSON.parse(covrStr);
+      cover     = parsed.data || null;
+      coverMime = parsed.mime || coverMime;
+    }
+  } catch { /* no cover or corrupt — ignore */ }
+
   const chapters = (mnft.chapters || []).map(ch => ({
     chap_idx: ch.chap_idx,
     title:    ch.title    || 'Untitled',
@@ -535,7 +565,7 @@ export async function unpackSession(bytes) {
     updated:  ch.updated  || new Date().toISOString(),
   })).sort((a, b) => a.order - b.order);
 
-  return { meta, chapters, streak, notes, rsLevel, warnings: warn, rsRecovered: rsRec, status };
+  return { meta, chapters, streak, notes, cover, coverMime, rsLevel, warnings: warn, rsRecovered: rsRec, status };
 }
 
 // ─── App-facing helpers ───────────────────────────────────────────────────────
@@ -549,11 +579,20 @@ export function bookToSession(book) {
   const firstChap = (book.chapters || [])[0];
   return {
     ...book.meta,
-    content: firstChap?.content ?? '',
-    preview: _preview(firstChap?.content ?? ''),
-    streak:  book.streak  || {},
-    notes:   book.notes   || [],
-    chapters: book.chapters || [],
+    content:     firstChap?.content ?? '',
+    preview:     _preview(firstChap?.content ?? ''),
+    streak:      book.streak      || {},
+    notes:       book.notes       || [],
+    chapters:    book.chapters    || [],
+    // Extended metadata fields
+    genre:       book.meta.genre       || '',
+    description: book.meta.description || '',
+    language:    book.meta.language    || 'en',
+    publisher:   book.meta.publisher   || '',
+    isbn:        book.meta.isbn        || '',
+    // Cover image
+    coverBase64: book.cover            ?? null,
+    coverMime:   book.coverMime        || book.meta.coverMime   || '',
   };
 }
 
@@ -569,12 +608,26 @@ export function sessionToBook(session) {
       i === 0 ? { ...c, content: session.content ?? c.content } : c
     );
     return {
-      meta:     { formatVersion: FORMAT_VERSION, id: session.id, title: session.title,
-                  type: session.type, created: session.created, updated: session.updated,
-                  authors: session.authors || [], devices: session.devices || [] },
+      meta: {
+        formatVersion: FORMAT_VERSION,
+        id:          session.id          || String(Date.now()),
+        title:       session.title       || 'Untitled',
+        type:        session.type        || 'book',
+        created:     session.created     || new Date().toISOString(),
+        updated:     session.updated     || new Date().toISOString(),
+        authors:     session.authors     || [],
+        devices:     session.devices     || [],
+        genre:       session.genre       || '',
+        description: session.description || '',
+        language:    session.language    || 'en',
+        publisher:   session.publisher   || '',
+        isbn:        session.isbn        || '',
+        coverMime:   session.coverMime   || '',
+      },
       chapters,
-      streak:   session.streak || {},
-      notes:    session.notes  || [],
+      streak:  session.streak || {},
+      notes:   session.notes  || [],
+      cover:   session.coverBase64 ?? null,
     };
   }
   // Flat session — migrate

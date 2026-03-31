@@ -332,3 +332,237 @@ function _readFileBytes(file) {
     r.readAsArrayBuffer(file);
   });
 }
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function _stripHtml(html) {
+  return (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function _triggerDownload(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 5000);
+}
+
+function _safeName(session) {
+  return (session.title || 'Untitled').replace(/[^a-z0-9\-_ ]/gi, '_').slice(0, 60).trim();
+}
+
+/**
+ * Export all chapters as a plain text file.
+ */
+export async function exportAsTxt(session) {
+  const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
+  const lines = [];
+  lines.push(session.title || 'Untitled');
+  if (session.description) lines.push('', session.description);
+  lines.push('');
+  for (const ch of chapters) {
+    lines.push(`\n${'─'.repeat(40)}\n${ch.title}\n${'─'.repeat(40)}\n`);
+    lines.push(_stripHtml(ch.content));
+  }
+  _triggerDownload(`${_safeName(session)}.txt`, lines.join('\n'), 'text/plain');
+}
+
+/**
+ * Export all chapters as a styled standalone HTML file.
+ */
+export async function exportAsHtml(session) {
+  const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
+  const chapHtml = chapters.map(ch => `
+    <section class="chapter">
+      <h2>${ch.title}</h2>
+      <div class="content">${ch.content || ''}</div>
+    </section>`).join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="${session.language || 'en'}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${session.title || 'Untitled'}</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 700px; margin: 40px auto; padding: 0 20px; line-height: 1.8; color: #222; }
+    h1   { font-size: 2em; margin-bottom: .2em; }
+    .meta { color: #666; margin-bottom: 2em; font-size: .9em; }
+    .chapter { margin-top: 3em; }
+    h2   { font-size: 1.4em; border-bottom: 1px solid #eee; padding-bottom: .3em; }
+    .content { margin-top: 1em; }
+  </style>
+</head>
+<body>
+  <h1>${session.title || 'Untitled'}</h1>
+  <div class="meta">
+    ${(session.authors || []).map(a => a.name).filter(Boolean).join(', ')}
+    ${session.genre ? `&nbsp;·&nbsp; ${session.genre}` : ''}
+  </div>
+  ${session.description ? `<p class="description"><em>${session.description}</em></p>` : ''}
+  ${chapHtml}
+</body>
+</html>`;
+
+  _triggerDownload(`${_safeName(session)}.html`, html, 'text/html');
+}
+
+/**
+ * Export as a valid ePub 3 file.
+ * Builds the zip structure in-memory without any external library.
+ */
+export async function exportAsEpub(session) {
+  const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
+  const bookId   = session.id || String(Date.now());
+  const title    = session.title    || 'Untitled';
+  const language = session.language || 'en';
+  const author   = (session.authors || []).map(a => a.name).filter(Boolean).join(', ') || 'Unknown';
+
+  // ── Build file map ────────────────────────────────────────────────────────
+  const files = {};
+
+  // mimetype (must be first, uncompressed)
+  files['mimetype'] = 'application/epub+zip';
+
+  // META-INF/container.xml
+  files['META-INF/container.xml'] = `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+
+  // Chapter XHTML files
+  const chapItems   = [];
+  const chapSpine   = [];
+  for (let i = 0; i < chapters.length; i++) {
+    const ch   = chapters[i];
+    const id   = `chap${ch.chap_idx}`;
+    const href = `${id}.xhtml`;
+    files[`OEBPS/${href}`] = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${language}">
+<head><title>${ch.title}</title>
+<style>body{font-family:Georgia,serif;line-height:1.8;margin:2em;}</style>
+</head>
+<body>
+  <h1>${ch.title}</h1>
+  ${ch.content || ''}
+</body>
+</html>`;
+    chapItems.push(`<item id="${id}" href="${href}" media-type="application/xhtml+xml"/>`);
+    chapSpine.push(`<itemref idref="${id}"/>`);
+  }
+
+  // OEBPS/content.opf
+  files['OEBPS/content.opf'] = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">${bookId}</dc:identifier>
+    <dc:title>${title}</dc:title>
+    <dc:language>${language}</dc:language>
+    <dc:creator>${author}</dc:creator>
+    <meta property="dcterms:modified">${new Date().toISOString().slice(0, 19)}Z</meta>
+  </metadata>
+  <manifest>
+    ${chapItems.join('\n    ')}
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+  </manifest>
+  <spine>${chapSpine.join('')}</spine>
+</package>`;
+
+  // OEBPS/nav.xhtml
+  const navLi = chapters.map(ch =>
+    `<li><a href="chap${ch.chap_idx}.xhtml">${ch.title}</a></li>`
+  ).join('\n      ');
+  files['OEBPS/nav.xhtml'] = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Table of Contents</title></head>
+<body>
+  <nav epub:type="toc"><ol>${navLi}</ol></nav>
+</body>
+</html>`;
+
+  // ── Zip in-memory (store-only, no compression — valid for ePub) ───────────
+  const enc     = new TextEncoder();
+  const parts   = [];
+  const entries = [];
+
+  const crc32 = (bytes) => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[i] = c >>> 0;
+    }
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = (t[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8)) >>> 0;
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  };
+  const u32le = (v) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v, true); return b; };
+  const u16le = (v) => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, v, true); return b; };
+
+  let offset = 0;
+  for (const [name, content] of Object.entries(files)) {
+    const nameBytes = enc.encode(name);
+    const dataBytes = typeof content === 'string' ? enc.encode(content) : content;
+    const crc       = crc32(dataBytes);
+    const local     = new Uint8Array([
+      0x50, 0x4B, 0x03, 0x04, // Local file header sig
+      0x14, 0x00,             // version needed
+      0x00, 0x00,             // general purpose flags
+      0x00, 0x00,             // compression: store
+      0x00, 0x00, 0x00, 0x00, // mod time/date (zero)
+      ...u32le(crc),
+      ...u32le(dataBytes.length),
+      ...u32le(dataBytes.length),
+      ...u16le(nameBytes.length),
+      0x00, 0x00,
+    ]);
+    entries.push({ name: nameBytes, crc, size: dataBytes.length, offset });
+    offset += local.length + nameBytes.length + dataBytes.length;
+    parts.push(local, nameBytes, dataBytes);
+  }
+
+  // Central directory
+  const cdParts = [];
+  for (const e of entries) {
+    const cd = new Uint8Array([
+      0x50, 0x4B, 0x01, 0x02,
+      0x14, 0x00, 0x14, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      ...u32le(e.crc),
+      ...u32le(e.size), ...u32le(e.size),
+      ...u16le(e.name.length),
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
+      ...u32le(e.offset),
+    ]);
+    cdParts.push(cd, e.name);
+  }
+
+  const cdOffset = offset;
+  let cdSize = cdParts.reduce((n, b) => n + b.length, 0);
+
+  const eocd = new Uint8Array([
+    0x50, 0x4B, 0x05, 0x06,
+    0x00, 0x00, 0x00, 0x00,
+    ...u16le(entries.length), ...u16le(entries.length),
+    ...u32le(cdSize), ...u32le(cdOffset),
+    0x00, 0x00,
+  ]);
+
+  // Concatenate everything
+  const allParts = [...parts, ...cdParts, eocd];
+  const total    = allParts.reduce((n, b) => n + b.length, 0);
+  const out      = new Uint8Array(total);
+  let at = 0;
+  for (const b of allParts) { out.set(b, at); at += b.length; }
+
+  _triggerDownload(`${_safeName(session)}.epub`, out, 'application/epub+zip');
+}

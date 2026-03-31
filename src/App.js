@@ -17,6 +17,7 @@ import FileIntegrityModal from "./components/FileIntegrityModal";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
+import BookDashboard from "./components/BookDashboard";
 import { Onboarding, hasSeenOnboarding } from "./components/Onboarding";
 
 const BurgerIcon = ({ className }) => (
@@ -30,16 +31,18 @@ function Editor({
   current, onEditTitle, onEditContent,
   onToggleMenu, accentHex, goalWords, onStreakUpdate,
   onToggleSidebar, burgerBtnRef,
+  chapterTitle, onEditChapterTitle,
+  onBack, onPrevChapter, onNextChapter, chapterPosition,
 }) {
-  const [title, setTitle] = useState(current?.title || "");
+  const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
   const android = isAndroid();
 
-  useEffect(() => { setTitle(current?.title || ""); }, [current]);
+  useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
   useEffect(() => {
     if (editorRef.current && current?.content !== undefined)
       editorRef.current.innerHTML = current.content || "";
-  }, [current?.id]);
+  }, [current?.id, current?._editingChap]);
 
   const execCommand = (cmd, val = null) => {
     editorRef.current?.focus();
@@ -52,7 +55,18 @@ function Editor({
       <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
         style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2 min-w-0">
-          {android && (
+          {/* Back to book dashboard */}
+          {onBack && (
+            <button onClick={onBack}
+              className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
+              aria-label="Back to book"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-1)', background: 'none', cursor: 'pointer' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
+          {android && !onBack && (
             <button onClick={onToggleSidebar}
               className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
               aria-label="Sessions">
@@ -61,8 +75,16 @@ function Editor({
           )}
           <input
             value={title}
-            onChange={(e) => { const t = e.target.value; setTitle(t); onEditTitle(t); }}
-            onBlur={() => onEditTitle(title)}
+            onChange={(e) => {
+              const t = e.target.value;
+              setTitle(t);
+              if (onEditChapterTitle) onEditChapterTitle(t);
+              else onEditTitle(t);
+            }}
+            onBlur={() => {
+              if (onEditChapterTitle) onEditChapterTitle(title);
+              else onEditTitle(title);
+            }}
             className="bg-transparent text-white text-lg font-semibold focus:outline-none border-b border-transparent focus:border-white/20 truncate min-w-0"
             style={{ maxWidth: android ? "40vw" : "60vw" }}
             placeholder="Untitled"
@@ -80,7 +102,50 @@ function Editor({
         </div>
       </header>
 
-      {/* Content */}
+      {/* Chapter navigation bar — only shown when editing a specific chapter */}
+      {chapterPosition && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '7px 16px',
+          background: 'var(--app-bg)',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          <button
+            onClick={onPrevChapter}
+            disabled={!onPrevChapter}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              background: 'none', border: 'none', cursor: onPrevChapter ? 'pointer' : 'default',
+              color: onPrevChapter ? 'var(--text-3)' : 'var(--text-5)',
+              fontSize: '13px', fontWeight: 600, padding: '4px 8px', borderRadius: '6px',
+              opacity: onPrevChapter ? 1 : 0.35,
+            }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Prev
+          </button>
+          <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>
+            Ch {chapterPosition.pos} / {chapterPosition.total}
+          </span>
+          <button
+            onClick={onNextChapter}
+            disabled={!onNextChapter}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              background: 'none', border: 'none', cursor: onNextChapter ? 'pointer' : 'default',
+              color: onNextChapter ? 'var(--text-3)' : 'var(--text-5)',
+              fontSize: '13px', fontWeight: 600, padding: '4px 8px', borderRadius: '6px',
+              opacity: onNextChapter ? 1 : 0.35,
+            }}>
+            Next
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      )}
       <main className="relative flex-1 overflow-auto" style={{ padding: android ? "0.75rem" : "1.5rem" }}>
         {current ? (
           <>
@@ -117,7 +182,8 @@ function AppInner() {
   const [menuOpen, setMenuOpen]   = useState(false);
   const [lastSaved]               = useState(null);
   const [inactive]                = useState(false);
-  const [view, setView]           = useState("editor");
+  const [view, setView]           = useState("home");
+  const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [brokenFiles, setBrokenFiles] = useState([]);
@@ -462,9 +528,16 @@ function AppInner() {
   // ── CRUD ─────────────────────────────────────────────────────────────────
   const newBook = () => {
     const id = Date.now().toString(), now = new Date().toISOString();
-    setSessions((s) => [{ id, title: "Untitled Book", preview: "A new story...", content: "", type: "book", created: now, updated: now }, ...s]);
+    const firstChap = { chap_idx: 1, title: "Chapter 1", order: 1, content: "", created: now, updated: now };
+    setSessions((s) => [{
+      id, title: "Untitled Book", preview: "", content: "",
+      type: "book", created: now, updated: now,
+      chapters: [firstChap],
+      authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "",
+    }, ...s]);
     setCurrentId(id);
-    setView("editor");
+    setCurrentChapterIdx(null);
+    setView("book-dashboard");
     if (android) setDrawerOpen(false);
   };
   const newStoryboard = () => {
@@ -475,22 +548,169 @@ function AppInner() {
   };
   const handleSelect = (id, sessionObj) => {
     if (sessionObj) {
-      // Book from On Device tab — merge into sessions if not already present
       setSessions((prev) =>
         prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]
       );
     }
     setCurrentId(id);
-    setView("editor");
+    setCurrentChapterIdx(null);
+    setView("book-dashboard");
     if (android) setDrawerOpen(false);
   };
+
+  // Open a specific chapter in the editor
+  const handleEditChapter = useCallback((chapIdx) => {
+    setCurrentChapterIdx(chapIdx);
+    setView("editor");
+  }, []);
+
+  // Create a new chapter and open it — compute idx synchronously to avoid race
+  const handleNewChapter = useCallback(() => {
+    const cur = sessions.find(s => s.id === currentId);
+    if (!cur) return;
+    const now      = new Date().toISOString();
+    const maxIdx   = cur.chapters?.length
+      ? Math.max(...cur.chapters.map(c => c.chap_idx))
+      : 0;
+    const maxOrder = cur.chapters?.length
+      ? Math.max(...cur.chapters.map(c => c.order))
+      : 0;
+    const newIdx   = maxIdx + 1;
+    const newChap  = {
+      chap_idx: newIdx,
+      title:    `Chapter ${newIdx}`,
+      order:    maxOrder + 1,
+      content:  '',
+      created:  now,
+      updated:  now,
+    };
+    setSessions(prev => prev.map(s =>
+      s.id !== currentId ? s :
+      { ...s, chapters: [...(s.chapters || []), newChap], updated: now }
+    ));
+    setCurrentChapterIdx(newIdx);
+    setView('editor');
+  }, [currentId, sessions]);
+
+  // Merge metadata/cover/description updates back into session
+  const handleUpdateSession = useCallback((updates) => {
+    setSessions((prev) => prev.map((s) =>
+      s.id === currentId
+        ? { ...s, ...updates, updated: new Date().toISOString() }
+        : s
+    ));
+  }, [currentId]);
+
+  // Delete a chapter by chap_idx — guards against deleting the last chapter
+  const handleDeleteChapter = useCallback((chapIdx) => {
+    setSessions((prev) => prev.map((s) => {
+      if (s.id !== currentId) return s;
+      if ((s.chapters || []).length <= 1) return s; // never delete the last one
+      const chapters = (s.chapters || []).filter(c => c.chap_idx !== chapIdx);
+      return { ...s, chapters, updated: new Date().toISOString() };
+    }));
+  }, [currentId]);
+
+  // Move a chapter up (-1) or down (+1) in display order
+  const handleMoveChapter = useCallback((chapIdx, direction) => {
+    setSessions((prev) => prev.map((s) => {
+      if (s.id !== currentId) return s;
+      const sorted = [...(s.chapters || [])].sort((a, b) => a.order - b.order);
+      const pos = sorted.findIndex(c => c.chap_idx === chapIdx);
+      const swapPos = pos + direction;
+      if (swapPos < 0 || swapPos >= sorted.length) return s;
+      // Swap order values
+      const ordA = sorted[pos].order;
+      const ordB = sorted[swapPos].order;
+      const chapters = s.chapters.map(c => {
+        if (c.chap_idx === sorted[pos].chap_idx)   return { ...c, order: ordB };
+        if (c.chap_idx === sorted[swapPos].chap_idx) return { ...c, order: ordA };
+        return c;
+      });
+      return { ...s, chapters, updated: new Date().toISOString() };
+    }));
+  }, [currentId]);
+
   const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId ? { ...x, title: t } : x));
-  const handleEditContent = (c) => setSessions((s) => s.map((x) =>
-    x.id === currentId ? { ...x, content: c, preview: c.replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." } : x
-  ));
+
+  // Chapter-level content edit — updates the specific chapter and syncs session.content for chap 1
+  const handleEditContent = (c) => setSessions((s) => s.map((x) => {
+    if (x.id !== currentId) return x;
+    const chapIdx = currentChapterIdx || 1;
+    const now = new Date().toISOString();
+    const chapters = (x.chapters || []).map((ch) =>
+      ch.chap_idx === chapIdx
+        ? { ...ch, content: c, updated: now }
+        : ch
+    );
+    return {
+      ...x,
+      chapters,
+      content: chapIdx === 1 ? c : x.content,
+      preview: chapIdx === 1 ? c.replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." : x.preview,
+      updated: now,
+    };
+  }));
+
+  // Chapter title edit
+  const handleEditChapterTitle = useCallback((t) => {
+    setSessions((prev) => prev.map((s) => {
+      if (s.id !== currentId) return s;
+      const chapters = (s.chapters || []).map((ch) =>
+        ch.chap_idx === currentChapterIdx ? { ...ch, title: t } : ch
+      );
+      return { ...s, chapters };
+    }));
+  }, [currentId, currentChapterIdx]);
 
   const filtered = sessions.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
   const current  = sessions.find((s) => s.id === currentId) || null;
+
+  // Build a virtual "current" for the Editor that has the right chapter's content
+  const editorCurrent = React.useMemo(() => {
+    if (!current || currentChapterIdx === null) return current;
+    const chap = (current.chapters || []).find(c => c.chap_idx === currentChapterIdx);
+    if (!chap) return current;
+    return { ...current, content: chap.content, _editingChap: currentChapterIdx };
+  }, [current, currentChapterIdx]);
+
+  const currentChapter = React.useMemo(() => {
+    if (!current || currentChapterIdx === null) return null;
+    return (current.chapters || []).find(c => c.chap_idx === currentChapterIdx) || null;
+  }, [current, currentChapterIdx]);
+
+  // Sorted chapter list + adjacent indices for Editor prev/next navigation
+  const sortedChapters = React.useMemo(() =>
+    [...(current?.chapters || [])].sort((a, b) => a.order - b.order),
+    [current?.chapters]
+  );
+  const currentChapterPos = React.useMemo(() =>
+    sortedChapters.findIndex(c => c.chap_idx === currentChapterIdx),
+    [sortedChapters, currentChapterIdx]
+  );
+  const prevChapIdx = currentChapterPos > 0
+    ? sortedChapters[currentChapterPos - 1].chap_idx : null;
+  const nextChapIdx = currentChapterPos < sortedChapters.length - 1
+    ? sortedChapters[currentChapterPos + 1].chap_idx : null;
+
+  // ── Export helpers ────────────────────────────────────────────────────────
+  const handleExportTxt = useCallback(async () => {
+    if (!current) return;
+    const { exportAsTxt } = await import('./utils/storage');
+    try { await exportAsTxt(current); } catch (e) { showError('exportTxt', e); }
+  }, [current, showError]);
+
+  const handleExportHtml = useCallback(async () => {
+    if (!current) return;
+    const { exportAsHtml } = await import('./utils/storage');
+    try { await exportAsHtml(current); } catch (e) { showError('exportHtml', e); }
+  }, [current, showError]);
+
+  const handleExportEpub = useCallback(async () => {
+    if (!current) return;
+    const { exportAsEpub } = await import('./utils/storage');
+    try { await exportAsEpub(current); } catch (e) { showError('exportEpub', e); }
+  }, [current, showError]);
 
   const handleToggleMenu = () => {
     // Update CSS vars so BurgerMenu knows exactly where to appear
@@ -565,7 +785,10 @@ function AppInner() {
         onDelete={(id) => {
           const updated = sessions.filter((s) => s.id !== id);
           setSessions(updated);
-          if (id === currentId) setCurrentId(null);
+          if (id === currentId) {
+            setCurrentId(null);
+            setView("home");
+          }
           localStorage.setItem("offlineWriterSessions", JSON.stringify(updated));
         }}
       />
@@ -585,12 +808,50 @@ function AppInner() {
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
           onStreakUpdate={handleStreakUpdate}
           streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onRefresh={async () => {
+            try {
+              const { listSavedBooks } = await import('./utils/storage');
+              const books = await listSavedBooks();
+              if (books.length) {
+                setSessions(prev => {
+                  const ids = new Set(prev.map(s => s.id));
+                  return [...prev, ...books.filter(b => !ids.has(b.id))];
+                });
+              }
+            } catch (e) { showError('refresh', e); }
+          }}
+        />
+      ) : view === "book-dashboard" ? (
+        <BookDashboard
+          session={current}
+          accentHex={customization.accentHex}
+          onBack={() => setView("home")}
+          onEditChapter={handleEditChapter}
+          onNewChapter={handleNewChapter}
+          onUpdateSession={handleUpdateSession}
+          onDeleteChapter={handleDeleteChapter}
+          onMoveChapter={handleMoveChapter}
+          onExportTxt={handleExportTxt}
+          onExportHtml={handleExportHtml}
+          onExportEpub={handleExportEpub}
+          onToggleMenu={handleToggleMenu}
+          burgerBtnRef={burgerBtnRef}
+          onToggleSidebar={() => setDrawerOpen((v) => !v)}
+          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          onStreakUpdate={handleStreakUpdate}
+          streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
       ) : (
         <Editor
-          current={current}
+          current={editorCurrent}
           onEditTitle={handleEditTitle}
           onEditContent={handleEditContent}
+          onEditChapterTitle={currentChapterIdx ? handleEditChapterTitle : undefined}
+          chapterTitle={currentChapter?.title ?? null}
+          onBack={() => setView("book-dashboard")}
+          onPrevChapter={prevChapIdx !== null ? () => handleEditChapter(prevChapIdx) : null}
+          onNextChapter={nextChapIdx !== null ? () => handleEditChapter(nextChapIdx) : null}
+          chapterPosition={currentChapterPos >= 0 ? { pos: currentChapterPos + 1, total: sortedChapters.length } : null}
           onToggleMenu={handleToggleMenu}
           accentHex={customization.accentHex}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
@@ -607,7 +868,7 @@ function AppInner() {
         current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
-        onOpen={(id) => { setCurrentId(id); setView("editor"); if (android) setDrawerOpen(false); }}
+        onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex}
         anchorRef={burgerBtnRef}
       />

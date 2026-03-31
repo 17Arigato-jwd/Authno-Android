@@ -401,9 +401,30 @@ export default function Sidebar({
                   : {}
                 }
               >
-                <div className="font-medium">{s.title}</div>
-                <div className="text-xs text-white/40">
-                  {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  {/* Cover thumbnail */}
+                  <div style={{
+                    width: '36px', height: '50px', flexShrink: 0, borderRadius: '6px',
+                    overflow: 'hidden', background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {s.coverBase64 ? (
+                      <img
+                        src={`data:${s.coverMime || 'image/jpeg'};base64,${s.coverBase64}`}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <img src={Logo} alt="" style={{ width: '22px', height: '22px', opacity: 0.5, objectFit: 'contain' }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="font-medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                    <div className="text-xs text-white/40" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}

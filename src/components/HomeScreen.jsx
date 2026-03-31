@@ -251,15 +251,23 @@ function ActionTile({ icon, label, onClick, accentHex, comingSoon, theme }) {
 }
 
 // ─── BookCard ─────────────────────────────────────────────────────────────────
-function BookCard({ title, meta, onClick, accentHex, theme }) {
+function BookCard({ title, meta, onClick, accentHex, theme, cover, coverMime }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div onClick={onClick}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={theme.bookCard(hovered)}>
       <div style={theme.bookThumb}>
-        <img src={Logo} alt="book"
-          style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.9 }} />
+        {cover ? (
+          <img
+            src={`data:${coverMime || 'image/jpeg'};base64,${cover}`}
+            alt="cover"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: '10px' }}
+          />
+        ) : (
+          <img src={Logo} alt="book"
+            style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.9 }} />
+        )}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
@@ -442,7 +450,8 @@ export default function HomeScreen({
                 ) : recentBooks.map(book => (
                   <BookCard key={book.id} title={book.title}
                     meta={['.authbook', timeAgo(book.updated || book.created)]}
-                    onClick={() => onSelect(book.id)} accentHex={accentHex} theme={theme} />
+                    onClick={() => onSelect(book.id)} accentHex={accentHex} theme={theme}
+                    cover={book.coverBase64} coverMime={book.coverMime} />
                 ))
               )}
 
@@ -467,6 +476,8 @@ export default function HomeScreen({
                     onClick={() => onSelect(book.id, book)}
                     accentHex={accentHex}
                     theme={theme}
+                    cover={book.coverBase64}
+                    coverMime={book.coverMime}
                   />
                 ))
               )}
