@@ -438,9 +438,17 @@ function AppInner() {
         const session = await openBookFromBytes(base64, uri);
         if (!session) return;
         setSessions((prev) => {
-          if (prev.some((s) => s.id === session.id)) return prev;
+          const idx = prev.findIndex(
+            (s) => s.id === session.id || (session.filePath && s.filePath === session.filePath)
+          );
+
           setCurrentId(session.id);
-          return [session, ...prev];
+
+          if (idx === -1) return [session, ...prev];
+
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...session };
+          return next;
         });
       } catch (err) {
         alert("⚠️ Could not open that .authbook file — it may be corrupt.\n" + err.message);

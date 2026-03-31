@@ -256,15 +256,23 @@ export default function Sidebar({
     try {
       const result = await openBook();
       if (!result) return;
-      if (sessions.some((s) => s.filePath === result.filePath)) {
-        alert("This book is already open!"); return;
-      }
       const book = {
-        ...result,                                   // keep everything from the binary
-        id: result.id || Date.now().toString(),      // preserve original id
+        ...result,
+        id: result.id || Date.now().toString(),
         preview: (result.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...",
       };
-      setSessions((p) => [book, ...p]);
+
+      setSessions((prev) => {
+        const idx = prev.findIndex(
+          (s) => s.id === book.id || (book.filePath && s.filePath === book.filePath)
+        );
+
+        if (idx === -1) return [book, ...prev];
+
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...book };
+        return next;
+      });
       onSelect?.(book.id);                           // actually select the opened book
       if (android) onDrawerClose?.();
     } catch (err) {

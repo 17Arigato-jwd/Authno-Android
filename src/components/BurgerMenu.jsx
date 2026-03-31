@@ -129,9 +129,17 @@ export default function BurgerMenu({
     try {
       const session = await openBook();
       if (session) {
-        setSessions((prev) =>
-          prev.some((s) => s.id === session.id) ? prev : [session, ...prev]
-        );
+        setSessions((prev) => {
+          const idx = prev.findIndex(
+            (s) => s.id === session.id || (session.filePath && s.filePath === session.filePath)
+          );
+
+          if (idx === -1) return [session, ...prev];
+
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...session };
+          return next;
+        });
         onOpen?.(session.id);
       }
     } catch (err) {
