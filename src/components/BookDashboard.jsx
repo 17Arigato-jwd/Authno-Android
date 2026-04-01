@@ -30,7 +30,6 @@ import {
 import { FlameButton } from './Streak';
 import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
-import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 
 // Matches the BurgerIcon used in the Editor header in App.js (three-line SVG,
 // border-2 border-white) so the button looks identical across all screens.

@@ -293,7 +293,14 @@ function ApiDataPage({ extension, page, session, accentHex }) {
     }
   }, [extension, page, session]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+
+    const handler = () => load();
+    window.addEventListener('extension-api-refresh', handler);
+
+    return () => window.removeEventListener('extension-api-refresh', handler);
+  }, [load]);
 
   if (loading) return <StatusBox icon={<Loader size={28} style={{ animation: 'spin 1s linear infinite' }} />} title="Loading data…" accentHex={accentHex} />;
   if (error)   return (
@@ -458,10 +465,9 @@ export default function ExtensionPage({ extension, pageId, session, accentHex, o
   }
 
   // Refresh button shown in the header for api-data pages
-  const refreshRef = useRef(null);
   const headerAction = pageDef.type === 'api-data' ? (
     <button
-      onClick={() => refreshRef.current?.()}
+      onClick={() => window.dispatchEvent(new Event('extension-api-refresh'))}
       style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: '6px' }}
       aria-label="Refresh"
     >
