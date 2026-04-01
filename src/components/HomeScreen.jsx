@@ -5,6 +5,7 @@ import { PencilIcon, FolderIcon } from './GradientIcons';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
 import Logo from '../logo.svg';
+import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
 // Reads the .light-mode class from the app-root div — no prop needed from App.js.
@@ -328,9 +329,18 @@ export default function HomeScreen({
     } catch (err) { showError('openBook', err); }
   };
 
+  const { navigate } = useExtensions();
+  const extHomeTiles  = useExtensionContributions('homescreen');
+
   const actions = [
     { icon: <PencilIcon size={28} accentHex={accentHex} />, label: 'Create a New Book',        onClick: onNewBook },
     { icon: <FolderIcon size={28} />,                        label: 'Edit an Existing Book',    onClick: handleOpenExisting },
+    // Extension-contributed action tiles (dynamically populated)
+    ...extHomeTiles.map(tile => ({
+      icon: <span style={{ fontSize: '26px', lineHeight: 1 }}>{tile.icon ?? tile._extIcon}</span>,
+      label: tile.label,
+      onClick: () => navigate(tile._ext, tile.page),
+    })),
     { icon: '🔊', label: 'Read Aloud (Coming Soon)', comingSoon: true },
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },
     { icon: '?',  label: 'Coming Soon',              comingSoon: true },

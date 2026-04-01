@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
+import ExtensionTab from "./ExtensionTab";
 
 // ── Haptics helper ─────────────────────────────────────────────────────────────
 async function hapticHeavy() {
@@ -48,6 +49,7 @@ export default function Sidebar({
   accentHex,
   lightMode,
   setView,
+  session,        // ← current book session (forwarded to ExtensionTab)
   // mobile
   isDrawerOpen,
   onDrawerClose,
@@ -476,6 +478,13 @@ export default function Sidebar({
         </>,
         document.body
       )}
+
+      {/* EXTENSION TAB — only rendered when extensions are installed */}
+      <ExtensionTab
+        accentHex={accentHex}
+        session={session}
+        onClose={android ? onDrawerClose : undefined}
+      />
 
       {/* RESIZE HANDLE (desktop only) */}
       {!android && (

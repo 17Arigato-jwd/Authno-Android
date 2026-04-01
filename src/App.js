@@ -20,6 +20,8 @@ import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
 import { Onboarding, hasSeenOnboarding } from "./components/Onboarding";
+import { ExtensionProvider } from "./utils/ExtensionContext";
+import ExtensionPage from "./components/ExtensionPage";
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -175,7 +177,7 @@ function Editor({
 }
 
 /* ── App ────────────────────────────────────────────────────────────────── */
-function AppInner() {
+function AppInner({ navigateRef }) {
   const { showError } = useError();
   const [sessions, setSessions]   = useState([]);
   const [search, setSearch]       = useState("");
@@ -184,6 +186,18 @@ function AppInner() {
   const [lastSaved]               = useState(null);
   const [inactive]                = useState(false);
   const [view, setView]           = useState("home");
+  // Extension page state — set by the navigate() callback in ExtensionProvider
+  const [extPageState, setExtPageState] = useState(null); // { extension, pageId, session }
+
+  // Wire the navigate implementation into the ref so ExtensionProvider can call it
+  // from anywhere in the tree without prop-drilling.
+  useEffect(() => {
+    if (!navigateRef) return;
+    navigateRef.current = (extension, pageId, session) => {
+      setExtPageState({ extension, pageId, session, _prevView: view });
+      setView("extension-page");
+    };
+  }); // no dep array — always write the latest `view` closure
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -258,6 +272,7 @@ function AppInner() {
       if (settingsOpen)  { setSettingsOpen(false); return; }
       if (customizerOpen){ setCustomizerOpen(false); return; }
       // 2. Navigate back through screens
+      if (view === 'extension-page') { setView(extPageState?._prevView ?? 'home'); setExtPageState(null); return; }
       if (view === 'editor')        { setView('book-dashboard'); return; }
       if (view === 'book-dashboard'){ setView('home');           return; }
       if (view === 'layout')        { setView('home');           return; }
@@ -838,6 +853,7 @@ function AppInner() {
         lightMode={settings.lightMode}
         isDrawerOpen={drawerOpen}
         onDrawerClose={() => setDrawerOpen(false)}
+        session={current}
         onDelete={(id) => {
           const updated = sessions.filter((s) => s.id !== id);
           setSessions(updated);
@@ -849,7 +865,15 @@ function AppInner() {
         }}
       />
 
-      {view === "layout" ? (
+      {view === "extension-page" && extPageState ? (
+        <ExtensionPage
+          extension={extPageState.extension}
+          pageId={extPageState.pageId}
+          session={extPageState.session ?? current}
+          accentHex={customization.accentHex}
+          onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }}
+        />
+      ) : view === "layout" ? (
         <EditLayout sessions={sessions} setSessions={setSessions} />
       ) : view === "home" ? (
         <HomeScreen
@@ -916,7 +940,7 @@ function AppInner() {
           burgerBtnRef={burgerBtnRef}
           streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
-      )}
+      ))}
 
       <BurgerMenu
         open={menuOpen}
@@ -960,16 +984,36 @@ function AppInner() {
   );
 }
 
-/* ── Root export wrapped in ErrorProvider ──────────────────────────────────── */
+/* ── Root export wrapped in ErrorProvider + ExtensionProvider ──────────────── */
 export default function App() {
-  // We read accentHex from localStorage so ErrorProvider has the right colour
-  // before customization state is initialised inside AppInner.
   const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");
   const accentHex = stored.accentHex || "#5a00d9";
 
   return (
     <ErrorProvider accentHex={accentHex}>
-      <AppInner />
+      {/* ExtensionProvider wraps AppInner so every component in the tree can
+          call useExtensions(). The onNavigate prop is wired inside AppInner
+          via a ref so we don't need to lift state out of AppInner. */}
+      <AppInnerWithExtensions />
     </ErrorProvider>
+  );
+}
+
+/**
+ * Thin wrapper that creates the navigate callback (which needs setView /
+ * setExtPageState from AppInner's state) and passes it into ExtensionProvider.
+ * We do this by keeping a stable ref that AppInner writes to on every render.
+ */
+function AppInnerWithExtensions() {
+  const navigateRef = React.useRef(null);
+
+  const onNavigate = React.useCallback((extension, pageId, session) => {
+    navigateRef.current?.(extension, pageId, session);
+  }, []);
+
+  return (
+    <ExtensionProvider onNavigate={onNavigate}>
+      <AppInner navigateRef={navigateRef} />
+    </ExtensionProvider>
   );
 }

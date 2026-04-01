@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { buildPalette } from './Background';
 import { ColorPicker } from './ColorPicker';
+import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
+import ExtensionPage from './ExtensionPage';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -758,6 +760,10 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   const [activeSection, setActiveSection] = useState('profile');
   const isPortrait = useIsPortrait();
 
+  // Extension settings contributions
+  const extSettingsItems = useExtensionContributions('settings');
+  const { navigate }     = useExtensions();
+
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
@@ -772,7 +778,20 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   if (!isOpen) return null;
 
   const accentHex = settings.accentHex || '#3b82f6';
-  const groups = [...new Set(NAV_ITEMS.map(i => i.group))];
+
+  // Merge built-in + extension nav items, adding an 'Extensions' group
+  const allNavItems = [
+    ...NAV_ITEMS,
+    ...extSettingsItems.map(item => ({
+      id:    `ext::${item._extId}::${item.id}`,
+      label: item.label,
+      icon:  () => <span style={{ fontSize: '16px', lineHeight: 1 }}>{item.icon ?? item._extIcon}</span>,
+      group: 'Extensions',
+      _extItem: item,
+    })),
+  ];
+
+  const groups    = [...new Set(allNavItems.map(i => i.group))];
   const panelProps = { settings, onChange: handleChange, accentHex, sessions, onSessionChange };
 
   return (
@@ -848,7 +867,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                 flexShrink: 0,
               }}
             >
-              {NAV_ITEMS.map(item => {
+              {allNavItems.map(item => {
                 const active = activeSection === item.id;
                 return (
                   <button
@@ -867,7 +886,9 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                       transition: 'all 0.1s ease',
                     }}
                   >
-                    <item.icon size={14} color={active ? accentHex : 'var(--text-4)'} />
+                    {item._extItem
+                      ? <item.icon />
+                      : <item.icon size={14} color={active ? accentHex : 'var(--text-4)'} />}
                     {item.label}
                   </button>
                 );
@@ -884,6 +905,19 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
+              {allNavItems.filter(i => i._extItem).map(item => (
+                activeSection === item.id && (
+                  <ExtensionPage
+                    key={item.id}
+                    extension={item._extItem._ext}
+                    pageId={item._extItem.page}
+                    session={null}
+                    accentHex={accentHex}
+                    onBack={() => setActiveSection('profile')}
+                    inline
+                  />
+                )
+              ))}
             </div>
           </>
         ) : (
@@ -906,7 +940,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                   }}>
                     {group}
                   </div>
-                  {NAV_ITEMS.filter(i => i.group === group).map(item => {
+                  {allNavItems.filter(i => i.group === group).map(item => {
                     const active = activeSection === item.id;
                     return (
                       <button
@@ -922,7 +956,9 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                           textAlign: 'left', transition: 'all 0.1s ease',
                         }}
                       >
-                        <item.icon size={16} color={active ? accentHex : 'var(--text-4)'} />
+                        {item._extItem
+                          ? <item.icon />
+                          : <item.icon size={16} color={active ? accentHex : 'var(--text-4)'} />}
                         {item.label}
                         {active && (
                           <div style={{ marginLeft: 'auto', width: '3px', height: '16px', borderRadius: '2px', background: accentHex }} />
@@ -961,6 +997,19 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
+              {allNavItems.filter(i => i._extItem).map(item => (
+                activeSection === item.id && (
+                  <ExtensionPage
+                    key={item.id}
+                    extension={item._extItem._ext}
+                    pageId={item._extItem.page}
+                    session={null}
+                    accentHex={accentHex}
+                    onBack={() => setActiveSection('profile')}
+                    inline
+                  />
+                )
+              ))}
             </div>
           </>
         )}

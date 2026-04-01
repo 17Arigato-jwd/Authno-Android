@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { FlameButton } from './Streak';
 import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
+import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
+import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 
 // Matches the BurgerIcon used in the Editor header in App.js (three-line SVG,
 // border-2 border-white) so the button looks identical across all screens.
@@ -366,9 +368,15 @@ export default function BookDashboard({
 }) {
   const light = useLightMode();
 
+  // ── Extension contributions ─────────────────────────────────────────────
+  const { navigate } = useExtensions();
+  const { tabs: extTabs, actions: extActions } = useBookDashboardExtensions();
+
   // Sub-panel state
   const [showExport,   setShowExport]   = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
+  // Which extension tab is active in the chapter list area (null = default chapters view)
+  const [activeExtTab, setActiveExtTab] = useState(null);
 
   // Chapter list state
   const [descExpanded,   setDescExpanded]   = useState(false);
@@ -670,6 +678,39 @@ export default function BookDashboard({
               Export Options
             </button>
 
+            {/* Extension action buttons — rendered only when extensions are installed */}
+            {extActions.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                {extActions.map((action, i) => (
+                  <button
+                    key={`${action._extId}-${action.id}-${i}`}
+                    onClick={() => navigate(action._ext, action.page, session)}
+                    style={{
+                      width: '100%', padding: '13px 15px', borderRadius: '12px',
+                      border: `1.5px solid ${accentHex}55`,
+                      background: `${accentHex}18`,
+                      color: 'var(--text-1)', fontSize: '14px', fontWeight: 600,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: '8px',
+                      transition: 'background 0.15s, border-color 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${accentHex}30`; e.currentTarget.style.borderColor = accentHex; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = `${accentHex}18`; e.currentTarget.style.borderColor = `${accentHex}55`; }}
+                  >
+                    <span style={{ fontSize: '16px', lineHeight: 1 }}>{action.icon ?? action._extIcon}</span>
+                    {action.label}
+                    <span style={{
+                      marginLeft: 'auto', fontSize: '10px', opacity: 0.45,
+                      background: 'rgba(255,255,255,0.07)', padding: '2px 6px',
+                      borderRadius: '6px',
+                    }}>
+                      {action._extName}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Chapter action buttons */}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
@@ -692,6 +733,73 @@ export default function BookDashboard({
 
           {/* ── Chapter List ── */}
           <div style={{ paddingBottom: '0' }}>
+
+            {/* Extension tab bar — only shown when extensions contribute tabs */}
+            {extTabs.length > 0 && (
+              <div style={{
+                display: 'flex', gap: '4px', marginBottom: '14px',
+                borderBottom: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'}`,
+                overflowX: 'auto', paddingBottom: '0',
+              }}>
+                {/* Built-in Chapters tab */}
+                <button
+                  onClick={() => setActiveExtTab(null)}
+                  style={{
+                    padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: '13px', fontWeight: activeExtTab === null ? 700 : 400,
+                    color: activeExtTab === null ? 'var(--text-1)' : 'var(--text-4)',
+                    borderBottom: activeExtTab === null ? `2px solid ${accentHex}` : '2px solid transparent',
+                    whiteSpace: 'nowrap', transition: 'color 0.15s',
+                  }}
+                >
+                  Chapters
+                </button>
+                {/* Extension-contributed tabs */}
+                {extTabs.map((tab, i) => {
+                  const tabKey = `${tab._extId}::${tab.id}`;
+                  const isActive = activeExtTab === tabKey;
+                  return (
+                    <button
+                      key={tabKey}
+                      onClick={() => setActiveExtTab(tabKey)}
+                      style={{
+                        padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: '13px', fontWeight: isActive ? 700 : 400,
+                        color: isActive ? 'var(--text-1)' : 'var(--text-4)',
+                        borderBottom: isActive ? `2px solid ${accentHex}` : '2px solid transparent',
+                        whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '5px',
+                        transition: 'color 0.15s',
+                      }}
+                    >
+                      <span style={{ fontSize: '14px', lineHeight: 1 }}>{tab.icon ?? tab._extIcon}</span>
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Active extension tab content — replaces chapter list */}
+            {activeExtTab !== null ? (() => {
+              const tabKey = activeExtTab;
+              const tab = extTabs.find(t => `${t._extId}::${t.id}` === tabKey);
+              if (!tab) return null;
+              // Lazy-load ExtensionPage inline within the dashboard
+              const ExtensionPage = require('./ExtensionPage').default;
+              return (
+                <div style={{ minHeight: '200px' }}>
+                  <ExtensionPage
+                    extension={tab._ext}
+                    pageId={tab.page}
+                    session={session}
+                    accentHex={accentHex}
+                    onBack={() => setActiveExtTab(null)}
+                    inline
+                  />
+                </div>
+              );
+            })() : (
+              <>
 
             {/* List header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
@@ -854,6 +962,9 @@ export default function BookDashboard({
                 );
               })}
             </div>
+
+            </>
+            )}{/* end activeExtTab conditional */}
 
           </div>
 

@@ -69,3 +69,4 @@ electron-builder-cache/
 authno-release.jks
 *.jks
 *.keystore
+Authno Extensions.md
