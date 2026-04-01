@@ -940,7 +940,7 @@ function AppInner({ navigateRef }) {
           burgerBtnRef={burgerBtnRef}
           streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
-      ))}
+      )}
 
       <BurgerMenu
         open={menuOpen}
