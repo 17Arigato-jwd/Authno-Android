@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Trash2 } from "lucide-react";
+import { X } from "lucide-react";
 import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
@@ -439,35 +439,6 @@ export default function Sidebar({
                         {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
                       </div>
                     </div>
-                    {/* Inline delete button */}
-                    {!editMode && (
-                      <button
-                        title="Delete session"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        style={{
-                          flexShrink: 0,
-                          padding: '5px',
-                          background: 'transparent',
-                          border: 'none',
-                          borderRadius: '6px',
-                          color: 'rgba(255,255,255,0.2)',
-                          cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          transition: 'color 0.15s, background 0.15s',
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.color = '#ef4444';
-                          e.currentTarget.style.background = 'rgba(239,68,68,0.12)';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.color = 'rgba(255,255,255,0.2)';
-                          e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
                   </div>
                 </div>
               ))}
@@ -576,8 +547,8 @@ export default function Sidebar({
             <div className="text-white rounded-lg overflow-hidden border border-white/20"
               style={{ background: `linear-gradient(to bottom right, ${accentHex}, black)`, minWidth: "140px" }}>
               <button
-                onClick={handleDelete}
-                onTouchStart={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+                onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(); }}
                 className="w-full text-left px-3 py-2.5 text-sm hover:bg-white/10 transition"
               >
                 Delete
