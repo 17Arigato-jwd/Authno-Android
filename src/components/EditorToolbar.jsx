@@ -1,9 +1,15 @@
 import React, { useReducer, useEffect, useCallback, useRef } from "react";
-import { Upload } from "lucide-react";
+import {
+  Upload, BarChart2, BookOpen, Eye, FileText, Settings2,
+  Home, ExternalLink, Play, Zap, Edit3, ChevronRight,
+  Puzzle,
+} from "lucide-react";
 import FontSelector from "./FontSelector";
 import SizeSelector from "./SizeSelector";
 import FormatButton from "./FormatButton";
 import { isAndroid } from "../utils/platform";
+import { useEditorToolbarExtensions } from "../utils/ExtensionContext";
+import { useExtensions } from "../utils/ExtensionContext";
 
 const initialState = { bold: false, italic: false, underline: false, highlight: false };
 
@@ -11,18 +17,41 @@ function reducer(state, action) {
   return action.type === "SET_STATE" ? { ...state, ...action.payload } : state;
 }
 
+// ─── Lucide icon resolver for extension-declared icon names ──────────────────
+
+const ICON_NAME_MAP = {
+  Upload, BarChart2, BookOpen, Eye, FileText, Settings2,
+  Home, ExternalLink, Play, Zap, Edit3, ChevronRight, Puzzle,
+  // Common aliases
+  upload: Upload, analytics: BarChart2, book: BookOpen, view: Eye,
+  summary: FileText, settings: Settings2, home: Home, open: ExternalLink,
+  publish: Upload, chapter: BookOpen, sparkles: Zap,
+};
+
+function ExtIconResolved({ iconName, size = 14 }) {
+  const Icon = (iconName && ICON_NAME_MAP[iconName]) || Puzzle;
+  return <Icon size={size} />;
+}
+
 /**
  * EditorToolbar
+ *
+ * Now accepts a `session` prop so extension toolbar buttons can receive
+ * the current book session when navigating.
  *
  * Desktop  → identical to the PC version: sticky floating pill, centered.
  * Android  → horizontally scrollable strip pinned to the top of the content
  *            area. Swipe left to reveal all controls. Never wraps or clips.
  */
-export default function EditorToolbar({ execCommand, accentHex }) {
+export default function EditorToolbar({ execCommand, accentHex, session }) {
   const [active, dispatch] = useReducer(reducer, initialState);
   const fontRef = useRef("Arial");
   const sizeRef = useRef("3");
   const android = isAndroid();
+
+  // Extension toolbar buttons
+  const extButtons = useEditorToolbarExtensions();
+  const { navigate } = useExtensions();
 
   // ── Detect active formatting state ──────────────────────────────────────
   const updateActive = useCallback(() => {
@@ -87,10 +116,39 @@ export default function EditorToolbar({ execCommand, accentHex }) {
       >
         Insert <Upload className="w-3.5 h-3.5 text-white/70" />
       </button>
+
+      {/* Extension-contributed toolbar buttons */}
+      {extButtons.length > 0 && (
+        <>
+          <div className="w-px self-stretch bg-white/20 shrink-0" />
+          {extButtons.map((btn, i) => (
+            <button
+              key={`${btn._extId}-${btn.id ?? i}`}
+              title={`${btn.label} — ${btn._extName}`}
+              onClick={() => navigate(btn._ext, btn.page ?? btn.id, session)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md border border-white/30 text-sm hover:bg-white/10 hover:border-white/60 hover:text-white transition-all duration-200 shrink-0 text-white/70"
+              style={{ borderColor: accentHex + '66', color: accentHex + 'cc' }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = accentHex;
+                e.currentTarget.style.color = accentHex;
+                e.currentTarget.style.background = accentHex + '1a';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = accentHex + '66';
+                e.currentTarget.style.color = accentHex + 'cc';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <ExtIconResolved iconName={btn.icon} size={13} />
+              {btn.label}
+            </button>
+          ))}
+        </>
+      )}
     </>
   );
 
-  // Semi-transparent frosted-glass background (40% opacity accent + dark tint)
+  // Semi-transparent frosted-glass background
   const bg = `linear-gradient(to bottom right, ${accentHex}66, rgba(0,0,0,0.45))`;
 
   // ── Android: sticky scrollable strip with frosted glass ──────────────────

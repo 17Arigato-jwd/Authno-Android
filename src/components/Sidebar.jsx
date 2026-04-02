@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
 import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
@@ -137,10 +137,11 @@ export default function Sidebar({
   };
 
   // ── Delete with confirmation modal ───────────────────────────────────────
-  const handleDelete = () => {
-    if (!contextMenu?.sessionId) return;
+  const handleDelete = (directId) => {
+    const sessionId = directId ?? contextMenu?.sessionId;
+    if (!sessionId) return;
     if (localStorage.getItem("skipDeleteWarning") === "true") {
-      onDelete?.(contextMenu.sessionId);
+      onDelete?.(sessionId);
       setContextMenu(null);
       return;
     }
@@ -168,7 +169,7 @@ export default function Sidebar({
     modal.querySelector("#confirmBtn").onclick = () => {
       if (modal.querySelector("#skipCheck").checked)
         localStorage.setItem("skipDeleteWarning", "true");
-      onDelete?.(contextMenu.sessionId);
+      onDelete?.(sessionId);
       setContextMenu(null);
       modal.remove();
     };
@@ -432,12 +433,41 @@ export default function Sidebar({
                         <img src={Logo} alt="" style={{ width: '22px', height: '22px', opacity: 0.5, objectFit: 'contain' }} />
                       )}
                     </div>
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <div className="font-medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
                       <div className="text-xs text-white/40" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
                       </div>
                     </div>
+                    {/* Inline delete button */}
+                    {!editMode && (
+                      <button
+                        title="Delete session"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        style={{
+                          flexShrink: 0,
+                          padding: '5px',
+                          background: 'transparent',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: 'rgba(255,255,255,0.2)',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'color 0.15s, background 0.15s',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.color = '#ef4444';
+                          e.currentTarget.style.background = 'rgba(239,68,68,0.12)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.color = 'rgba(255,255,255,0.2)';
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

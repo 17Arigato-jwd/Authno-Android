@@ -1,27 +1,67 @@
 /**
  * ExtensionTab.jsx
  *
- * The extensions panel shown inside the Sidebar when the user switches to
- * the Extensions tab. Only rendered when hasExtensions is true.
- *
- * Shows every installed extension as a card with:
- *   - Icon + name + version badge
- *   - Description (if present)
- *   - A row of tappable contribution chips (homescreen, book tabs, settings, etc.)
- *   - A "Refresh" button at the bottom
- *
- * Props:
- *   accentHex    string   theme accent colour
- *   onClose      fn       close the drawer (Android) — called after navigation
- *   session      object   current book session or null
+ * Changes from original:
+ *   - No emojis — all icons use Lucide React
+ *   - Contribution chips are collapsible (show 3 by default)
+ *   - Slightly-hidden "Open Extensions Folder" button in footer
  */
 
-import React from 'react';
+import React, { useState } from 'react';
+import {
+  Puzzle, BookOpen, LayoutDashboard, Settings2, ExternalLink,
+  Upload, Eye, FileText, BarChart2, Rocket, Star, Link,
+  MessageCircle, Home, ChevronRight, ChevronDown, ChevronUp,
+  RefreshCw, FolderOpen, Zap, Edit3, Globe, Play,
+} from 'lucide-react';
 import { useExtensions } from '../utils/ExtensionContext';
+import { isAndroid } from '../utils/platform';
+
+// ─── Emoji / string → Lucide icon resolver ────────────────────────────────────
+
+const EMOJI_MAP = {
+  '📚': BookOpen, '📖': BookOpen, '📝': Edit3, '📊': BarChart2,
+  '🚀': Rocket,   '⚙️': Settings2, '🏠': Home,  '📤': Upload,
+  '👁️': Eye,     '⭐': Star,      '🔗': Link,  '💬': MessageCircle,
+  '🌐': Globe,   '⚡': Zap,       '▸': Play,    '↗': ExternalLink,
+  '▶': Play,
+};
+
+const LABEL_MAP = {
+  'open': ExternalLink, 'open dashboard': LayoutDashboard,
+  'summary': FileText,  'publish': Upload, 'publish draft': Upload,
+  'view': Eye,          'analytics': BarChart2, 'settings': Settings2,
+  'home': Home,         'book': BookOpen,
+};
+
+function getContribIcon(contrib, size = 12) {
+  const icon  = contrib.icon;
+  const group = contrib._group?.toLowerCase() ?? '';
+  const label = (contrib.label ?? '').toLowerCase();
+
+  if (icon) {
+    const str = String(icon).trim();
+    if (EMOJI_MAP[str]) { const I = EMOJI_MAP[str]; return <I size={size} />; }
+    if (LABEL_MAP[str.toLowerCase()]) { const I = LABEL_MAP[str.toLowerCase()]; return <I size={size} />; }
+  }
+
+  if (LABEL_MAP[label]) { const I = LABEL_MAP[label]; return <I size={size} />; }
+  if (group === 'home')     return <Home size={size} />;
+  if (group === 'settings') return <Settings2 size={size} />;
+  if (group === 'book')     return <BookOpen size={size} />;
+  if (group === 'page')     return <ExternalLink size={size} />;
+  if (label.includes('publish')) return <Upload size={size} />;
+  if (label.includes('analytic') || label.includes('stat')) return <BarChart2 size={size} />;
+  if (label.includes('dashboard')) return <LayoutDashboard size={size} />;
+  if (label.includes('summary')) return <FileText size={size} />;
+  if (label.includes('view')) return <Eye size={size} />;
+
+  return <ChevronRight size={size} />;
+}
 
 // ─── Chip: a single tappable contribution ─────────────────────────────────────
 
-function ContribChip({ icon, label, onClick }) {
+function ContribChip({ contrib, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -46,16 +86,21 @@ function ContribChip({ icon, label, onClick }) {
         e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
       }}
     >
-      <span style={{ fontSize: '13px', lineHeight: 1 }}>{icon}</span>
-      {label}
+      <span style={{ display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+        {getContribIcon(contrib, 11)}
+      </span>
+      {contrib.label}
     </button>
   );
 }
 
 // ─── Single extension card ────────────────────────────────────────────────────
 
+const CHIPS_VISIBLE_DEFAULT = 3;
+
 function ExtensionCard({ ext, accentHex, session, onClose }) {
   const { navigate } = useExtensions();
+  const [expanded, setExpanded] = useState(false);
 
   const homeTiles = ext.contributes?.homescreen ?? [];
   const bdTabs    = ext.contributes?.bookDashboard?.tabs    ?? [];
@@ -69,18 +114,18 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
     ...settItems.map(c => ({ ...c, _group: 'Settings' })),
   ];
 
-  // Also include a "main" page chip if declared
   const hasMain = !!ext.contributes?.pages?.main;
   if (hasMain && !allContribs.find(c => c.page === 'main')) {
     allContribs.push({ id: '_main', label: 'Open', icon: '↗', page: 'main', _group: 'Page' });
   }
 
+  const visibleContribs = expanded ? allContribs : allContribs.slice(0, CHIPS_VISIBLE_DEFAULT);
+  const hiddenCount = allContribs.length - CHIPS_VISIBLE_DEFAULT;
+
   const handleNav = (pageId) => {
     navigate(ext, pageId, session);
     onClose?.();
   };
-
-  const iconIsEmoji = typeof ext.icon === 'string' && ext.icon.length <= 4;
 
   return (
     <div style={{
@@ -98,9 +143,9 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
           background: accentHex + '22',
           border: `1px solid ${accentHex}44`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '20px', lineHeight: 1,
+          color: accentHex,
         }}>
-          {iconIsEmoji ? ext.icon : '🧩'}
+          <Puzzle size={18} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -136,19 +181,40 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
         </div>
       )}
 
-      {/* Contribution chips */}
+      {/* Contribution chips — collapsible */}
       {allContribs.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: '6px',
-        }}>
-          {allContribs.map((c, i) => (
-            <ContribChip
-              key={i}
-              icon={c.icon ?? '▸'}
-              label={c.label}
-              onClick={() => handleNav(c.page)}
-            />
-          ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {visibleContribs.map((c, i) => (
+              <ContribChip
+                key={i}
+                contrib={c}
+                onClick={() => handleNav(c.page)}
+              />
+            ))}
+          </div>
+
+          {allContribs.length > CHIPS_VISIBLE_DEFAULT && (
+            <button
+              onClick={() => setExpanded(v => !v)}
+              style={{
+                alignSelf: 'flex-start',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                background: 'none', border: 'none',
+                color: 'rgba(255,255,255,0.35)',
+                fontSize: '11px', cursor: 'pointer',
+                padding: '2px 0',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.65)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
+            >
+              {expanded
+                ? <><ChevronUp size={12} style={{ marginRight: 2 }} /> Show less</>
+                : <><ChevronDown size={12} style={{ marginRight: 2 }} /> {hiddenCount} more action{hiddenCount !== 1 ? 's' : ''}</>
+              }
+            </button>
+          )}
         </div>
       )}
 
@@ -161,6 +227,35 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
   );
 }
 
+// ─── Open extensions folder helper ───────────────────────────────────────────
+
+async function openExtensionsFolder() {
+  if (isAndroid()) {
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const { uri } = await Filesystem.getUri({
+        path: 'AuthNo/extensions',
+        directory: Directory.Data,
+      });
+      const cleaned = decodeURIComponent(uri.replace('file://', ''));
+      try {
+        await navigator.clipboard.writeText(cleaned);
+        alert('Extensions folder path copied to clipboard:\n\n' + cleaned);
+      } catch {
+        alert('Extensions folder:\n\n' + cleaned);
+      }
+    } catch {
+      alert('Extensions folder:\nInternal Storage / Android/data/[app]/files/AuthNo/extensions');
+    }
+  } else {
+    alert(
+      'Dev extensions are loaded from the localStorage key:\n' +
+      '__authno_dev_extensions\n\n' +
+      'Open DevTools → Application → Local Storage to manage them.'
+    );
+  }
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export default function ExtensionTab({ accentHex, session, onClose }) {
@@ -169,10 +264,7 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
   if (loading || !hasExtensions) return null;
 
   return (
-    <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
-    }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Scrollable card list */}
       <div style={{
         flex: 1, overflowY: 'auto',
@@ -190,21 +282,23 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
         ))}
       </div>
 
-      {/* Refresh button */}
+      {/* Footer: refresh + slightly-hidden open-folder button */}
       <div style={{
         padding: '8px 10px 10px',
         borderTop: '1px solid rgba(255,255,255,0.06)',
         flexShrink: 0,
+        display: 'flex', gap: '6px',
       }}>
         <button
           onClick={refresh}
           style={{
-            width: '100%', padding: '7px',
+            flex: 1, padding: '7px',
             background: 'transparent',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: '8px',
             color: 'rgba(255,255,255,0.35)',
             fontSize: '11px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
             transition: 'color 0.15s, border-color 0.15s',
           }}
           onMouseEnter={e => {
@@ -216,7 +310,35 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
           }}
         >
-          ↻ Refresh extensions
+          <RefreshCw size={12} />
+          Refresh extensions
+        </button>
+
+        {/* Slightly hidden: open extensions folder */}
+        <button
+          onClick={openExtensionsFolder}
+          title="Open extensions folder"
+          style={{
+            width: '32px', flexShrink: 0,
+            padding: '7px 6px',
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: '8px',
+            color: 'rgba(255,255,255,0.2)',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = 'rgba(255,255,255,0.55)';
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'rgba(255,255,255,0.2)';
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
+          }}
+        >
+          <FolderOpen size={13} />
         </button>
       </div>
     </div>

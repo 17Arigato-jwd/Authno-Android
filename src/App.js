@@ -152,7 +152,7 @@ function Editor({
       <main className="relative flex-1 overflow-auto" style={{ padding: android ? "0.75rem" : "1.5rem" }}>
         {current ? (
           <>
-            <EditorToolbar execCommand={execCommand} accentHex={accentHex} />
+            <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} />
             <div
               ref={editorRef}
               contentEditable

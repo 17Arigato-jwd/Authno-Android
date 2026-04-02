@@ -156,10 +156,34 @@ export function useBookDashboardExtensions() {
     for (const ext of extensions) {
       const bd = ext.contributes?.bookDashboard;
       if (!bd) continue;
-      const meta = { _extId: ext.id, _extName: ext.name, _extIcon: ext.icon ?? '🧩', _ext: ext };
+      const meta = { _extId: ext.id, _extName: ext.name, _extIcon: ext.icon ?? null, _ext: ext };
       (bd.tabs    ?? []).forEach(t => tabs.push({ ...t,    ...meta }));
       (bd.actions ?? []).forEach(a => actions.push({ ...a, ...meta }));
     }
     return { tabs, actions };
+  }, [extensions]);
+}
+
+/**
+ * Get editor toolbar button contributions from all installed extensions.
+ *
+ * Extensions declare these in their manifest under:
+ *   contributes.editorToolbar: [
+ *     { id: "publishChapter", label: "Publish Chapter", icon: "Upload", page: "publish" }
+ *   ]
+ *
+ * Each item includes _ext, _extId, _extName for identity.
+ */
+export function useEditorToolbarExtensions() {
+  const { extensions } = useExtensions();
+  return useMemo(() => {
+    const buttons = [];
+    for (const ext of extensions) {
+      const items = ext.contributes?.editorToolbar;
+      if (!Array.isArray(items)) continue;
+      const meta = { _extId: ext.id, _extName: ext.name, _ext: ext };
+      items.forEach(item => buttons.push({ ...item, ...meta }));
+    }
+    return buttons;
   }, [extensions]);
 }
