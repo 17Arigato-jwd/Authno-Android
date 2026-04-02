@@ -1,234 +1,224 @@
 /**
  * ExtensionTab.jsx
  *
- * The "Extensions" section rendered at the bottom of the Sidebar.
- * Only mounts when at least one extension is installed.
+ * The extensions panel shown inside the Sidebar when the user switches to
+ * the Extensions tab. Only rendered when hasExtensions is true.
  *
- * Shows a collapsible list of installed extensions.  Each extension entry
- * can be expanded to reveal its individual contributions (homescreen actions,
- * book-dashboard tabs, settings items, and any direct pages).  Tapping a
- * contribution navigates to the corresponding extension page via the
- * navigate() function from ExtensionContext.
+ * Shows every installed extension as a card with:
+ *   - Icon + name + version badge
+ *   - Description (if present)
+ *   - A row of tappable contribution chips (homescreen, book tabs, settings, etc.)
+ *   - A "Refresh" button at the bottom
  *
  * Props:
  *   accentHex    string   theme accent colour
- *   onClose      fn       close the drawer (Android only)
+ *   onClose      fn       close the drawer (Android) — called after navigation
  *   session      object   current book session or null
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useExtensions } from '../utils/ExtensionContext';
 
-// ─── Small helpers ────────────────────────────────────────────────────────────
+// ─── Chip: a single tappable contribution ─────────────────────────────────────
 
-function ChevronIcon({ open }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-      style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function PuzzleIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, opacity: 0.7 }}>
-      <path d="M12 2a2 2 0 0 1 2 2v1h3a1 1 0 0 1 1 1v3h1a2 2 0 0 1 0 4h-1v3a1 1 0 0 1-1 1h-3v1a2 2 0 0 1-4 0v-1H7a1 1 0 0 1-1-1v-3H5a2 2 0 0 1 0-4h1V6a1 1 0 0 1 1-1h3V4a2 2 0 0 1 2-2z"
-        stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-    </svg>
-  );
-}
-
-// ─── Contribution row ─────────────────────────────────────────────────────────
-
-function ContribRow({ icon, label, onClick }) {
+function ContribChip({ icon, label, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: '8px',
-        width: '100%', textAlign: 'left',
-        padding: '7px 10px 7px 28px',
-        background: 'transparent', border: 'none',
-        color: 'rgba(255,255,255,0.65)', fontSize: '12px',
-        cursor: 'pointer', borderRadius: '6px',
-        transition: 'background 0.15s',
+        display: 'inline-flex', alignItems: 'center', gap: '5px',
+        padding: '4px 10px',
+        background: 'rgba(255,255,255,0.07)',
+        border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: '99px',
+        color: 'rgba(255,255,255,0.75)',
+        fontSize: '11px', fontWeight: 500,
+        cursor: 'pointer',
+        transition: 'background 0.15s, border-color 0.15s',
+        whiteSpace: 'nowrap',
       }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = 'rgba(255,255,255,0.13)';
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+      }}
     >
-      <span style={{ fontSize: '14px', lineHeight: 1, flexShrink: 0 }}>{icon}</span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: '13px', lineHeight: 1 }}>{icon}</span>
+      {label}
     </button>
   );
 }
 
-// ─── Single extension row ─────────────────────────────────────────────────────
+// ─── Single extension card ────────────────────────────────────────────────────
 
-function ExtensionRow({ ext, accentHex, session, onClose }) {
-  const [open, setOpen]   = useState(false);
-  const { navigate }      = useExtensions();
+function ExtensionCard({ ext, accentHex, session, onClose }) {
+  const { navigate } = useExtensions();
 
-  // Gather all contributions for this extension
   const homeTiles = ext.contributes?.homescreen ?? [];
   const bdTabs    = ext.contributes?.bookDashboard?.tabs    ?? [];
   const bdActions = ext.contributes?.bookDashboard?.actions ?? [];
   const settItems = ext.contributes?.settings ?? [];
+
   const allContribs = [
-    ...homeTiles.map(c  => ({ ...c, _label: c.label, _group: 'Home' })),
-    ...bdTabs.map(c    => ({ ...c, _label: c.label, _group: 'Book' })),
-    ...bdActions.map(c => ({ ...c, _label: c.label, _group: 'Book' })),
-    ...settItems.map(c => ({ ...c, _label: c.label, _group: 'Settings' })),
+    ...homeTiles.map(c  => ({ ...c, _group: 'Home' })),
+    ...bdTabs.map(c    => ({ ...c, _group: 'Book' })),
+    ...bdActions.map(c => ({ ...c, _group: 'Book' })),
+    ...settItems.map(c => ({ ...c, _group: 'Settings' })),
   ];
 
-  const handleContrib = (contrib) => {
-    navigate(ext, contrib.page, session);
+  // Also include a "main" page chip if declared
+  const hasMain = !!ext.contributes?.pages?.main;
+  if (hasMain && !allContribs.find(c => c.page === 'main')) {
+    allContribs.push({ id: '_main', label: 'Open', icon: '↗', page: 'main', _group: 'Page' });
+  }
+
+  const handleNav = (pageId) => {
+    navigate(ext, pageId, session);
     onClose?.();
   };
 
+  const iconIsEmoji = typeof ext.icon === 'string' && ext.icon.length <= 4;
+
   return (
-    <div style={{ borderRadius: '8px', overflow: 'hidden' }}>
-      {/* Header row — tap to expand */}
-      <button
-        onClick={() => setOpen(v => !v)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          width: '100%', textAlign: 'left',
-          padding: '8px 10px',
-          background: open ? 'rgba(255,255,255,0.06)' : 'transparent',
-          border: 'none',
-          color: 'rgba(255,255,255,0.85)', fontSize: '13px', fontWeight: 500,
-          cursor: 'pointer', borderRadius: '8px',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-        onMouseLeave={e => { if (!open) e.currentTarget.style.background = 'transparent'; }}
-      >
-        {/* Extension icon */}
-        <span style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>
-          {typeof ext.icon === 'string' && ext.icon.length <= 4
-            ? ext.icon   // emoji
-            : '🧩'}
-        </span>
-
-        <span style={{
-          flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    <div style={{
+      padding: '14px 14px 12px',
+      borderRadius: '12px',
+      background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.09)',
+      display: 'flex', flexDirection: 'column', gap: '10px',
+    }}>
+      {/* Top row: icon + name + version */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{
+          width: '38px', height: '38px', flexShrink: 0,
+          borderRadius: '10px',
+          background: accentHex + '22',
+          border: `1px solid ${accentHex}44`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '20px', lineHeight: 1,
         }}>
-          {ext.name}
-        </span>
-
-        {/* Version badge */}
+          {iconIsEmoji ? ext.icon : '🧩'}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            color: 'rgba(255,255,255,0.92)', fontWeight: 600, fontSize: '14px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {ext.name}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', marginTop: '1px' }}>
+            {ext.id}
+          </div>
+        </div>
         <span style={{
-          fontSize: '10px', color: 'rgba(255,255,255,0.35)',
-          background: 'rgba(255,255,255,0.06)',
-          padding: '2px 5px', borderRadius: '4px', flexShrink: 0,
+          flexShrink: 0,
+          fontSize: '10px',
+          color: accentHex,
+          background: accentHex + '22',
+          padding: '2px 7px',
+          borderRadius: '6px',
+          fontWeight: 600,
         }}>
           v{ext.version}
         </span>
+      </div>
 
-        <ChevronIcon open={open} />
-      </button>
+      {/* Description */}
+      {ext.description && (
+        <div style={{
+          fontSize: '12px', color: 'rgba(255,255,255,0.5)',
+          lineHeight: '1.5',
+        }}>
+          {ext.description}
+        </div>
+      )}
 
-      {/* Contributions list */}
-      {open && (
-        <div style={{ paddingBottom: '4px' }}>
-          {allContribs.length === 0 ? (
-            <div style={{ padding: '6px 28px', fontSize: '11px', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
-              No contributions declared
-            </div>
-          ) : allContribs.map((c, i) => (
-            <ContribRow
+      {/* Contribution chips */}
+      {allContribs.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: '6px',
+        }}>
+          {allContribs.map((c, i) => (
+            <ContribChip
               key={i}
               icon={c.icon ?? '▸'}
-              label={`${c._label}`}
-              onClick={() => handleContrib(c)}
+              label={c.label}
+              onClick={() => handleNav(c.page)}
             />
           ))}
-          {/* Direct-open button if extension has a main page */}
-          {ext.contributes?.pages?.main && (
-            <ContribRow
-              icon="↗"
-              label="Open main page"
-              onClick={() => { navigate(ext, 'main', session); onClose?.(); }}
-            />
-          )}
+        </div>
+      )}
+
+      {allContribs.length === 0 && (
+        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
+          No contributions declared
         </div>
       )}
     </div>
   );
 }
 
-// ─── Main ExtensionTab component ──────────────────────────────────────────────
+// ─── Main panel ───────────────────────────────────────────────────────────────
 
-/**
- * Renders at the very bottom of the Sidebar — only when hasExtensions is true.
- */
 export default function ExtensionTab({ accentHex, session, onClose }) {
   const { extensions, hasExtensions, loading, refresh } = useExtensions();
-  const [sectionOpen, setSectionOpen] = useState(true);
 
-  // Hidden while loading or when no extensions are installed
   if (loading || !hasExtensions) return null;
 
   return (
     <div style={{
-      borderTop: '1px solid rgba(255,255,255,0.08)',
-      padding: '10px 10px 12px',
-      flexShrink: 0,
+      flex: 1, display: 'flex', flexDirection: 'column',
+      overflow: 'hidden',
     }}>
-      {/* Section header */}
-      <button
-        onClick={() => setSectionOpen(v => !v)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          width: '100%', textAlign: 'left',
-          padding: '6px 4px',
-          background: 'transparent', border: 'none',
-          color: 'rgba(255,255,255,0.45)', fontSize: '11px',
-          fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px',
-          cursor: 'pointer',
-        }}
-      >
-        <PuzzleIcon />
-        <span style={{ flex: 1 }}>Extensions</span>
-        <span style={{
-          fontSize: '10px', background: accentHex + '33',
-          color: accentHex, padding: '1px 6px',
-          borderRadius: '8px', flexShrink: 0,
-        }}>
-          {extensions.length}
-        </span>
-        <ChevronIcon open={sectionOpen} />
-      </button>
+      {/* Scrollable card list */}
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: '10px 10px 4px',
+        display: 'flex', flexDirection: 'column', gap: '8px',
+      }}>
+        {extensions.map(ext => (
+          <ExtensionCard
+            key={ext.id}
+            ext={ext}
+            accentHex={accentHex}
+            session={session}
+            onClose={onClose}
+          />
+        ))}
+      </div>
 
-      {sectionOpen && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-          {extensions.map(ext => (
-            <ExtensionRow
-              key={ext.id}
-              ext={ext}
-              accentHex={accentHex}
-              session={session}
-              onClose={onClose}
-            />
-          ))}
-
-          {/* Refresh link — useful when user drops a new extension while the app is open */}
-          <button
-            onClick={refresh}
-            style={{
-              marginTop: '8px', padding: '0', background: 'transparent', border: 'none',
-              color: 'rgba(255,255,255,0.25)', fontSize: '11px', cursor: 'pointer',
-              textAlign: 'center', width: '100%',
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.5)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.25)'}
-          >
-            ↻ Refresh extensions
-          </button>
-        </div>
-      )}
+      {/* Refresh button */}
+      <div style={{
+        padding: '8px 10px 10px',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={refresh}
+          style={{
+            width: '100%', padding: '7px',
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px',
+            color: 'rgba(255,255,255,0.35)',
+            fontSize: '11px', cursor: 'pointer',
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'rgba(255,255,255,0.35)';
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+          }}
+        >
+          ↻ Refresh extensions
+        </button>
+      </div>
     </div>
   );
 }

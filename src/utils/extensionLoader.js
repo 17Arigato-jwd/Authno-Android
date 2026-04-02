@@ -1,90 +1,11 @@
 /**
- * extensionLoader.js
+ * extensionLoader.js — fixed
  *
- * Discovers, loads, and validates Authno extensions.
- *
- * On Android:
- *   Extensions live at {ExternalStorage}/AuthNo/extensions/{id}/manifest.json
- *   Authno scans this directory on startup via @capacitor/filesystem.
- *
- * On web / Electron (dev):
- *   Falls back to localStorage key `__authno_dev_extensions` so you can
- *   paste a test manifest array during development without a real device.
- *
- * ─── Extension manifest shape ────────────────────────────────────────────────
- *
- * {
- *   "id":          "com.example.inkstone",      // required, reverse-domain
- *   "name":        "Inkstone",                  // required, display name
- *   "version":     "1.0.0",                     // required
- *   "description": "Publish to Webnovel",       // optional
- *   "icon":        "🔖",                        // emoji OR relative path to icon.png
- *   "permissions": ["network", "book:read"],    // optional
- *
- *   "auth": {                                   // optional — if extension needs credentials
- *     "type": "apikey" | "oauth2" | "basic",
- *     "fields": [
- *       { "key": "apiKey", "label": "API Key", "type": "password", "hint": "..." },
- *       { "key": "username", "label": "Username", "type": "text" }
- *     ]
- *   },
- *
- *   "contributes": {
- *     "homescreen": [                           // action tiles in HomeScreen "What to do?" card
- *       { "id": "dashboard", "label": "Inkstone", "icon": "📊", "page": "dashboard" }
- *     ],
- *
- *     "bookDashboard": {
- *       "tabs": [                               // new tabs in the BookDashboard tab bar
- *         { "id": "stats", "label": "Stats", "icon": "📈", "page": "novel-stats" }
- *       ],
- *       "actions": [                            // extra action buttons on BookDashboard
- *         { "id": "publish", "label": "Publish Chapter", "icon": "🚀", "page": "publish" }
- *       ]
- *     },
- *
- *     "settings": [                             // nav items added to the Settings sidebar
- *       { "id": "config", "label": "Inkstone Account", "icon": "🔑", "page": "auth" }
- *     ],
- *
- *     "pages": {                               // full-screen pages the extension can open
- *       "dashboard": {
- *         "title": "Inkstone Dashboard",
- *         "type": "webview",                   // "webview" | "api-data" | "api-action" | "auth-form"
- *         "url": "https://inkstone.webnovel.com"
- *       },
- *       "novel-stats": {
- *         "title": "Novel Stats",
- *         "type": "api-data",
- *         "endpoint": "/v1/novel/{externalId}/stats",
- *         "display": "stats-grid"              // how to render the JSON result
- *       },
- *       "publish": {
- *         "title": "Publish Chapter",
- *         "type": "api-action",
- *         "endpoint": "/v1/chapter/publish",
- *         "method": "POST",
- *         "bodyTemplate": {
- *           "novelId": "{externalId}",
- *           "chapterTitle": "{chapterTitle}",
- *           "content": "{chapterContent}"
- *         },
- *         "successMessage": "Chapter published!"
- *       },
- *       "auth": {
- *         "title": "Inkstone Account",
- *         "type": "auth-form"                  // renders manifest.auth.fields
- *       }
- *     }
- *   },
- *
- *   "api": {                                   // optional — shared API config used by all pages
- *     "baseUrl": "https://api.inkstone.webnovel.com",
- *     "authHeader": "Authorization",
- *     "authPrefix": "Bearer",
- *     "authField": "apiKey"                    // which auth.fields key is the token
- *   }
- * }
+ * Key fix: Capacitor 3 readdir returns string[], Capacitor 4+ returns FileInfo[].
+ * Old code did `files.filter(f => f.type === 'directory')` which always produced
+ * an empty array on Capacitor 3, so no extensions were ever loaded.
+ * Now we normalise each entry to its name string and attempt loadManifest() on
+ * every entry — non-manifest entries (or plain files) return null and are skipped.
  */
 
 import { isAndroid } from './platform';
@@ -124,10 +45,6 @@ async function loadManifest(dirName) {
 
 // ─── Discovery ────────────────────────────────────────────────────────────────
 
-/**
- * Scan the extensions directory and return all valid manifests.
- * Always resolves (never throws) — bad manifests are silently skipped.
- */
 export async function discoverExtensions() {
   // ── Dev / web / Electron fallback ────────────────────────────────────────
   if (!isAndroid()) {
@@ -143,11 +60,10 @@ export async function discoverExtensions() {
     }
   }
 
-  // ── Android: scan ExternalStorage/AuthNo/extensions/ ─────────────────────
+  // ── Android ───────────────────────────────────────────────────────────────
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
 
-    // Ensure the directory exists (no-op if already present)
     try {
       await Filesystem.mkdir({
         path: EXTENSIONS_DIR,
@@ -164,11 +80,17 @@ export async function discoverExtensions() {
       });
       files = result.files ?? [];
     } catch {
-      return []; // directory empty or unreadable
+      return [];
     }
 
-    const dirs = files.filter(f => f.type === 'directory');
-    const manifests = await Promise.all(dirs.map(f => loadManifest(f.name)));
+    // FIX: Capacitor 3 → string[], Capacitor 4+ → FileInfo[]
+    // Don't filter by .type (unreliable across versions).
+    // Just attempt to load manifest.json from every entry name.
+    const names = files
+      .map(f => (typeof f === 'string' ? f : (f.name ?? '')))
+      .filter(n => n.length > 0 && !n.startsWith('.'));
+
+    const manifests = await Promise.all(names.map(name => loadManifest(name)));
     return manifests.filter(Boolean);
   } catch (e) {
     logError('extensionLoader:discoverExtensions', e);
@@ -176,20 +98,15 @@ export async function discoverExtensions() {
   }
 }
 
-// ─── Per-extension config (auth credentials, settings) ───────────────────────
+// ─── Per-extension config ─────────────────────────────────────────────────────
 
 const cfgKey = (id) => `__authno_ext_cfg_${id}`;
 
-/** Read the stored config object for an extension (API keys, tokens, etc.) */
 export function getExtensionConfig(extId) {
-  try {
-    return JSON.parse(localStorage.getItem(cfgKey(extId))) ?? {};
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem(cfgKey(extId))) ?? {}; }
+  catch { return {}; }
 }
 
-/** Merge-write config fields for an extension */
 export function setExtensionConfig(extId, patch) {
   try {
     const prev = getExtensionConfig(extId);
@@ -197,43 +114,28 @@ export function setExtensionConfig(extId, patch) {
   } catch {}
 }
 
-/** Wipe the stored config for an extension (e.g. sign-out) */
 export function clearExtensionConfig(extId) {
   try { localStorage.removeItem(cfgKey(extId)); } catch {}
 }
 
 // ─── API call helper ──────────────────────────────────────────────────────────
 
-/**
- * Perform a generic API call described by the extension manifest's "api" block.
- *
- * templateVars: { externalId, chapterTitle, chapterContent, bookId, ... }
- * Returns the parsed JSON body or throws on network / HTTP error.
- */
 export async function callExtensionApi(manifest, endpoint, method = 'GET', bodyTemplate = null, templateVars = {}) {
   const api = manifest.api;
   if (!api?.baseUrl) throw new Error(`Extension "${manifest.id}" has no api.baseUrl`);
 
   const config = getExtensionConfig(manifest.id);
+  const sub = (str) => str.replace(/\{(\w+)\}/g, (_, k) => templateVars[k] ?? config[k] ?? '');
 
-  // Substitute {variable} tokens in a string
-  const sub = (str) => str.replace(/\{(\w+)\}/g, (_, k) =>
-    templateVars[k] ?? config[k] ?? ''
-  );
-
-  // Build URL
   const url = `${api.baseUrl.replace(/\/$/, '')}${sub(endpoint)}`;
-
-  // Build headers
   const headers = { 'Content-Type': 'application/json' };
   if (api.authHeader && api.authField) {
     const token = config[api.authField];
     if (token) headers[api.authHeader] = `${api.authPrefix ?? ''} ${token}`.trim();
   }
 
-  // Build body
   let body;
-  if (bodyTemplate && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+  if (bodyTemplate && ['POST','PUT','PATCH'].includes(method)) {
     const resolved = {};
     for (const [k, v] of Object.entries(bodyTemplate)) {
       resolved[k] = typeof v === 'string' ? sub(v) : v;

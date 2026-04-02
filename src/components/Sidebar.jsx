@@ -5,6 +5,7 @@ import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
 import ExtensionTab from "./ExtensionTab";
+import { useExtensions } from "../utils/ExtensionContext";
 
 // ── Haptics helper ─────────────────────────────────────────────────────────────
 async function hapticHeavy() {
@@ -57,6 +58,8 @@ export default function Sidebar({
   const [contextMenu, setContextMenu] = useState(null);
   const [editMode, setEditMode]       = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [activeTab, setActiveTab]     = useState('sessions'); // 'sessions' | 'extensions'
+  const { hasExtensions } = useExtensions();
   const sidebarRef       = useRef(null);
   const contextRef       = useRef(null);
   const dragState        = useRef({});
@@ -374,73 +377,157 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* SESSIONS LIST */}
-      <div className="p-3 flex-1 overflow-auto">
-        <div className="rounded-lg p-2"
-          style={{
-            background: lightMode
-              ? 'linear-gradient(135deg, #f0f0f2 0%, #e8e8ec 100%)'
-              : 'linear-gradient(135deg, #1f1f1f 0%, #050505 100%)',
-            border: lightMode
-              ? '1px solid rgba(0,0,0,0.07)'
-              : '1px solid rgba(255,255,255,0.04)',
-          }}>
-          <h3 className="text-xs text-white/70 px-2 mb-2">Sessions</h3>
-          <div className="flex flex-col gap-2">
-            {sessions.length === 0 ? (
-              <div className="text-sm text-white/40 px-2 italic">No sessions yet — create one.</div>
-            ) : sessions.map((s, i) => (
-              <div
-                key={s.id}
-                draggable={editMode && !android}
-                onDragStart={(e) => onDragStart(e, i)}
-                onDragOver={(e) => onDragOver(e, i)}
-                onClick={() => !editMode && onSelect(s.id)}
-                onContextMenu={(e) => !editMode && !android && openContextMenu(e, s.id)}
-                onTouchStart={(e) => !editMode && android && onTouchStart(e, s.id)}
-                onTouchEnd={onTouchEnd}
-                onTouchMove={onTouchEnd}
-                className={`text-left px-3 py-2 rounded-md border-2 transition cursor-pointer select-none ${
-                  s.id === currentId && !editMode ? "bg-white/5"
-                  : editMode && !android ? "border-white/10 animate-wobble cursor-grab"
-                  : "border-white/10 hover:border-white/30"
-                }`}
-                style={
-                  s.id === currentId && !editMode ? { borderColor: accentHex }
-                  : editMode && !android ? { borderColor: `${accentHex}55` }
-                  : {}
-                }
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                  {/* Cover thumbnail */}
-                  <div style={{
-                    width: '36px', height: '50px', flexShrink: 0, borderRadius: '6px',
-                    overflow: 'hidden', background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {s.coverBase64 ? (
-                      <img
-                        src={`data:${s.coverMime || 'image/jpeg'};base64,${s.coverBase64}`}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
-                    ) : (
-                      <img src={Logo} alt="" style={{ width: '22px', height: '22px', opacity: 0.5, objectFit: 'contain' }} />
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="font-medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
-                    <div className="text-xs text-white/40" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
+      {/* SESSIONS LIST (shown when activeTab === 'sessions') */}
+      {activeTab === 'sessions' && (
+        <div className="p-3 flex-1 overflow-auto">
+          <div className="rounded-lg p-2"
+            style={{
+              background: lightMode
+                ? 'linear-gradient(135deg, #f0f0f2 0%, #e8e8ec 100%)'
+                : 'linear-gradient(135deg, #1f1f1f 0%, #050505 100%)',
+              border: lightMode
+                ? '1px solid rgba(0,0,0,0.07)'
+                : '1px solid rgba(255,255,255,0.04)',
+            }}>
+            <h3 className="text-xs text-white/70 px-2 mb-2">Sessions</h3>
+            <div className="flex flex-col gap-2">
+              {sessions.length === 0 ? (
+                <div className="text-sm text-white/40 px-2 italic">No sessions yet — create one.</div>
+              ) : sessions.map((s, i) => (
+                <div
+                  key={s.id}
+                  draggable={editMode && !android}
+                  onDragStart={(e) => onDragStart(e, i)}
+                  onDragOver={(e) => onDragOver(e, i)}
+                  onClick={() => !editMode && onSelect(s.id)}
+                  onContextMenu={(e) => !editMode && !android && openContextMenu(e, s.id)}
+                  onTouchStart={(e) => !editMode && android && onTouchStart(e, s.id)}
+                  onTouchEnd={onTouchEnd}
+                  onTouchMove={onTouchEnd}
+                  className={`text-left px-3 py-2 rounded-md border-2 transition cursor-pointer select-none ${
+                    s.id === currentId && !editMode ? "bg-white/5"
+                    : editMode && !android ? "border-white/10 animate-wobble cursor-grab"
+                    : "border-white/10 hover:border-white/30"
+                  }`}
+                  style={
+                    s.id === currentId && !editMode ? { borderColor: accentHex }
+                    : editMode && !android ? { borderColor: `${accentHex}55` }
+                    : {}
+                  }
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <div style={{
+                      width: '36px', height: '50px', flexShrink: 0, borderRadius: '6px',
+                      overflow: 'hidden', background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {s.coverBase64 ? (
+                        <img
+                          src={`data:${s.coverMime || 'image/jpeg'};base64,${s.coverBase64}`}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        />
+                      ) : (
+                        <img src={Logo} alt="" style={{ width: '22px', height: '22px', opacity: 0.5, objectFit: 'contain' }} />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="font-medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                      <div className="text-xs text-white/40" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* EXTENSIONS PANEL (shown when activeTab === 'extensions') */}
+      {activeTab === 'extensions' && hasExtensions && (
+        <ExtensionTab
+          accentHex={accentHex}
+          session={session}
+          onClose={android ? onDrawerClose : undefined}
+        />
+      )}
+
+      {/* BOTTOM TAB BAR — only shown when extensions are installed */}
+      {hasExtensions && (
+        <div style={{
+          display: 'flex',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          flexShrink: 0,
+          background: '#0b0b0c',
+        }}>
+          {/* Sessions tab */}
+          <button
+            onClick={() => setActiveTab('sessions')}
+            style={{
+              flex: 1,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: '3px', padding: '10px 6px 8px',
+              background: 'transparent', border: 'none',
+              cursor: 'pointer',
+              borderTop: activeTab === 'sessions'
+                ? `2px solid ${accentHex}`
+                : '2px solid transparent',
+              transition: 'border-color 0.15s',
+            }}
+          >
+            {/* Book icon */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+              style={{ opacity: activeTab === 'sessions' ? 1 : 0.4 }}>
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke={activeTab === 'sessions' ? accentHex : 'currentColor'}
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+                stroke={activeTab === 'sessions' ? accentHex : 'currentColor'}
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span style={{
+              fontSize: '10px', fontWeight: 600,
+              color: activeTab === 'sessions' ? accentHex : 'rgba(255,255,255,0.4)',
+              transition: 'color 0.15s',
+            }}>
+              Sessions
+            </span>
+          </button>
+
+          {/* Extensions tab */}
+          <button
+            onClick={() => setActiveTab('extensions')}
+            style={{
+              flex: 1,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: '3px', padding: '10px 6px 8px',
+              background: 'transparent', border: 'none',
+              cursor: 'pointer',
+              borderTop: activeTab === 'extensions'
+                ? `2px solid ${accentHex}`
+                : '2px solid transparent',
+              transition: 'border-color 0.15s',
+            }}
+          >
+            {/* Puzzle icon */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+              style={{ opacity: activeTab === 'extensions' ? 1 : 0.4 }}>
+              <path d="M12 2a2 2 0 0 1 2 2v1h3a1 1 0 0 1 1 1v3h1a2 2 0 0 1 0 4h-1v3a1 1 0 0 1-1 1h-3v1a2 2 0 0 1-4 0v-1H7a1 1 0 0 1-1-1v-3H5a2 2 0 0 1 0-4h1V6a1 1 0 0 1 1-1h3V4a2 2 0 0 1 2-2z"
+                stroke={activeTab === 'extensions' ? accentHex : 'currentColor'}
+                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+            <span style={{
+              fontSize: '10px', fontWeight: 600,
+              color: activeTab === 'extensions' ? accentHex : 'rgba(255,255,255,0.4)',
+              transition: 'color 0.15s',
+            }}>
+              Extensions
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* CONTEXT MENU */}
       {contextMenu && createPortal(
@@ -478,13 +565,6 @@ export default function Sidebar({
         </>,
         document.body
       )}
-
-      {/* EXTENSION TAB — only rendered when extensions are installed */}
-      <ExtensionTab
-        accentHex={accentHex}
-        session={session}
-        onClose={android ? onDrawerClose : undefined}
-      />
 
       {/* RESIZE HANDLE (desktop only) */}
       {!android && (

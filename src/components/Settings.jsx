@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Palette, Database, BookOpen,
   Camera, Check, Trash2, RefreshCw, AlertTriangle,
-  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target,
+  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target, PackagePlus,
 } from 'lucide-react';
 import { buildPalette } from './Background';
 import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
+import { isAndroid } from '../utils/platform';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -647,8 +648,204 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
   );
 }
 
+// ─── Extension conflict modal (matches Sidebar delete modal style) ────────────
+
+function ExtensionConflictModal({ incoming, existing, accentHex, onReplace, onKeepBoth, onCancel }) {
+  const isDuplicate = incoming.name === existing.name && incoming.version === existing.version;
+  const isUpdate    = incoming.name === existing.name && incoming.version !== existing.version;
+  const isConflict  = incoming.name !== existing.name;
+
+  const title = isDuplicate ? 'Already Installed'
+              : isUpdate    ? 'Update Available'
+              :               'ID Conflict';
+
+  const subtitle = isDuplicate
+    ? 'This exact extension is already installed. Replace it anyway?'
+    : isUpdate
+    ? `You have v${existing.version} installed. Replace it with v${incoming.version}?`
+    : 'A different extension is using this ID. This may be a conflict between two separate extensions.';
+
+  const confirmLabel = isDuplicate ? 'Replace' : isUpdate ? 'Update' : 'Replace';
+  const confirmColor = isConflict ? '#faa61a' : '#3b82f6';
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999]">
+      <div style={{
+        background: '#0f0f10', color: '#fff',
+        border: '1px solid rgba(255,255,255,0.2)',
+      }} className="rounded-xl p-6 w-[360px] max-w-[90vw] shadow-xl">
+
+        <h2 className="text-lg font-semibold mb-2">{title}</h2>
+        <p className="text-sm mb-4 leading-relaxed" style={{ opacity: 0.7 }}>{subtitle}</p>
+
+        {/* Diff table */}
+        <div style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '8px', overflow: 'hidden',
+          marginBottom: '20px', fontSize: '12px',
+        }}>
+          {/* Header */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '80px 1fr 1fr',
+            padding: '6px 12px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.4)', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.6px', fontSize: '10px',
+          }}>
+            <span />
+            <span>Installed</span>
+            <span>Importing</span>
+          </div>
+
+          {[
+            { label: 'Name',    a: existing.name,    b: incoming.name    },
+            { label: 'ID',      a: existing.id,      b: incoming.id      },
+            { label: 'Version', a: existing.version, b: incoming.version },
+          ].map(({ label, a, b }) => {
+            const differs = a !== b;
+            return (
+              <div key={label} style={{
+                display: 'grid', gridTemplateColumns: '80px 1fr 1fr',
+                padding: '7px 12px',
+                borderBottom: '1px solid rgba(255,255,255,0.04)',
+              }}>
+                <span style={{ color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{label}</span>
+                <span style={{
+                  color: differs ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.75)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  textDecoration: differs ? 'line-through' : 'none',
+                }}>{a}</span>
+                <span style={{
+                  color: differs ? accentHex : 'rgba(255,255,255,0.75)',
+                  fontWeight: differs ? 600 : 400,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{b}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded-md text-sm transition"
+            style={{ border: '1px solid rgba(255,255,255,0.3)', background: 'transparent' }}
+          >
+            Cancel
+          </button>
+
+          {isConflict && (
+            <button
+              onClick={onKeepBoth}
+              className="px-3 py-1.5 rounded-md text-sm transition"
+              style={{ border: '1px solid rgba(255,255,255,0.3)', background: 'transparent' }}
+            >
+              Keep Both
+            </button>
+          )}
+
+          <button
+            onClick={onReplace}
+            className="px-3 py-1.5 rounded-md font-semibold text-sm transition"
+            style={{ background: confirmColor, color: '#fff', border: 'none' }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
-  const [confirm, setConfirm] = useState(null);
+  const [confirm, setConfirm]           = useState(null);
+  const [importStatus, setImportStatus] = useState(null); // null | 'loading' | { ok, message }
+  const [conflict, setConflict]         = useState(null); // { incoming, existing, text }
+  const { refresh } = useExtensions();
+  const fileRef = useRef(null);
+
+  const writeManifest = async (id, text) => {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    const dir = `AuthNo/extensions/${id}`;
+    try { await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true }); } catch (_) {}
+    await Filesystem.writeFile({ path: `${dir}/manifest.json`, data: text, directory: Directory.ExternalStorage, encoding: 'utf8' });
+    await refresh();
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImportStatus('loading');
+
+    try {
+      const text = await file.text();
+      const incoming = JSON.parse(text);
+
+      if (!incoming.id || !incoming.name || !incoming.version)
+        throw new Error('Invalid manifest — must have id, name, and version.');
+      if (!/^[\w.-]+$/.test(incoming.id))
+        throw new Error('manifest.id must be alphanumeric (dots and dashes allowed).');
+
+      // Check if an extension with this ID already exists
+      let existing = null;
+      try {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const result = await Filesystem.readFile({
+          path: `AuthNo/extensions/${incoming.id}/manifest.json`,
+          directory: Directory.ExternalStorage,
+          encoding: 'utf8',
+        });
+        existing = JSON.parse(result.data);
+      } catch (_) { /* no existing extension — clean install */ }
+
+      if (existing) {
+        setImportStatus(null);
+        setConflict({ incoming, existing, text });
+        return;
+      }
+
+      // Clean install
+      await writeManifest(incoming.id, text);
+      setImportStatus({ ok: true, message: `"${incoming.name}" installed successfully.` });
+    } catch (err) {
+      setImportStatus({ ok: false, message: err.message || 'Failed to import extension.' });
+    }
+
+    setTimeout(() => setImportStatus(null), 4000);
+  };
+
+  const handleReplace = async () => {
+    try {
+      await writeManifest(conflict.incoming.id, conflict.text);
+      setConflict(null);
+      setImportStatus({ ok: true, message: `"${conflict.incoming.name}" updated successfully.` });
+    } catch (err) {
+      setConflict(null);
+      setImportStatus({ ok: false, message: err.message });
+    }
+    setTimeout(() => setImportStatus(null), 4000);
+  };
+
+  const handleKeepBoth = async () => {
+    // Install under a suffixed ID so neither extension is lost
+    const suffixedId   = `${conflict.incoming.id}_imported`;
+    const suffixedText = conflict.text.replace(
+      `"id": "${conflict.incoming.id}"`,
+      `"id": "${suffixedId}"`
+    );
+    try {
+      await writeManifest(suffixedId, suffixedText);
+      setConflict(null);
+      setImportStatus({ ok: true, message: `Installed as "${suffixedId}".` });
+    } catch (err) {
+      setConflict(null);
+      setImportStatus({ ok: false, message: err.message });
+    }
+    setTimeout(() => setImportStatus(null), 4000);
+  };
 
   const actions = [
     {
@@ -691,17 +888,65 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
       <SectionTitle>Data Management</SectionTitle>
       <SectionSubtitle>Manage stored data and reset the application state.</SectionSubtitle>
 
+      {/* ── Import Extension ── */}
+      <Label>Extensions</Label>
+      <div style={{
+        padding: '14px 16px', borderRadius: '10px', marginBottom: '20px',
+        border: `1px solid ${accentHex}22`,
+        background: `${accentHex}08`,
+        display: 'flex', alignItems: 'center', gap: '12px',
+      }}>
+        <div style={{
+          width: '32px', height: '32px', borderRadius: '8px',
+          background: `${accentHex}22`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <PackagePlus size={15} color={accentHex} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Import Extension</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>
+            Select a <code style={{ color: 'var(--text-3)' }}>manifest.json</code> file to install an extension
+          </div>
+          {importStatus && importStatus !== 'loading' && (
+            <div style={{
+              marginTop: '6px', fontSize: '12px', fontWeight: 500,
+              color: importStatus.ok ? '#22c55e' : '#f87171',
+              display: 'flex', alignItems: 'center', gap: '5px',
+            }}>
+              {importStatus.ok ? <Check size={12} /> : <AlertTriangle size={12} />}
+              {importStatus.message}
+            </div>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept=".json,application/json" onChange={handleImportFile} style={{ display: 'none' }} />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={importStatus === 'loading'}
+          style={{
+            padding: '7px 16px', borderRadius: '7px',
+            border: `1px solid ${accentHex}44`,
+            background: importStatus === 'loading' ? `${accentHex}10` : `${accentHex}18`,
+            color: accentHex, cursor: importStatus === 'loading' ? 'wait' : 'pointer',
+            fontSize: '13px', fontWeight: 600, flexShrink: 0,
+            opacity: importStatus === 'loading' ? 0.6 : 1,
+          }}
+        >
+          {importStatus === 'loading' ? 'Importing…' : 'Import'}
+        </button>
+      </div>
+
+      <Divider />
+
+      <Label>Danger Zone</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {actions.map(action => (
-          <div
-            key={action.id}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '14px 16px', borderRadius: '10px',
-              border: `1px solid ${action.color}22`,
-              background: `${action.color}0a`, gap: '12px',
-            }}
-          >
+          <div key={action.id} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '14px 16px', borderRadius: '10px',
+            border: `1px solid ${action.color}22`,
+            background: `${action.color}0a`, gap: '12px',
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
               <div style={{
                 width: '32px', height: '32px', borderRadius: '8px',
@@ -720,8 +965,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
               style={{
                 padding: '7px 16px', borderRadius: '7px', border: `1px solid ${action.color}44`,
                 background: `${action.color}18`, color: action.color,
-                cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-                flexShrink: 0, transition: 'background 0.15s',
+                cursor: 'pointer', fontSize: '13px', fontWeight: 600, flexShrink: 0,
               }}
             >
               {action.label.split(' ')[0]}
@@ -737,6 +981,17 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
           type={confirm.type}
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+
+      {conflict && (
+        <ExtensionConflictModal
+          incoming={conflict.incoming}
+          existing={conflict.existing}
+          accentHex={accentHex}
+          onReplace={handleReplace}
+          onKeepBoth={handleKeepBoth}
+          onCancel={() => setConflict(null)}
         />
       )}
     </div>
