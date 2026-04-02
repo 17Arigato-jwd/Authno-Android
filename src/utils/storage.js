@@ -181,7 +181,13 @@ export async function saveBook(session) {
           return { success: true, filePath: session.filePath };
         } catch (writeErr) {
           const msg = writeErr?.message ?? '';
-          if (msg.includes('Permission') || msg.includes('No content provider')) {
+          if (
+            msg.includes('Permission') ||
+            msg.includes('No content provider') ||
+            msg.includes('FILE_NOTCREATED') ||
+            msg.includes('Could not open file descriptor') ||
+            msg.includes('SecurityException')
+          ) {
             // URI is permanently inaccessible — signal caller to clear it
             return { success: false, staleUri: true };
           }

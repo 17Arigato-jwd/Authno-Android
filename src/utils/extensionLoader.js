@@ -31,7 +31,7 @@ async function loadManifest(dirName) {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
     const result = await Filesystem.readFile({
       path: `${EXTENSIONS_DIR}/${dirName}/manifest.json`,
-      directory: Directory.ExternalStorage,
+      directory: Directory.Data,
       encoding: 'utf8',
     });
     const raw = JSON.parse(result.data);
@@ -67,7 +67,7 @@ export async function discoverExtensions() {
     try {
       await Filesystem.mkdir({
         path: EXTENSIONS_DIR,
-        directory: Directory.ExternalStorage,
+        directory: Directory.Data,
         recursive: true,
       });
     } catch (_) {}
@@ -76,7 +76,7 @@ export async function discoverExtensions() {
     try {
       const result = await Filesystem.readdir({
         path: EXTENSIONS_DIR,
-        directory: Directory.ExternalStorage,
+        directory: Directory.Data,
       });
       files = result.files ?? [];
     } catch {

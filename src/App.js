@@ -370,12 +370,16 @@ function AppInner({ navigateRef }) {
           const slim = sessions
             .filter(s => s.type !== 'storyboard')
             .map(s => ({ id: s.id, title: s.title || 'Untitled Book', streak: s.streak ?? {} }));
-          Filesystem.writeFile({
-            path: 'authno_books.json',
-            data: JSON.stringify(slim),
-            directory: Directory.Data,
-            encoding: 'utf8',
-          }).catch(() => {});
+          // Ensure the directory exists before writing (prevents FILE_NOTCREATED on first run)
+          Filesystem.mkdir({ path: '', directory: Directory.Data, recursive: true })
+            .catch(() => {})
+            .then(() => Filesystem.writeFile({
+              path: 'authno_books.json',
+              data: JSON.stringify(slim),
+              directory: Directory.Data,
+              encoding: 'utf8',
+            }))
+            .catch(() => {});
         }
       }
     }, [sessions]);

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, User, Palette, Database, BookOpen,
   Camera, Check, Trash2, RefreshCw, AlertTriangle,
-  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target, PackagePlus,
+  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target, PackagePlus, List,
 } from 'lucide-react';
 import { buildPalette } from './Background';
 import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
+import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -758,18 +759,134 @@ function ExtensionConflictModal({ incoming, existing, accentHex, onReplace, onKe
   );
 }
 
+// ─── Error Log Modal ──────────────────────────────────────────────────────────
+
+function ErrorLogModal({ onClose, accentHex }) {
+  const [history, setHistory] = useState(() => getErrorHistory());
+  const [copied, setCopied]   = useState(false);
+
+  const handleClear = () => {
+    clearErrorHistory();
+    setHistory([]);
+  };
+
+  const handleCopyReport = () => {
+    const report = formatBugReport(20);
+    navigator.clipboard?.writeText(report).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = report;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9000,
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.82)',
+    }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{
+        width: '100%', maxHeight: '82vh', display: 'flex', flexDirection: 'column',
+        background: '#0f0f1a', borderRadius: '20px 20px 0 0',
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '18px 20px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <List size={15} color='rgba(255,255,255,0.5)' />
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>Error Log</span>
+            {history.length > 0 && (
+              <span style={{
+                fontSize: '11px', fontWeight: 700, fontFamily: 'monospace',
+                padding: '1px 7px', borderRadius: '999px',
+                background: accentHex + '33', color: accentHex,
+              }}>{history.length}</span>
+            )}
+          </div>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'rgba(255,255,255,0.35)', padding: '4px',
+          }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Entries */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {history.length === 0 ? (
+            <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '13px', marginTop: '32px' }}>
+              No errors recorded yet.
+            </p>
+          ) : history.map((entry) => (
+            <div key={entry.id} style={{
+              borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.03)', padding: '12px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>
+                  {entry.icon} {entry.category}
+                </span>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}>
+                  {new Date(entry.timestamp).toLocaleString()}
+                </span>
+              </div>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.5, margin: '0 0 4px' }}>
+                {entry.message}
+              </p>
+              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.28)', fontStyle: 'italic', margin: 0 }}>
+                {entry.suggestion}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        {history.length > 0 && (
+          <div style={{
+            display: 'flex', gap: '8px', padding: '12px 16px 0',
+            borderTop: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
+          }}>
+            <button onClick={handleClear} style={{
+              flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer',
+              border: '1px solid rgba(255,255,255,0.18)', background: 'none',
+              color: 'rgba(255,255,255,0.45)', fontSize: '12px', fontWeight: 600,
+            }}>Clear Log</button>
+            <button onClick={handleCopyReport} style={{
+              flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer',
+              border: `1px solid ${accentHex}80`, background: accentHex + '33',
+              color: accentHex, fontSize: '12px', fontWeight: 600,
+            }}>{copied ? '✓ Copied!' : 'Copy Full Report'}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
   const [confirm, setConfirm]           = useState(null);
   const [importStatus, setImportStatus] = useState(null); // null | 'loading' | { ok, message }
   const [conflict, setConflict]         = useState(null); // { incoming, existing, text }
+  const [showErrorLog, setShowErrorLog] = useState(false);
+  const [errorCount, setErrorCount]     = useState(() => getErrorHistory().length);
   const { refresh } = useExtensions();
   const fileRef = useRef(null);
 
   const writeManifest = async (id, text) => {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
     const dir = `AuthNo/extensions/${id}`;
-    try { await Filesystem.mkdir({ path: dir, directory: Directory.ExternalStorage, recursive: true }); } catch (_) {}
-    await Filesystem.writeFile({ path: `${dir}/manifest.json`, data: text, directory: Directory.ExternalStorage, encoding: 'utf8' });
+    try { await Filesystem.mkdir({ path: dir, directory: Directory.Data, recursive: true }); } catch (_) {}
+    await Filesystem.writeFile({ path: `${dir}/manifest.json`, data: text, directory: Directory.Data, encoding: 'utf8' });
     await refresh();
   };
 
@@ -795,7 +912,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
         const { Filesystem, Directory } = await import('@capacitor/filesystem');
         const result = await Filesystem.readFile({
           path: `AuthNo/extensions/${incoming.id}/manifest.json`,
-          directory: Directory.ExternalStorage,
+          directory: Directory.Data,
           encoding: 'utf8',
         });
         existing = JSON.parse(result.data);
@@ -888,7 +1005,51 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
       <SectionTitle>Data Management</SectionTitle>
       <SectionSubtitle>Manage stored data and reset the application state.</SectionSubtitle>
 
-      {/* ── Import Extension ── */}
+      {/* ── Error Log ── */}
+      <Label>Diagnostics</Label>
+      <div style={{
+        padding: '14px 16px', borderRadius: '10px', marginBottom: '20px',
+        border: `1px solid rgba(255,255,255,0.07)`,
+        background: `rgba(255,255,255,0.03)`,
+        display: 'flex', alignItems: 'center', gap: '12px',
+      }}>
+        <div style={{
+          width: '32px', height: '32px', borderRadius: '8px',
+          background: 'rgba(255,255,255,0.07)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <List size={15} color='rgba(255,255,255,0.5)' />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Error Log</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>
+            {errorCount > 0
+              ? `${errorCount} error${errorCount === 1 ? '' : 's'} recorded — tap to review`
+              : 'No errors recorded'}
+          </div>
+        </div>
+        <button
+          onClick={() => { setErrorCount(getErrorHistory().length); setShowErrorLog(true); }}
+          style={{
+            padding: '7px 16px', borderRadius: '7px',
+            border: `1px solid rgba(255,255,255,0.15)`,
+            background: `rgba(255,255,255,0.06)`,
+            color: 'var(--text-2)', cursor: 'pointer',
+            fontSize: '13px', fontWeight: 600, flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}
+        >
+          {errorCount > 0 && (
+            <span style={{
+              fontSize: '11px', fontWeight: 700, padding: '1px 6px',
+              borderRadius: '999px', background: '#ed424533', color: '#f87171',
+            }}>{errorCount}</span>
+          )}
+          View Log
+        </button>
+      </div>
+
+      <Divider />
       <Label>Extensions</Label>
       <div style={{
         padding: '14px 16px', borderRadius: '10px', marginBottom: '20px',
@@ -938,6 +1099,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
 
       <Divider />
 
+      {/* ── Danger Zone ── */}
       <Label>Danger Zone</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {actions.map(action => (
@@ -992,6 +1154,16 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
           onReplace={handleReplace}
           onKeepBoth={handleKeepBoth}
           onCancel={() => setConflict(null)}
+        />
+      )}
+
+      {showErrorLog && (
+        <ErrorLogModal
+          accentHex={accentHex}
+          onClose={() => {
+            setShowErrorLog(false);
+            setErrorCount(getErrorHistory().length);
+          }}
         />
       )}
     </div>
