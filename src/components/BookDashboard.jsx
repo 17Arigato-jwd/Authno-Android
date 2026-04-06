@@ -28,6 +28,7 @@ import {
   BarChart2, FileText, X,
 } from 'lucide-react';
 import { FlameButton } from './Streak';
+import { ChapterRow } from './ChapterRow';
 import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 
@@ -850,114 +851,30 @@ export default function BookDashboard({
                   {chapterSearch ? 'No chapters match your search.' : 'No chapters yet — create your first one!'}
                 </div>
               ) : visibleChapters.map((chap, i) => {
-                const isLast       = i === visibleChapters.length - 1;
-                const isPendingDel = deleteConfirm === chap.chap_idx;
-                // Move direction depends on sort order display
+                const isLast      = i === visibleChapters.length - 1;
                 const canMoveUp   = i > 0;
                 const canMoveDown = i < visibleChapters.length - 1;
-                // When sorted newest-first, pressing ↑ in the list means order+1 (later)
                 const upDir   = sortOrder === 'newest' ? 1  : -1;
                 const downDir = sortOrder === 'newest' ? -1 : 1;
 
                 return (
-                  <div key={chap.chap_idx} style={{
-                    borderBottom: !isLast
-                      ? `1px solid ${light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`
-                      : 'none',
-                  }}>
-                    {isPendingDel ? (
-                      /* ── Delete confirmation inline ── */
-                      <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '14px 2px', gap: '10px',
-                      }}>
-                        <span style={{ fontSize: '13px', color: 'var(--text-3)' }}>
-                          Delete <strong style={{ color: 'var(--text-1)' }}>{chap.title}</strong>?
-                        </span>
-                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                          <button onClick={() => setDeleteConfirm(null)} style={{
-                            padding: '6px 14px', borderRadius: '8px', border: `1px solid ${light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.15)'}`,
-                            background: 'none', color: 'var(--text-3)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                          }}>Cancel</button>
-                          <button onClick={() => { onDeleteChapter?.(chap.chap_idx); setDeleteConfirm(null); }} style={{
-                            padding: '6px 14px', borderRadius: '8px', border: 'none',
-                            background: '#e03c3c', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-                          }}>Delete</button>
-                        </div>
-                      </div>
-                    ) : (
-                      /* ── Normal row ── */
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 0',
-                      }}>
-                        {/* Reorder buttons */}
-                        {!chapterSearch && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                            <button
-                              onClick={() => onMoveChapter?.(chap.chap_idx, upDir)}
-                              disabled={!canMoveUp}
-                              style={{
-                                width: '22px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                background: 'none', border: 'none', cursor: canMoveUp ? 'pointer' : 'default',
-                                color: canMoveUp ? 'var(--text-4)' : 'var(--text-6)',
-                                opacity: canMoveUp ? 1 : 0.25, padding: 0, borderRadius: '4px',
-                              }}>
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                                <path d="M18 15l-6-6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => onMoveChapter?.(chap.chap_idx, downDir)}
-                              disabled={!canMoveDown}
-                              style={{
-                                width: '22px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                background: 'none', border: 'none', cursor: canMoveDown ? 'pointer' : 'default',
-                                color: canMoveDown ? 'var(--text-4)' : 'var(--text-6)',
-                                opacity: canMoveDown ? 1 : 0.25, padding: 0, borderRadius: '4px',
-                              }}>
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Title + timestamp — tappable to open editor */}
-                        <button onClick={() => onEditChapter(chap.chap_idx)} style={{
-                          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
-                          minWidth: 0,
-                        }}>
-                          <span style={{
-                            fontSize: '15px', fontWeight: 600, color: 'var(--text-1)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {chap.title}
-                          </span>
-                          <span style={{ fontSize: '13px', color: 'var(--text-5)', flexShrink: 0, marginLeft: '12px' }}>
-                            {timeAgo(chap.updated || chap.created)}
-                          </span>
-                        </button>
-
-                        {/* Delete button */}
-                        {chapters.length > 1 && (
-                          <button
-                            onClick={() => setDeleteConfirm(chap.chap_idx)}
-                            style={{
-                              width: '28px', height: '28px', flexShrink: 0,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: 'var(--text-5)', borderRadius: '6px', padding: 0,
-                              transition: 'color 0.12s',
-                            }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <ChapterRow
+                    key={chap.chap_idx}
+                    chap={chap}
+                    isLast={isLast}
+                    isPendingDel={deleteConfirm === chap.chap_idx}
+                    canMoveUp={canMoveUp}
+                    canMoveDown={canMoveDown}
+                    showSearch={!!chapterSearch}
+                    showDelete={chapters.length > 1}
+                    light={light}
+                    onEdit={() => onEditChapter(chap.chap_idx)}
+                    onMoveUp={() => onMoveChapter?.(chap.chap_idx, upDir)}
+                    onMoveDown={() => onMoveChapter?.(chap.chap_idx, downDir)}
+                    onDeleteRequest={() => setDeleteConfirm(chap.chap_idx)}
+                    onDeleteConfirm={() => { onDeleteChapter?.(chap.chap_idx); setDeleteConfirm(null); }}
+                    onDeleteCancel={() => setDeleteConfirm(null)}
+                  />
                 );
               })}
             </div>
