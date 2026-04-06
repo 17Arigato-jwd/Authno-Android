@@ -17,6 +17,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useExtensions } from '../utils/ExtensionContext';
 import { isAndroid } from '../utils/platform';
+import { hapticDelete } from '../utils/haptics';
 
 // ─── Emoji / string → Lucide icon resolver ────────────────────────────────────
 
@@ -97,17 +98,6 @@ function ContribChip({ contrib, onClick }) {
 }
 
 // ─── Single extension card ────────────────────────────────────────────────────
-
-async function hapticHeavy() {
-  try {
-    if (window.Capacitor?.isPluginAvailable?.('Haptics')) {
-      const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
-      await Haptics.impact({ style: ImpactStyle.Heavy });
-      return;
-    }
-  } catch (_) {}
-  try { navigator.vibrate?.(30); } catch (_) {}
-}
 
 const CHIPS_VISIBLE_DEFAULT = 3;
 
@@ -205,7 +195,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
 
     clearTimeout(longPressTimer.current);
     longPressTimer.current = setTimeout(() => {
-      hapticHeavy();
+      hapticDelete();
       openMenuAt(t.clientX + 8, t.clientY - 8);
     }, 480);
 

@@ -6,19 +6,7 @@ import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
 import ExtensionTab from "./ExtensionTab";
 import { useExtensions } from "../utils/ExtensionContext";
-
-// ── Haptics helper ─────────────────────────────────────────────────────────────
-async function hapticHeavy() {
-  try {
-    if (window.Capacitor?.isPluginAvailable?.("Haptics")) {
-      const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
-      await Haptics.impact({ style: ImpactStyle.Heavy });
-      return;
-    }
-  } catch (_) {}
-  // Web fallback
-  try { navigator.vibrate?.(30); } catch (_) {}
-}
+import { hapticDelete } from "../utils/haptics";
 
 /**
  * Sidebar
@@ -106,7 +94,7 @@ export default function Sidebar({
 
     longPressTimer.current = setTimeout(() => {
       // Haptic feedback — Strong Thud (ImpactStyle.Heavy)
-      hapticHeavy();
+      hapticDelete();
 
       // Position the menu near the finger but always fully on-screen
       const MENU_W = 160, MENU_H = 90;

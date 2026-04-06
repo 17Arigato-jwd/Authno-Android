@@ -39,69 +39,6 @@ function hexToHsv(hex) {
   return rgb ? rgbToHsv(...rgb) : [0, 100, 100];
 }
 
-// ─── SB Canvas ────────────────────────────────────────────────────────────────
-
-function SBCanvas({ hue, saturation, brightness, onChange, size = 240 }) {
-  const canvasRef = useRef(null);
-  const dragging  = useRef(false);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const { width: w, height: h } = canvas;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-    ctx.fillRect(0, 0, w, h);
-    const white = ctx.createLinearGradient(0, 0, w, 0);
-    white.addColorStop(0, 'rgba(255,255,255,1)');
-    white.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = white;
-    ctx.fillRect(0, 0, w, h);
-    const black = ctx.createLinearGradient(0, 0, 0, h);
-    black.addColorStop(0, 'rgba(0,0,0,0)');
-    black.addColorStop(1, 'rgba(0,0,0,1)');
-    ctx.fillStyle = black;
-    ctx.fillRect(0, 0, w, h);
-  }, [hue]);
-
-  const pickAt = useCallback((e) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-    const y = Math.max(0, Math.min(e.clientY - rect.top,  rect.height));
-    onChange(Math.round((x / rect.width) * 100), Math.round((1 - y / rect.height) * 100));
-  }, [onChange]);
-
-  const onPointerDown = (e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); pickAt(e); };
-  const onPointerMove = (e) => { if (dragging.current) pickAt(e); };
-  const onPointerUp   = ()  => { dragging.current = false; };
-
-  return (
-    <div style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'crosshair', flexShrink: 0 }}>
-      <canvas
-        ref={canvasRef}
-        width={size}
-        height={Math.round(size * 0.67)}
-        style={{ display: 'block', width: '100%', height: `${Math.round(size * 0.67)}px` }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      />
-      <div style={{
-        position: 'absolute',
-        left: `${saturation}%`, top: `${100 - brightness}%`,
-        width: '14px', height: '14px', borderRadius: '50%',
-        border: '2px solid #fff',
-        boxShadow: '0 0 0 1px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(0,0,0,0.2)',
-        transform: 'translate(-50%, -50%)',
-        pointerEvents: 'none',
-      }} />
-    </div>
-  );
-}
-
 // ─── Hue Slider ───────────────────────────────────────────────────────────────
 
 function HueSlider({ hue, onChange }) {
@@ -121,11 +58,11 @@ function HueSlider({ hue, onChange }) {
   const onPointerUp   = ()  => { dragging.current = false; };
 
   return (
-    <div style={{ position: 'relative', height: '14px', cursor: 'ew-resize' }}>
+    <div style={{ position: 'relative', height: '20px', cursor: 'ew-resize' }}>
       <div
         ref={trackRef}
         style={{
-          position: 'absolute', inset: 0, borderRadius: '7px',
+          position: 'absolute', inset: 0, borderRadius: '10px',
           background: 'linear-gradient(to right, #f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)',
         }}
         onPointerDown={onPointerDown}
@@ -135,7 +72,7 @@ function HueSlider({ hue, onChange }) {
       <div style={{
         position: 'absolute',
         left: `${(hue / 360) * 100}%`, top: '50%',
-        width: '16px', height: '16px', borderRadius: '50%',
+        width: '22px', height: '22px', borderRadius: '50%',
         background: `hsl(${hue},100%,50%)`,
         border: '2px solid #fff',
         boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
@@ -150,11 +87,12 @@ function HueSlider({ hue, onChange }) {
 
 function PickerBody({ value, onChange, canvasSize }) {
   const [hexInput, setHexInput] = useState(value);
-  const [h, s, v] = hexToHsv(value);
+  const [h] = hexToHsv(value);
 
   useEffect(() => { setHexInput(value); }, [value]);
 
-  const emitHsv = (nh, ns, nv) => onChange?.(rgbToHex(...hsvToRgb(nh, ns, nv)));
+  // Always emit at full saturation + brightness — pure hue colours
+  const emitHue = (nh) => onChange?.(rgbToHex(...hsvToRgb(nh, 100, 100)));
 
   const handleHexInput = (raw) => {
     setHexInput(raw);
@@ -162,16 +100,11 @@ function PickerBody({ value, onChange, canvasSize }) {
     if (/^#[0-9a-f]{6}$/i.test(clean)) onChange?.(clean);
   };
 
-  const previewHex = rgbToHex(...hsvToRgb(h, s, v));
+  const previewHex = rgbToHex(...hsvToRgb(h, 100, 100));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <SBCanvas
-        hue={h} saturation={s} brightness={v}
-        onChange={(ns, nv) => emitHsv(h, ns, nv)}
-        size={canvasSize}
-      />
-      <HueSlider hue={h} onChange={(nh) => emitHsv(nh, s, v)} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: `${canvasSize}px` }}>
+      <HueSlider hue={h} onChange={emitHue} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <div style={{
           width: '32px', height: '32px', borderRadius: '6px',
@@ -206,7 +139,7 @@ function PickerBody({ value, onChange, canvasSize }) {
  * onChange    fn        Called with new hex string on every interaction.
  * label       string    Optional label shown above.
  * inline      bool      Render picker body directly — no swatch, no popover.
- * canvasSize  number    Width of the SB canvas in px. Default 240.
+ * canvasSize  number    Width of the picker in px. Default 240.
  */
 export function ColorPicker({ value = '#3b82f6', onChange, label, inline = false, canvasSize = 240 }) {
   const [open, setOpen]       = useState(false);
@@ -214,13 +147,12 @@ export function ColorPicker({ value = '#3b82f6', onChange, label, inline = false
   const popoverRef            = useRef(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0, flipUp: false });
 
-  // Calculate popover position from swatch's screen coordinates
   const updatePos = useCallback(() => {
     if (!swatchRef.current) return;
     const rect        = swatchRef.current.getBoundingClientRect();
-    const popW        = canvasSize + 28; // padding on both sides
+    const popW        = canvasSize + 28;
     const spaceBelow  = window.innerHeight - rect.bottom;
-    const flipUp      = spaceBelow < 320;
+    const flipUp      = spaceBelow < 160;
     const left        = Math.min(
       Math.max(rect.left + rect.width / 2 - popW / 2, 8),
       window.innerWidth - popW - 8
@@ -237,7 +169,6 @@ export function ColorPicker({ value = '#3b82f6', onChange, label, inline = false
     setOpen(v => !v);
   };
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -252,7 +183,6 @@ export function ColorPicker({ value = '#3b82f6', onChange, label, inline = false
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Reposition on scroll/resize while open
   useEffect(() => {
     if (!open) return;
     window.addEventListener('scroll', updatePos, true);
