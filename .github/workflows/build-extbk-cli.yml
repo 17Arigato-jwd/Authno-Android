@@ -4,6 +4,7 @@ name: Build extbk-cli
 # Triggers:
 #   • Manually via workflow_dispatch (always visible on the default branch)
 #   • On tags matching cli-v* (e.g. git tag cli-v1.0.2 && git push --tags)
+#   • On tags matching v* — ties CLI releases to app releases (e.g. v1.1.6)
 #   • On any branch push that touches extensions/extbk-cli/**
 #     (handled by the job-level `if:` below — required because GitHub does
 #      NOT support two `push:` keys in a single `on:` block, and mixing
@@ -13,8 +14,8 @@ name: Build extbk-cli
 
 on:
   push:
-    tags: ["cli-v*"]
-    branches: ["**"]          # catch branch pushes (filtered by job-level if:)
+    tags: ["cli-v*", "v*"]    # cli-v* for standalone CLI releases; v* ties to app releases
+    branches: ["**"]           # catch branch pushes (filtered by job-level if:)
   workflow_dispatch:
     inputs:
       version:
@@ -32,22 +33,32 @@ jobs:
     #
     #   on:
     #     push:
-    #       tags: ["cli-v*"]          # ← no paths filter here
+    #       tags: ["cli-v*", "v*"]       # ← no paths filter here
     #     push:
     #       branches: ["**"]
     #       paths: ["extensions/extbk-cli/**"]   # ← paths filter here only
     #
     # As a workaround the `branches: ["**"]` above makes every branch push
-    # reach this job, and the condition below filters non-cli-cli changes out.
-    # Tag pushes and workflow_dispatch always pass through unconditionally.
+    # reach this job, and the condition below filters non-cli changes out.
+    # Tag pushes (both cli-v* and v*) and workflow_dispatch always pass
+    # through unconditionally.
+    #
+    # FIX: commits.*.modified only catches edited files; added and removed
+    # files live in their own arrays. All three are checked below so that
+    # new files dropped into extensions/extbk-cli/ also trigger the job.
     # ────────────────────────────────────────────────────────────────────────
     if: |
       startsWith(github.ref, 'refs/tags/cli-v') ||
+      startsWith(github.ref, 'refs/tags/v')     ||
       github.event_name == 'workflow_dispatch'  ||
       (
         github.event_name == 'push' &&
         !startsWith(github.ref, 'refs/tags/') &&
-        contains(toJson(github.event.commits.*.modified), 'extensions/extbk-cli/')
+        (
+          contains(toJson(github.event.commits.*.modified), 'extensions/extbk-cli/') ||
+          contains(toJson(github.event.commits.*.added),    'extensions/extbk-cli/') ||
+          contains(toJson(github.event.commits.*.removed),  'extensions/extbk-cli/')
+        )
       )
 
     steps:
@@ -64,6 +75,9 @@ jobs:
           elif [[ "${{ github.ref }}" == refs/tags/cli-v* ]]; then
             VER="${{ github.ref_name }}"
             VER="${VER#cli-v}"          # strip "cli-v" prefix
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VER="${{ github.ref_name }}"
+            VER="${VER#v}"              # strip "v" prefix
           else
             VER="dev-${{ github.run_number }}"
           fi
@@ -366,7 +380,9 @@ jobs:
     name: Publish CLI Release
     needs: build-cli
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/cli-v')
+    if: |
+      startsWith(github.ref, 'refs/tags/cli-v') ||
+      startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
