@@ -1,14 +1,20 @@
 name: Build extbk-cli
 
 # Runs independently of the main build workflow.
-# Trigger manually, on cli-specific tags (e.g. cli-v1.0.1), or on changes to
-# the extbk-cli source directory.
+# Triggers:
+#   • Manually via workflow_dispatch (always visible on the default branch)
+#   • On tags matching cli-v* (e.g. git tag cli-v1.0.2 && git push --tags)
+#   • On any branch push that touches extensions/extbk-cli/**
+#     (handled by the job-level `if:` below — required because GitHub does
+#      NOT support two `push:` keys in a single `on:` block, and mixing
+#      `paths:` with `tags:` under `push:` causes tag pushes to silently
+#      skip the workflow — the paths filter treats a tag push as having
+#      zero changed files and never matches.)
 
 on:
   push:
     tags: ["cli-v*"]
-    paths:
-      - "extensions/extbk-cli/**"
+    branches: ["**"]          # catch branch pushes (filtered by job-level if:)
   workflow_dispatch:
     inputs:
       version:
@@ -19,6 +25,31 @@ jobs:
   build-cli:
     name: Build extbk-cli Installer
     runs-on: ubuntu-latest
+
+    # ── WHY THIS if: EXISTS ──────────────────────────────────────────────────
+    # GitHub Actions does not allow two `push:` entries in `on:`, so we cannot
+    # write:
+    #
+    #   on:
+    #     push:
+    #       tags: ["cli-v*"]          # ← no paths filter here
+    #     push:
+    #       branches: ["**"]
+    #       paths: ["extensions/extbk-cli/**"]   # ← paths filter here only
+    #
+    # As a workaround the `branches: ["**"]` above makes every branch push
+    # reach this job, and the condition below filters non-cli-cli changes out.
+    # Tag pushes and workflow_dispatch always pass through unconditionally.
+    # ────────────────────────────────────────────────────────────────────────
+    if: |
+      startsWith(github.ref, 'refs/tags/cli-v') ||
+      github.event_name == 'workflow_dispatch'  ||
+      (
+        github.event_name == 'push' &&
+        !startsWith(github.ref, 'refs/tags/') &&
+        contains(toJson(github.event.commits.*.modified), 'extensions/extbk-cli/')
+      )
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
