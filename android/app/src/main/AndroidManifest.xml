@@ -44,6 +44,27 @@
                       android:pathPattern=".*\\.authbook" />
             </intent-filter>
 
+            <!-- Open .extbk extension bundles tapped in file managers / email / browser -->
+            <intent-filter android:label="Install AuthNo Extension">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/x-extbk" />
+            </intent-filter>
+
+            <intent-filter android:label="Install AuthNo Extension">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\.extbk" />
+            </intent-filter>
+
+            <intent-filter android:label="Install AuthNo Extension">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\.extbk" />
+            </intent-filter>
+
         </activity>
 
         <!-- ── Streak Widget: provider ── -->

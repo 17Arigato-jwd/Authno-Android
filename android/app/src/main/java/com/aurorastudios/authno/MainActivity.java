@@ -17,9 +17,12 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FilePickerPlugin.class);
         // ── Register the widget data bridge so React can call WidgetData.syncBooks() ──
         registerPlugin(WidgetDataPlugin.class);
+        // ── Register the native assets reader so JS can seed pre-installed .extbk files ──
+        registerPlugin(ExtbkAssetsPlugin.class);
         super.onCreate(savedInstanceState);
         getBridge().getWebView().post(() -> {
             handleAuthBookIntent(getIntent());
+            handleExtbkIntent(getIntent());
             handleWidgetDeepLink(getIntent());
         });
     }
@@ -30,6 +33,7 @@ public class MainActivity extends BridgeActivity {
         setIntent(intent);
         getBridge().getWebView().post(() -> {
             handleAuthBookIntent(intent);
+            handleExtbkIntent(intent);
             handleWidgetDeepLink(intent);
         });
     }
@@ -88,7 +92,67 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Handles taps on the home-screen Streak Widget.
+     * Handles ACTION_VIEW intents for .extbk extension bundles tapped in a
+     * file manager, email attachment, or browser download.
+     *
+     * Reads the raw bytes, base64-encodes them, and dispatches
+     * 'install-extbk-bytes' to JS.  ExtensionContext.js listens for this event
+     * and calls extbkInstaller.installExtbkBytes() to unpack and install.
+     *
+     * On failure, dispatches 'install-extbk-error' with a message field so the
+     * UI can surface a toast without crashing.
+     */
+    private void handleExtbkIntent(Intent intent) {
+        if (intent == null) return;
+        if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
+
+        android.net.Uri uri = intent.getData();
+        if (uri == null) return;
+
+        // Only intercept .extbk files — leave .authbook to handleAuthBookIntent
+        String uriStr = uri.toString().toLowerCase();
+        if (!uriStr.endsWith(".extbk") && !uriStr.contains(".extbk?")) {
+            // Also check MIME type
+            String mime = intent.getType();
+            if (mime == null || !mime.equals("application/x-extbk")) return;
+        }
+
+        try {
+            java.io.InputStream is = getContentResolver().openInputStream(uri);
+            if (is == null) {
+                dispatchExtbkError("Could not open file stream");
+                return;
+            }
+
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+            is.close();
+
+            String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+
+            String js =
+                "window.dispatchEvent(new CustomEvent('install-extbk-bytes', {" +
+                "  detail: { base64: '" + base64 + "' }" +
+                "}))";
+            getBridge().getWebView().evaluateJavascript(js, null);
+
+        } catch (Exception e) {
+            dispatchExtbkError(e.getMessage() != null ? e.getMessage() : "Unknown error");
+        }
+    }
+
+    private void dispatchExtbkError(String message) {
+        String safe = message.replace("'", "\\'");
+        String js =
+            "window.dispatchEvent(new CustomEvent('install-extbk-error', {" +
+            "  detail: { message: '" + safe + "' }" +
+            "}))";
+        getBridge().getWebView().evaluateJavascript(js, null);
+    }
+
+    /**
      *
      * The widget puts a "widgetBookId" extra on the launch intent.
      * We forward it to the React layer as a CustomEvent so App.js can navigate

@@ -1,0 +1,373 @@
+name: Build extbk-cli
+
+# Runs independently of the main build workflow.
+# Trigger manually, on cli-specific tags (e.g. cli-v1.0.1), or on changes to
+# the extbk-cli source directory.
+
+on:
+  push:
+    tags: ["cli-v*"]
+    paths:
+      - "extensions/extbk-cli/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string (e.g. 1.0.1) — leave blank to use tag or run number"
+        required: false
+
+jobs:
+  build-cli:
+    name: Build extbk-cli Installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      # ── Resolve version ────────────────────────────────────────────────────
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VER="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/cli-v* ]]; then
+            VER="${{ github.ref_name }}"
+            VER="${VER#cli-v}"          # strip "cli-v" prefix
+          else
+            VER="dev-${{ github.run_number }}"
+          fi
+          echo "name=$VER" >> $GITHUB_OUTPUT
+          echo "Resolved version: $VER"
+
+      # ── Validate source ────────────────────────────────────────────────────
+      - name: Validate CLI source
+        working-directory: extensions/extbk-cli
+        run: |
+          echo "Checking required files..."
+          for f in src/cli.js src/format.js src/rs.js src/manifest.js \
+                   src/commands/build.js src/commands/check.js \
+                   src/commands/info.js src/commands/unpack.js \
+                   package.json; do
+            if [ ! -f "$f" ]; then
+              echo "Missing: $f" >&2
+              exit 1
+            fi
+            echo "  + $f"
+          done
+          echo "All required files present."
+
+      # ── Self-test: run help ────────────────────────────────────────────────
+      - name: Self-test
+        working-directory: extensions/extbk-cli
+        run: |
+          npm install --silent
+          node src/cli.js --help
+          node src/cli.js build --help
+          node src/cli.js check --help
+          node src/cli.js info  --help
+          node src/cli.js unpack --help
+          echo "Self-test passed."
+
+      # ── Round-trip test: build a sample extension, check, info, unpack ────
+      - name: Round-trip test
+        working-directory: extensions/extbk-cli
+        run: |
+          mkdir -p /tmp/test-ext
+
+          # Write minimal manifest
+          cat > /tmp/test-ext/manifest.json << 'MEOF'
+          {
+            "id": "test-extension",
+            "name": "Test Extension",
+            "version": "0.0.1",
+            "description": "CI round-trip test"
+          }
+          MEOF
+
+          # Write minimal index.js
+          cat > /tmp/test-ext/index.js << 'IEOF'
+          export function activate({ registerHook }) {
+            registerHook('onSave', ({ session, trigger }) => {
+              console.log('onSave', trigger, session.id);
+            });
+          }
+          IEOF
+
+          # Also add an asset file
+          mkdir -p /tmp/test-ext/assets
+          echo '{"key":"value"}' > /tmp/test-ext/assets/config.json
+
+          # Build at default RS level (20%)
+          node src/cli.js build /tmp/test-ext /tmp/test-ext.extbk --overwrite
+          echo "Build: OK"
+
+          # Check
+          node src/cli.js check /tmp/test-ext.extbk
+          echo "Check: OK"
+
+          # Info
+          node src/cli.js info /tmp/test-ext.extbk
+          echo "Info: OK"
+
+          # Unpack and verify round-trip
+          node src/cli.js unpack /tmp/test-ext.extbk /tmp/test-unpacked --overwrite
+          if [ ! -f /tmp/test-unpacked/manifest.json ]; then
+            echo "Round-trip FAILED: manifest.json missing after unpack" >&2
+            exit 1
+          fi
+          if [ ! -f /tmp/test-unpacked/index.js ]; then
+            echo "Round-trip FAILED: index.js missing after unpack" >&2
+            exit 1
+          fi
+          if [ ! -f /tmp/test-unpacked/assets/config.json ]; then
+            echo "Round-trip FAILED: asset file missing after unpack" >&2
+            exit 1
+          fi
+
+          # Verify manifest content survived round-trip
+          ID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/test-unpacked/manifest.json','utf8')).id)")
+          if [ "$ID" != "test-extension" ]; then
+            echo "Round-trip FAILED: manifest.id mismatch (got: $ID)" >&2
+            exit 1
+          fi
+
+          # Test RS=0 (disabled parity)
+          node src/cli.js build /tmp/test-ext /tmp/test-nors.extbk --overwrite --rs-pct 0
+          node src/cli.js check /tmp/test-nors.extbk
+          echo "RS=0 build: OK"
+
+          echo "Round-trip: ALL PASSED"
+
+      # ── Create simple self-installing shell script ─────────────────────────
+      # The installer copies the CLI source to ~/.extbk-cli, runs npm install,
+      # and symlinks the extbk binary to /usr/local/bin.
+      - name: Build Linux/macOS installer script
+        run: |
+          PKG="extbk-cli-${{ steps.version.outputs.name }}"
+          mkdir -p dist/$PKG
+
+          # Copy source
+          cp -r extensions/extbk-cli/src       dist/$PKG/src
+          cp    extensions/extbk-cli/package.json dist/$PKG/package.json
+
+          # Write install.sh inline (so it's self-contained in the tarball)
+          cat > dist/$PKG/install.sh << 'INSTALL_EOF'
+          #!/usr/bin/env bash
+          # extbk-cli installer (Linux / macOS)
+          set -euo pipefail
+
+          INSTALL_DIR="${HOME}/.extbk-cli"
+          BIN_DIR="/usr/local/bin"
+          RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+          ok()   { echo -e "${GREEN}v${NC}  $1"; }
+          warn() { echo -e "${YELLOW}!${NC}  $1"; }
+          die()  { echo -e "${RED}x${NC}  $1" >&2; exit 1; }
+
+          echo ""
+          echo "  extbk-cli installer"
+          echo "  ----------------------------------------"
+
+          # Node check
+          if ! command -v node &>/dev/null; then
+            die "Node.js >= 18 required. Install from https://nodejs.org"
+          fi
+          NODE_MAJOR=$(node -e "process.stdout.write(process.version.split('.')[0].replace('v',''))")
+          if [ "$NODE_MAJOR" -lt 18 ]; then
+            die "Node.js >= 18 required (found $(node --version))"
+          fi
+          ok "Node.js $(node --version)"
+
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+          echo "  Installing to ${INSTALL_DIR} ..."
+          rm -rf "${INSTALL_DIR}"
+          mkdir -p "${INSTALL_DIR}"
+          cp -r "${SCRIPT_DIR}/src"          "${INSTALL_DIR}/src"
+          cp    "${SCRIPT_DIR}/package.json" "${INSTALL_DIR}/package.json"
+
+          (cd "${INSTALL_DIR}" && npm install --omit=dev --silent)
+          ok "Dependencies installed"
+
+          # Launcher
+          mkdir -p "${INSTALL_DIR}/bin"
+          LAUNCHER="${INSTALL_DIR}/bin/extbk"
+          printf '#!/usr/bin/env bash\nexec node "%s/src/cli.js" "$@"\n' "${INSTALL_DIR}" > "${LAUNCHER}"
+          chmod +x "${LAUNCHER}"
+
+          # Global link
+          if [ -w "${BIN_DIR}" ]; then
+            ln -sf "${LAUNCHER}" "${BIN_DIR}/extbk"
+            ok "Linked: extbk -> ${BIN_DIR}/extbk"
+          else
+            warn "${BIN_DIR} not writable. Run with sudo, or add ${INSTALL_DIR}/bin to your PATH."
+          fi
+
+          echo ""
+          ok "extbk-cli installed!"
+          echo ""
+          echo "  Try it:   extbk --help"
+          echo "            extbk build ./my-extension"
+          echo ""
+          INSTALL_EOF
+
+          chmod +x dist/$PKG/install.sh
+
+          tar -czf dist/${PKG}-linux-mac.tar.gz -C dist $PKG
+          echo "Linux/macOS: $(du -sh dist/${PKG}-linux-mac.tar.gz | cut -f1)"
+
+      # ── Windows installer (zip + .cmd) ─────────────────────────────────────
+      - name: Build Windows installer
+        run: |
+          PKG="extbk-cli-${{ steps.version.outputs.name }}"
+
+          cat > dist/$PKG/install.ps1 << 'PS_EOF'
+          # extbk-cli installer (Windows PowerShell)
+          # Run: powershell -ExecutionPolicy Bypass -File install.ps1
+          $ErrorActionPreference = 'Stop'
+          $InstallDir = Join-Path $env:USERPROFILE '.extbk-cli'
+          $BinDir     = Join-Path $env:USERPROFILE 'bin'
+
+          function Write-Ok($m)   { Write-Host "  [OK] $m" -ForegroundColor Green }
+          function Write-Warn($m) { Write-Host "  [!]  $m" -ForegroundColor Yellow }
+          function Write-Fail($m) { Write-Host "  [ERR] $m" -ForegroundColor Red; exit 1 }
+
+          Write-Host "`n  extbk-cli installer`n  ----------------------------------------"
+
+          try {
+            $v = node --version 2>$null
+            $major = [int]($v.TrimStart('v').Split('.')[0])
+            if ($major -lt 18) { Write-Fail "Node.js >= 18 required (found $v)" }
+            Write-Ok "Node.js $v"
+          } catch { Write-Fail "Node.js not found. Install from https://nodejs.org" }
+
+          $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+          if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+          Copy-Item (Join-Path $ScriptDir 'src')          (Join-Path $InstallDir 'src')     -Recurse
+          Copy-Item (Join-Path $ScriptDir 'package.json') (Join-Path $InstallDir 'package.json')
+
+          Push-Location $InstallDir; npm install --omit=dev --silent; Pop-Location
+          Write-Ok "Dependencies installed"
+
+          New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+          $cmd = "@echo off`r`nnode `"$InstallDir\src\cli.js`" %*"
+          [System.IO.File]::WriteAllText("$BinDir\extbk.cmd", $cmd, [System.Text.Encoding]::ASCII)
+          Write-Ok "Launcher: $BinDir\extbk.cmd"
+
+          $up = [Environment]::GetEnvironmentVariable('Path','User')
+          if ($up -notlike "*$BinDir*") {
+            [Environment]::SetEnvironmentVariable('Path',"$up;$BinDir",'User')
+            Write-Ok "Added $BinDir to PATH (restart terminal)"
+          } else { Write-Ok "$BinDir already in PATH" }
+
+          Write-Host "`n  ----------------------------------------"
+          Write-Ok "extbk-cli installed!`n"
+          Write-Host "  Try it (restart terminal first):`n    extbk --help`n    extbk build .\my-extension`n"
+          PS_EOF
+
+          cd dist && zip -r ${PKG}-windows.zip $PKG
+          echo "Windows: $(du -sh ${PKG}-windows.zip | cut -f1)"
+
+      # ── Upload artifacts ───────────────────────────────────────────────────
+      - name: Upload CLI installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: extbk-cli-installer
+          path: |
+            dist/extbk-cli-*-linux-mac.tar.gz
+            dist/extbk-cli-*-windows.zip
+          if-no-files-found: error
+
+      # ── Summary ───────────────────────────────────────────────────────────
+      - name: Summary
+        run: |
+          PKG="extbk-cli-${{ steps.version.outputs.name }}"
+          SIZE=$(du -sh dist/${PKG}-linux-mac.tar.gz | cut -f1)
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ## extbk-cli ${{ steps.version.outputs.name }}
+
+          | Item | Value |
+          |------|-------|
+          | Version | \`${{ steps.version.outputs.name }}\` |
+          | Round-trip test | Passed |
+          | Linux/macOS | \`${PKG}-linux-mac.tar.gz\` ($SIZE) |
+          | Windows | \`${PKG}-windows.zip\` |
+
+          **Install (Linux/macOS):**
+          \`\`\`bash
+          tar -xzf ${PKG}-linux-mac.tar.gz
+          cd ${PKG}/
+          ./install.sh          # sudo ./install.sh for /usr/local/bin write access
+          extbk --help
+          \`\`\`
+
+          **Install (Windows):**
+          \`\`\`powershell
+          Expand-Archive ${PKG}-windows.zip
+          cd ${PKG}
+          powershell -ExecutionPolicy Bypass -File install.ps1
+          extbk --help
+          \`\`\`
+
+          **Commands:**
+          \`\`\`
+          extbk build  <dir>   [out.extbk] [--rs-pct 0-100] [--overwrite]
+          extbk check  <file.extbk>
+          extbk info   <file.extbk>
+          extbk unpack <file.extbk> [destDir] [--overwrite]
+          \`\`\`
+          EOF
+
+      - name: CLI build FAILED
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## extbk-cli Build Failed
+          Check the step logs. Common causes:
+          - Round-trip test failure (format encoding bug)
+          - Missing source file in extensions/extbk-cli/src/
+          EOF
+
+  # ── GitHub Release for CLI tags ─────────────────────────────────────────────
+  release-cli:
+    name: Publish CLI Release
+    needs: build-cli
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: release-assets/ }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "extbk-cli ${{ github.ref_name }}"
+          files: |
+            release-assets/**/*.tar.gz
+            release-assets/**/*.zip
+          generate_release_notes: false
+          body: |
+            ## extbk-cli — VCHS-ECS .extbk build tool
+
+            Download the installer for your platform from the assets below.
+
+            **Linux / macOS**
+            ```bash
+            tar -xzf extbk-cli-*-linux-mac.tar.gz
+            cd extbk-cli-*/
+            ./install.sh
+            extbk --help
+            ```
+
+            **Windows**
+            ```powershell
+            Expand-Archive extbk-cli-*-windows.zip
+            cd extbk-cli-*
+            powershell -ExecutionPolicy Bypass -File install.ps1
+            extbk --help
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

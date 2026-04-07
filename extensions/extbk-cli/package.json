@@ -1,0 +1,16 @@
+{
+  "name": "extbk-cli",
+  "version": "1.0.0",
+  "description": "Build, inspect, and unpack VCHS-ECS .extbk extension bundles for AuthNo",
+  "bin": { "extbk": "./src/cli.js" },
+  "scripts": {
+    "test": "node src/cli.js --help"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0"
+  },
+  "engines": { "node": ">=18" },
+  "type": "module",
+  "license": "MIT"
+}

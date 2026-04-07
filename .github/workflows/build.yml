@@ -253,10 +253,103 @@ jobs:
 
           EOF
 
-  # ── 3. GitHub Release (tag pushes only) ─────────────────────────────────────
+
+  # ── 3. extbk-sandbox Installer ───────────────────────────────────────────────
+  # Parallel with Android — both depend on build-react but not on each other.
+  # Bundles the sandbox server + compiled React app so users can preview their
+  # extension immediately without needing to build the app themselves.
+  build-sandbox:
+    name: Build extbk-sandbox Installer
+    needs: build-react
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Download compiled React app
+        uses: actions/download-artifact@v4
+        with: { name: react-build, path: extensions/extbk-sandbox/app/ }
+
+      - name: Install sandbox dependencies
+        working-directory: extensions/extbk-sandbox
+        run: npm install --omit=dev
+
+      - name: Verify bundled app is present
+        run: |
+          if [ ! -f "extensions/extbk-sandbox/app/index.html" ]; then
+            echo "Bundled React app missing from extbk-sandbox/app/" >&2
+            exit 1
+          fi
+          echo "Bundled app: $(find extensions/extbk-sandbox/app -type f | wc -l) files"
+
+      - name: Set version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=dev-${{ github.run_number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package Linux/macOS installer (tar.gz)
+        run: |
+          PKG="extbk-sandbox-${{ steps.version.outputs.name }}"
+          mkdir -p dist/$PKG
+          cp -r extensions/extbk-sandbox/src       dist/$PKG/src
+          cp -r extensions/extbk-sandbox/app       dist/$PKG/app
+          cp -r extensions/extbk-sandbox/installer dist/$PKG/installer
+          cp    extensions/extbk-sandbox/package.json dist/$PKG/package.json
+          chmod +x dist/$PKG/installer/install.sh
+          tar -czf dist/${PKG}-linux-mac.tar.gz -C dist $PKG
+          echo "Package size: $(du -sh dist/${PKG}-linux-mac.tar.gz | cut -f1)"
+
+      - name: Package Windows installer (zip)
+        run: |
+          PKG="extbk-sandbox-${{ steps.version.outputs.name }}"
+          cd dist && zip -r ${PKG}-windows.zip $PKG
+          echo "Package size: $(du -sh ${PKG}-windows.zip | cut -f1)"
+
+      - name: Upload sandbox installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: extbk-sandbox-installer
+          path: |
+            dist/extbk-sandbox-*-linux-mac.tar.gz
+            dist/extbk-sandbox-*-windows.zip
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          PKG="extbk-sandbox-${{ steps.version.outputs.name }}"
+          SIZE=$(du -sh dist/${PKG}-linux-mac.tar.gz | cut -f1)
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ## extbk-sandbox Installer
+
+          | Item | Value |
+          |------|-------|
+          | Version | \`${{ steps.version.outputs.name }}\` |
+          | Bundled React app | Included |
+          | Linux/macOS | \`${PKG}-linux-mac.tar.gz\` ($SIZE) |
+          | Windows | \`${PKG}-windows.zip\` |
+
+          **Linux/macOS:** \`tar -xzf ${PKG}-linux-mac.tar.gz && cd ${PKG} && ./installer/install.sh\`
+          **Windows:** \`powershell -ExecutionPolicy Bypass -File installer\\install.ps1\`
+          EOF
+
+      - name: Sandbox build FAILED
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## extbk-sandbox Installer Failed
+          Check the step logs above. Common cause: React build artifact not found.
+          EOF
+
+  # ── 4. GitHub Release
   release:
     name: Publish Release
-    needs: [build-android]
+    needs: [build-android, build-sandbox]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -269,6 +362,8 @@ jobs:
           files: |
             release-assets/**/*.apk
             release-assets/**/*.aab
+            release-assets/**/*.tar.gz
+            release-assets/**/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

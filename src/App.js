@@ -14,6 +14,7 @@ import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
+import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
 
 import { ErrorProvider, useError } from "./utils/ErrorContext";
@@ -534,31 +535,43 @@ function AppInner({ navigateRef }) {
     if (!android || sessions.length === 0) return;
 
     clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => {
-      sessions.forEach((s) => {
-        // Only auto-save books that already have a confirmed content:// URI.
-        // Sessions without one need an explicit Save to pick a destination first.
-        // Without this guard, saveBook() opens the SAF picker for every new/unsaved
-        // book — unexpected dialogs appearing silently every 2 seconds.
-        if (!s.filePath?.startsWith('content://')) return;
+    autoSaveTimer.current = setTimeout(async () => {
+      for (const s of sessions) {
+        // Fire onSave for every session (trigger: 'change') so extensions like
+        // cloud-backup can track unsaved books, not just those with a URI.
+        if (hookCount('onSave') > 0) {
+          await fireHook('onSave', { session: s, trigger: 'change' });
+        }
 
-        saveBook(s)
-          .then((result) => {
-            if (result?.staleUri) {
-              // Wipe the broken URI so the next explicit Save prompts for a new location
-              setSessions((prev) =>
-                prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))
-              );
-              return;
-            }
-            if (result?.filePath && result.filePath !== s.filePath) {
-              setSessions((prev) =>
-                prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
-              );
-            }
-          })
-          .catch((err) => console.error("[AuthNo AutoSave]", err));
-      });
+        // Only persist to disk sessions that already have a content:// URI.
+        // Sessions without one need an explicit Save to pick a destination first.
+        if (!s.filePath?.startsWith('content://')) continue;
+
+        try {
+          const result = await saveBook(s);
+          if (result?.staleUri) {
+            setSessions((prev) =>
+              prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))
+            );
+            continue;
+          }
+          if (result?.filePath && result.filePath !== s.filePath) {
+            setSessions((prev) =>
+              prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
+            );
+          }
+          // Fire onSave again with trigger:'autosave' so extensions know a disk
+          // write succeeded (e.g. cloud-backup queues an upload at this point).
+          if (hookCount('onSave') > 0) {
+            const saved = result?.filePath
+              ? { ...s, filePath: result.filePath }
+              : s;
+            await fireHook('onSave', { session: saved, trigger: 'autosave' });
+          }
+        } catch (err) {
+          console.error('[AuthNo AutoSave]', err);
+        }
+      }
     }, 2000);
 
     return () => clearTimeout(autoSaveTimer.current);

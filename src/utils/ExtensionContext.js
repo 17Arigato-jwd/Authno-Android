@@ -28,6 +28,12 @@ import {
   setExtensionConfig,
   clearExtensionConfig,
 } from './extensionLoader';
+import {
+  installExtbkBytes,
+  uninstallExtension,
+  seedPreinstalledExtensions,
+} from './extbkInstaller';
+import { registerHook } from './sessionHooks';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -46,6 +52,26 @@ const ExtensionContext = createContext({
   setConfig: (_extId, _patch) => {},
   /** Clear all stored config for a specific extension */
   clearConfig: (_extId) => {},
+  /**
+   * Install a .extbk archive from a base64 string, then refresh.
+   * Dispatched by MainActivity when the user taps an .extbk file.
+   * @param {string} base64
+   * @returns {Promise<object>} validated manifest
+   */
+  installExtbk: async (_base64) => {},
+  /**
+   * Uninstall an extension by id, then refresh.
+   * @param {string} extId
+   */
+  uninstall: async (_extId) => {},
+  /**
+   * Register a session-lifecycle hook (e.g. 'onSave').
+   * Returns an unregister function — call it in useEffect cleanup.
+   * @param {string}   hookName
+   * @param {function} handler
+   * @returns {function}
+   */
+  registerHook: (_hookName, _handler) => () => {},
   /**
    * Navigate to an extension page.
    * Implemented in App.js and injected via the onNavigate prop.
@@ -79,12 +105,51 @@ export function ExtensionProvider({ children, onNavigate }) {
     }
   }, []);
 
-  // Scan once on mount
-  useEffect(() => { refresh(); }, [refresh]);
+  // On mount: seed pre-installed .extbk files from Android assets, then scan
+  useEffect(() => {
+    (async () => {
+      try { await seedPreinstalledExtensions(); } catch (_) {}
+      await refresh();
+    })();
+  }, [refresh]);
 
-  const getConfig   = useCallback((id) => getExtensionConfig(id),    []);
-  const setConfig   = useCallback((id, p) => setExtensionConfig(id, p),  []);
-  const clearConfig = useCallback((id) => clearExtensionConfig(id),  []);
+  // Listen for .extbk install events dispatched by MainActivity
+  useEffect(() => {
+    const onInstallBytes = async (e) => {
+      const { base64 } = e.detail ?? {};
+      if (!base64) return;
+      try {
+        await installExtbkBytes(base64);
+        await refresh();
+      } catch (err) {
+        console.error('[ExtensionContext] install-extbk-bytes failed:', err);
+      }
+    };
+    const onInstallError = (e) => {
+      console.error('[ExtensionContext] install-extbk-error from native:', e.detail);
+    };
+    window.addEventListener('install-extbk-bytes', onInstallBytes);
+    window.addEventListener('install-extbk-error', onInstallError);
+    return () => {
+      window.removeEventListener('install-extbk-bytes', onInstallBytes);
+      window.removeEventListener('install-extbk-error', onInstallError);
+    };
+  }, [refresh]);
+
+  const getConfig   = useCallback((id) => getExtensionConfig(id),         []);
+  const setConfig   = useCallback((id, p) => setExtensionConfig(id, p),   []);
+  const clearConfig = useCallback((id) => clearExtensionConfig(id),       []);
+
+  const installExtbk = useCallback(async (base64) => {
+    const manifest = await installExtbkBytes(base64);
+    await refresh();
+    return manifest;
+  }, [refresh]);
+
+  const uninstall = useCallback(async (extId) => {
+    await uninstallExtension(extId);
+    await refresh();
+  }, [refresh]);
 
   const navigate = useCallback((ext, pageId, session = null) => {
     onNavigate?.(ext, pageId, session);
@@ -98,8 +163,11 @@ export function ExtensionProvider({ children, onNavigate }) {
     getConfig,
     setConfig,
     clearConfig,
+    installExtbk,
+    uninstall,
+    registerHook,
     navigate,
-  }), [extensions, loading, refresh, getConfig, setConfig, clearConfig, navigate]);
+  }), [extensions, loading, refresh, getConfig, setConfig, clearConfig, installExtbk, uninstall, navigate]);
 
   return (
     <ExtensionContext.Provider value={value}>
