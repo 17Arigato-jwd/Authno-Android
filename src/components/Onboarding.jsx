@@ -17,9 +17,16 @@ import {
   Save,
   Repeat,
   X,
+  FolderKey,
+  Zap,
 } from "lucide-react";
+import { requestFullStoragePermission } from "../utils/storage";
 
 const ONBOARDING_KEY = "authno_onboarding_v1";
+
+// ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
+const UPDATE_VERSION = "2";
+const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
 
@@ -67,6 +74,15 @@ export async function markOnboardingDone() {
 
 export async function resetOnboarding() {
   await removePreference(ONBOARDING_KEY);
+}
+
+export async function hasSeenUpdate() {
+  const val = await getPreference(UPDATE_KEY);
+  return val === "done";
+}
+
+export async function markUpdateSeen() {
+  await setPreference(UPDATE_KEY, "done");
 }
 
 function clamp(n, min, max) {
@@ -284,6 +300,17 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
         { icon: ShieldCheck, text: "VCHS-ECS container format" },
         { icon: FolderOpen, text: "Old files still supported" },
       ],
+    },
+    {
+      icon: FolderKey,
+      title: "One permission to rule them all",
+      body:
+        "To open and save .authbook files from anywhere on your device — Downloads, USB drives, cloud folders — AuthNo needs the \"All files access\" permission.\n\nTap the button below to open the system settings page. Toggle the switch for AuthNo, then come back.",
+      chips: [
+        { icon: FolderKey, text: "Open files from any folder" },
+        { icon: Save, text: "Save to any location" },
+      ],
+      permissionPage: true,
       last: true,
     },
   ];
@@ -411,6 +438,16 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                     {current.pageNote}
                   </div>
                 ) : null}
+                {current.permissionPage && (
+                  <button
+                    onClick={() => requestFullStoragePermission()}
+                    className="mt-1 flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/12 active:scale-95"
+                    style={{ background: "rgba(255,255,255,0.07)" }}
+                  >
+                    <FolderKey size={15} />
+                    Grant All Files Access
+                  </button>
+                )}
               </div>
 
               {current.last && (
@@ -466,6 +503,168 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
               <div className="mt-5 flex items-center justify-center gap-2">
                 {pages.map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-2 rounded-full transition-all duration-300"
+                    style={{
+                      width: i === page ? 22 : 6,
+                      background: i <= page ? accentHex : "rgba(255,255,255,0.18)",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Update Onboarding ───────────────────────────────────────────────────────
+//
+// Shown once per UPDATE_VERSION on first launch after an app update.
+// Define UPDATE_NOTES as an array of { icon, title, body } objects — one per
+// notable change. The modal is dismissed when the user taps "Got it" and
+// markUpdateSeen() persists the flag so it never shows again for that version.
+
+const UPDATE_NOTES = [
+  {
+    icon: ShieldCheck,
+    title: "Stronger .authbook files",
+    body: "Files now use the VCHS-ECS format — more resilient, binary-safe, and built to survive real-world storage hiccups. Old files still open normally.",
+  },
+  {
+    icon: FolderKey,
+    title: "All files access",
+    body: "You can now grant AuthNo access to every folder on your device — including Downloads and external drives. Open Settings → AuthNo to enable it any time.",
+  },
+  {
+    icon: Zap,
+    title: "Vibration feedback",
+    body: "Taps, saves, deletions, and milestone moments now have distinct haptic patterns. No action required — it just works.",
+  },
+];
+
+export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
+  const [page, setPage] = useState(0);
+  const contentRef = useRef(null);
+  const current = UPDATE_NOTES[page];
+  const CurrentIcon = current.icon;
+  const isLast = page === UPDATE_NOTES.length - 1;
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [page]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape" || e.key === "Enter" || e.key === "ArrowRight" || e.key === "PageDown") {
+        e.preventDefault();
+        if (!isLast) setPage((p) => p + 1);
+        else { markUpdateSeen().catch(() => {}); onDone?.(); }
+      }
+      if ((e.key === "ArrowLeft" || e.key === "PageUp") && page > 0) {
+        e.preventDefault();
+        setPage((p) => p - 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [page, isLast, onDone]);
+
+  const finish = async () => { await markUpdateSeen(); onDone?.(); };
+  const next = () => { if (!isLast) setPage((p) => p + 1); else finish(); };
+  const back = () => setPage((p) => Math.max(0, p - 1));
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[20001] overflow-y-auto"
+      style={{
+        background: "radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 36%), rgba(0,0,0,0.88)",
+        backdropFilter: "blur(10px)",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      <FloatingBlobs accentHex={accentHex} />
+
+      <div className="min-h-full px-4 py-4 sm:px-6 sm:py-8 flex items-center justify-center">
+        <div className="relative z-10 w-full max-w-md" style={{ animation: "panelPop 0.22s ease-out" }}>
+
+          {/* Header row */}
+          <div className="mb-4 flex items-center justify-between">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60 backdrop-blur-md">
+              <Zap size={12} style={{ color: accentHex }} />
+              <span>What's new — {page + 1} / {UPDATE_NOTES.length}</span>
+            </div>
+            <button
+              onClick={finish}
+              className="rounded-full border border-white/10 bg-white/5 p-1.5 text-white/40 backdrop-blur-md transition hover:text-white/70"
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          {/* Card */}
+          <div
+            className="rounded-[28px] border border-white/10 bg-black/35 shadow-2xl backdrop-blur-xl"
+            style={{ boxShadow: "0 24px 80px rgba(0,0,0,0.55)", overflow: "hidden" }}
+          >
+            <div
+              ref={contentRef}
+              className="overflow-y-auto px-5 py-6 sm:px-6 sm:py-7"
+              style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
+            >
+              {/* Icon */}
+              <div className="mb-5 flex items-center justify-center">
+                <div
+                  className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10"
+                  style={{ background: `${accentHex}18` }}
+                >
+                  <CurrentIcon size={28} color={accentHex} />
+                </div>
+              </div>
+
+              <h2 className="mb-3 text-center text-2xl font-bold tracking-tight text-white">
+                {current.title}
+              </h2>
+              <p className="whitespace-pre-line text-center text-sm leading-relaxed text-white/65">
+                {current.body}
+              </p>
+
+              {/* Navigation */}
+              <div className="mt-8 flex gap-3">
+                <button
+                  onClick={back}
+                  disabled={page === 0}
+                  className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition disabled:opacity-30"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <ChevronLeft size={16} /> Back
+                  </span>
+                </button>
+                <button
+                  onClick={next}
+                  className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition active:scale-95"
+                  style={{
+                    background: `linear-gradient(135deg, ${accentHex}, ${accentHex}cc)`,
+                    boxShadow: `0 12px 30px ${accentHex}33`,
+                  }}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {isLast ? "Got it" : "Next"}
+                    {isLast ? <Check size={16} /> : <ChevronRight size={16} />}
+                  </span>
+                </button>
+              </div>
+
+              {/* Dots */}
+              <div className="mt-5 flex items-center justify-center gap-2">
+                {UPDATE_NOTES.map((_, i) => (
                   <div
                     key={i}
                     className="h-2 rounded-full transition-all duration-300"

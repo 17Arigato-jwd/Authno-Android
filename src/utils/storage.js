@@ -127,9 +127,34 @@ async function readAppDir() {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function initStoragePermissions() {}
-export async function checkStoragePermission() { return 'granted'; }
-export async function requestFullStoragePermission() { return 'granted'; }
+export async function checkStoragePermission() {
+  if (!isAndroid()) return 'granted';
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    const plugin = registerPlugin('AuthnoFilePicker');
+    const { granted } = await plugin.checkFullStoragePermission();
+    return granted ? 'granted' : 'denied';
+  } catch {
+    return 'granted';
+  }
+}
+
+export async function requestFullStoragePermission() {
+  if (!isAndroid()) return;
+  try {
+    const { registerPlugin } = await import('@capacitor/core');
+    const plugin = registerPlugin('AuthnoFilePicker');
+    await plugin.requestFullStoragePermission();
+  } catch {}
+}
+
+export async function initStoragePermissions() {
+  if (!isAndroid()) return;
+  const status = await checkStoragePermission();
+  if (status !== 'granted') {
+    console.log('[storage] MANAGE_EXTERNAL_STORAGE not yet granted');
+  }
+}
 
 // ─── Book Index stubs ─────────────────────────────────────────────────────────
 // App.js and HomeScreen.jsx import these by name. They are no-ops in this

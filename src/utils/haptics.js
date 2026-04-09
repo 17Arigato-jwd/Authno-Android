@@ -4,11 +4,9 @@
 
 async function _impact(style) {
   try {
-    if (window.Capacitor?.isPluginAvailable?.('Haptics')) {
-      const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
-      await Haptics.impact({ style: ImpactStyle[style] });
-      return true;
-    }
+    const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
+    await Haptics.impact({ style: ImpactStyle[style] });
+    return true;
   } catch (_) {}
   return false;
 }
@@ -29,13 +27,11 @@ export async function hapticSelect() {
 /** Auto-save confirmation — Medium, 80ms gap, Light */
 export async function hapticSave() {
   try {
-    if (window.Capacitor?.isPluginAvailable?.('Haptics')) {
-      const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
-      await Haptics.impact({ style: ImpactStyle.Medium });
-      await _delay(80);
-      await Haptics.impact({ style: ImpactStyle.Light });
-      return;
-    }
+    const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
+    await Haptics.impact({ style: ImpactStyle.Medium });
+    await _delay(80);
+    await Haptics.impact({ style: ImpactStyle.Light });
+    return;
   } catch (_) {}
   try { navigator.vibrate?.([15, 80, 10]); } catch (_) {}
 }
@@ -57,15 +53,13 @@ export async function hapticPin() {
 /** Daily word goal crossed — Med, 150ms, Med, 325ms, Heavy */
 export async function hapticGoalMet() {
   try {
-    if (window.Capacitor?.isPluginAvailable?.('Haptics')) {
-      const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
-      await Haptics.impact({ style: ImpactStyle.Medium });
-      await _delay(150);
-      await Haptics.impact({ style: ImpactStyle.Medium });
-      await _delay(325);
-      await Haptics.impact({ style: ImpactStyle.Heavy });
-      return;
-    }
+    const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
+    await Haptics.impact({ style: ImpactStyle.Medium });
+    await _delay(150);
+    await Haptics.impact({ style: ImpactStyle.Medium });
+    await _delay(325);
+    await Haptics.impact({ style: ImpactStyle.Heavy });
+    return;
   } catch (_) {}
   try { navigator.vibrate?.([20, 150, 20, 325, 40]); } catch (_) {}
 }

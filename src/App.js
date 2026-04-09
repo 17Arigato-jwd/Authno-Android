@@ -20,7 +20,7 @@ import FileIntegrityModal from "./components/FileIntegrityModal";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
-import { Onboarding, hasSeenOnboarding } from "./components/Onboarding";
+import { Onboarding, hasSeenOnboarding, UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import ExtensionPage from "./components/ExtensionPage";
 
@@ -202,6 +202,7 @@ function AppInner({ navigateRef }) {
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showUpdateOnboarding, setShowUpdateOnboarding] = useState(false);
   const [brokenFiles, setBrokenFiles] = useState([]);
 
   const [customizerOpen, setCustomizerOpen] = useState(false);
@@ -287,6 +288,9 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     hasSeenOnboarding().then((seen) => {
       if (!seen) setShowOnboarding(true);
+      else hasSeenUpdate().then((seenUpdate) => {
+        if (!seenUpdate) setShowUpdateOnboarding(true);
+      });
     });
 
     const saved = localStorage.getItem("offlineWriterSessions");
@@ -817,6 +821,13 @@ function AppInner({ navigateRef }) {
         <Onboarding
           accentHex={customization.accentHex}
           onDone={() => setShowOnboarding(false)}
+        />
+      )}
+
+      {!showOnboarding && showUpdateOnboarding && (
+        <UpdateOnboarding
+          accentHex={customization.accentHex}
+          onDone={() => setShowUpdateOnboarding(false)}
         />
       )}
 

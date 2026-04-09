@@ -4,8 +4,11 @@ import android.app.Activity;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.util.Base64;
 
 import androidx.activity.result.ActivityResult;
@@ -205,6 +208,56 @@ public class FilePickerPlugin extends Plugin {
             ret.put("base64", base64);
             call.resolve(ret);
         } catch (Exception e) { call.reject("Read failed: " + e.getMessage()); }
+    }
+
+    // ── All-files-access (MANAGE_EXTERNAL_STORAGE, API 30+) ───────────────
+
+    /**
+     * Returns { granted: true } if the app already holds
+     * Environment.isExternalStorageManager() on API 30+, or if the device
+     * is below API 30 (where the permission is not required).
+     */
+    @PluginMethod
+    public void checkFullStoragePermission(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            ret.put("granted", Environment.isExternalStorageManager());
+        } else {
+            ret.put("granted", true);
+        }
+        call.resolve(ret);
+    }
+
+    /**
+     * Opens the system Settings page for ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+     * so the user can toggle "Allow management of all files" for this app.
+     * Falls back to the generic ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION page if
+     * the per-app URI is not supported.
+     *
+     * JS should call checkFullStoragePermission() again after the user returns
+     * to the app (e.g. in onResume / App.appStateChange listener) to read the
+     * updated value.
+     */
+    @PluginMethod
+    public void requestFullStoragePermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                && !Environment.isExternalStorageManager()) {
+            try {
+                Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getActivity().getPackageName()));
+                getActivity().startActivity(intent);
+            } catch (Exception e) {
+                // Fallback: some OEM ROMs don't support the per-app URI
+                try {
+                    getActivity().startActivity(
+                            new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (Exception ignored) {}
+            }
+        }
+        JSObject ret = new JSObject();
+        ret.put("opened", true);
+        call.resolve(ret);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
