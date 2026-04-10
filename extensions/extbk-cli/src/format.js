@@ -79,9 +79,13 @@ function crc32(data, init = 0xFFFFFFFF) {
 
 // ─── RS helpers ───────────────────────────────────────────────────────────────
 
-function nParityBytes(dataLen, rsPct) {
+function nParityBytes(rsPct) {
+  // nParity is the parity count PER RS CHUNK, not per section.
+  // Each RS block in GF(256) is at most 255 bytes (data + parity).
+  // With chunk data = (255 - nParity), the parity ratio ≈ nParity / 255.
+  // Cap at 127 so every chunk always carries at least 128 data bytes.
   if (rsPct === 0) return 0;
-  return Math.ceil(dataLen * rsPct / 100);
+  return Math.min(Math.floor(255 * rsPct / 100), 127);
 }
 
 // ─── Section encoding ─────────────────────────────────────────────────────────
@@ -94,7 +98,7 @@ async function encodeSection(tag, assetIdx, raw, rsPct) {
   // Compress
   const compressed = await deflateRaw(raw, { level: 6 });
   const compCrc    = crc32(compressed);
-  const nParity    = nParityBytes(compressed.length, rsPct);
+  const nParity    = nParityBytes(rsPct);
 
   // RS parity over compressed bytes
   const parity = nParity > 0
@@ -370,7 +374,7 @@ export async function unpackExtbk(buf) {
       )),
       payload,
       rspxPay,
-      nParity > 0 ? nParityBytes(e.compSize, rsPct) : 0
+      nParity > 0 ? nParityBytes(rsPct) : 0
     );
 
     if (e.tag === TAG_MNFT) {
