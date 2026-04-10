@@ -130,6 +130,24 @@ export function ExtensionProvider({ children, onNavigate }) {
     };
     window.addEventListener('install-extbk-bytes', onInstallBytes);
     window.addEventListener('install-extbk-error', onInstallError);
+
+    // ── Cold-start .extbk recovery ─────────────────────────────────────────
+    // If the app launched cold from tapping an .extbk file, the evaluateJavascript
+    // event fired before these listeners registered.  Call getPendingExtbkIntent()
+    // now (after listeners are live) to pick it up.
+    (async () => {
+      try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const plugin = registerPlugin('AuthnoFilePicker');
+        const result = await plugin.getPendingExtbkIntent();
+        if (result?.hasPending && result.base64) {
+          window.dispatchEvent(new CustomEvent('install-extbk-bytes', {
+            detail: { base64: result.base64 },
+          }));
+        }
+      } catch (_) { /* not on Android or plugin unavailable — ignore */ }
+    })();
+
     return () => {
       window.removeEventListener('install-extbk-bytes', onInstallBytes);
       window.removeEventListener('install-extbk-error', onInstallError);

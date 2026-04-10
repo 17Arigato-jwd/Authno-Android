@@ -59,6 +59,12 @@ public class MainActivity extends BridgeActivity {
         Uri uri = intent.getData();
         if (uri == null) return;
 
+        // Leave .extbk files for handleExtbkIntent — don't treat them as .authbook
+        String uriLower = uri.toString().toLowerCase();
+        String mime = intent.getType();
+        if (uriLower.endsWith(".extbk") || uriLower.contains(".extbk?")
+                || "application/x-extbk".equals(mime)) return;
+
         try {
             InputStream is = getContentResolver().openInputStream(uri);
             if (is == null) return;
@@ -131,6 +137,9 @@ public class MainActivity extends BridgeActivity {
             is.close();
 
             String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+
+            // Store for cold-start recovery — JS calls getPendingExtbkIntent() on mount
+            FilePickerPlugin.pendingExtbkBase64 = base64;
 
             String js =
                 "window.dispatchEvent(new CustomEvent('install-extbk-bytes', {" +

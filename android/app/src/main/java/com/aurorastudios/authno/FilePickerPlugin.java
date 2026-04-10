@@ -58,6 +58,8 @@ public class FilePickerPlugin extends Plugin {
      */
     static volatile String pendingBase64 = null;
     static volatile String pendingUri    = null;
+    /** Cold-start pending .extbk install — cleared once retrieved */
+    static volatile String pendingExtbkBase64 = null;
 
     // ── Pending cold-start intent ──────────────────────────────────────────
 
@@ -83,6 +85,25 @@ public class FilePickerPlugin extends Plugin {
             ret.put("hasPending", true);
             ret.put("base64", b64);
             ret.put("uri",    uri != null ? uri : "");
+        } else {
+            ret.put("hasPending", false);
+        }
+        call.resolve(ret);
+    }
+
+    /**
+     * Called by ExtensionContext.js on mount to retrieve a .extbk file that was
+     * opened via a cold-start ACTION_VIEW intent.  Mirrors getPendingIntent() but
+     * for extension bundles.  Clears the stored data on retrieval.
+     */
+    @PluginMethod
+    public void getPendingExtbkIntent(PluginCall call) {
+        String b64 = pendingExtbkBase64;
+        pendingExtbkBase64 = null;
+        JSObject ret = new JSObject();
+        if (b64 != null) {
+            ret.put("hasPending", true);
+            ret.put("base64", b64);
         } else {
             ret.put("hasPending", false);
         }

@@ -876,19 +876,10 @@ function ErrorLogModal({ onClose, accentHex }) {
 function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
   const [confirm, setConfirm]           = useState(null);
   const [importStatus, setImportStatus] = useState(null); // null | 'loading' | { ok, message }
-  const [conflict, setConflict]         = useState(null); // { incoming, existing, text }
   const [showErrorLog, setShowErrorLog] = useState(false);
   const [errorCount, setErrorCount]     = useState(() => getErrorHistory().length);
   const { refresh } = useExtensions();
   const fileRef = useRef(null);
-
-  const writeManifest = async (id, text) => {
-    const { Filesystem, Directory } = await import('@capacitor/filesystem');
-    const dir = `AuthNo/extensions/${id}`;
-    try { await Filesystem.mkdir({ path: dir, directory: Directory.Data, recursive: true }); } catch (_) {}
-    await Filesystem.writeFile({ path: `${dir}/manifest.json`, data: text, directory: Directory.Data, encoding: 'utf8' });
-    await refresh();
-  };
 
   const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
@@ -898,69 +889,25 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
     setImportStatus('loading');
 
     try {
-      const text = await file.text();
-      const incoming = JSON.parse(text);
+      const { installExtbkBytes } = await import('../utils/extbkInstaller');
 
-      if (!incoming.id || !incoming.name || !incoming.version)
-        throw new Error('Invalid manifest — must have id, name, and version.');
-      if (!/^[\w.-]+$/.test(incoming.id))
-        throw new Error('manifest.id must be alphanumeric (dots and dashes allowed).');
-
-      // Check if an extension with this ID already exists
-      let existing = null;
-      try {
-        const { Filesystem, Directory } = await import('@capacitor/filesystem');
-        const result = await Filesystem.readFile({
-          path: `AuthNo/extensions/${incoming.id}/manifest.json`,
-          directory: Directory.Data,
-          encoding: 'utf8',
-        });
-        existing = JSON.parse(result.data);
-      } catch (_) { /* no existing extension — clean install */ }
-
-      if (existing) {
-        setImportStatus(null);
-        setConflict({ incoming, existing, text });
-        return;
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      // Convert to base64
+      let bin = '';
+      const chunk = 8192;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
       }
+      const base64 = btoa(bin);
 
-      // Clean install
-      await writeManifest(incoming.id, text);
-      setImportStatus({ ok: true, message: `"${incoming.name}" installed successfully.` });
+      const manifest = await installExtbkBytes(base64);
+      await refresh();
+      setImportStatus({ ok: true, message: `"${manifest.name}" installed successfully.` });
     } catch (err) {
       setImportStatus({ ok: false, message: err.message || 'Failed to import extension.' });
     }
 
-    setTimeout(() => setImportStatus(null), 4000);
-  };
-
-  const handleReplace = async () => {
-    try {
-      await writeManifest(conflict.incoming.id, conflict.text);
-      setConflict(null);
-      setImportStatus({ ok: true, message: `"${conflict.incoming.name}" updated successfully.` });
-    } catch (err) {
-      setConflict(null);
-      setImportStatus({ ok: false, message: err.message });
-    }
-    setTimeout(() => setImportStatus(null), 4000);
-  };
-
-  const handleKeepBoth = async () => {
-    // Install under a suffixed ID so neither extension is lost
-    const suffixedId   = `${conflict.incoming.id}_imported`;
-    const suffixedText = conflict.text.replace(
-      `"id": "${conflict.incoming.id}"`,
-      `"id": "${suffixedId}"`
-    );
-    try {
-      await writeManifest(suffixedId, suffixedText);
-      setConflict(null);
-      setImportStatus({ ok: true, message: `Installed as "${suffixedId}".` });
-    } catch (err) {
-      setConflict(null);
-      setImportStatus({ ok: false, message: err.message });
-    }
     setTimeout(() => setImportStatus(null), 4000);
   };
 
@@ -1067,7 +1014,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Import Extension</div>
           <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>
-            Select a <code style={{ color: 'var(--text-3)' }}>manifest.json</code> file to install an extension
+            Select a <code style={{ color: 'var(--text-3)' }}>.extbk</code> file to install an extension
           </div>
           {importStatus && importStatus !== 'loading' && (
             <div style={{
@@ -1080,7 +1027,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
             </div>
           )}
         </div>
-        <input ref={fileRef} type="file" accept=".json,application/json" onChange={handleImportFile} style={{ display: 'none' }} />
+        <input ref={fileRef} type="file" accept=".extbk" onChange={handleImportFile} style={{ display: 'none' }} />
         <button
           onClick={() => fileRef.current?.click()}
           disabled={importStatus === 'loading'}
@@ -1143,17 +1090,6 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
           type={confirm.type}
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}
-        />
-      )}
-
-      {conflict && (
-        <ExtensionConflictModal
-          incoming={conflict.incoming}
-          existing={conflict.existing}
-          accentHex={accentHex}
-          onReplace={handleReplace}
-          onKeepBoth={handleKeepBoth}
-          onCancel={() => setConflict(null)}
         />
       )}
 
