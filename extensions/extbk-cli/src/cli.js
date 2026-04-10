@@ -17,8 +17,8 @@ import { cmdUnpack } from './commands/unpack.js';
 
 program
   .name('extbk')
-  .description('AuthNo extension bundle tool — VCHS-ECS binary format, v1.0.0')
-  .version('1.0.0');
+  .description('AuthNo extension bundle tool — VCHS-ECS binary format, v1.0.1')
+  .version('1.0.1');
 
 program
   .command('build <srcDir> [outFile]')

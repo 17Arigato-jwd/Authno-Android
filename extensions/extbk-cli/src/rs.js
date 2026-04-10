@@ -238,7 +238,10 @@ export function rsDecode(data, parity) {
 
 // ─── Chunked codec (for sections > 223 bytes) ────────────────────────────────
 
-const CHUNK_DATA = 223; // max data bytes per RS block (255 - 32 parity max)
+// CHUNK_DATA is NOT a fixed constant — it must be derived per call as (255 - nParity).
+// The old hardcoded 223 assumed nParity ≤ 32, which is only true for small sections.
+// Larger sections produce larger nParity values (nParityBytes = ceil(len * rsPct/100)),
+// making 223 + nParity exceed the GF(256) limit of 255.
 
 /**
  * Encode arbitrary-length data with RS parity.
@@ -247,6 +250,8 @@ const CHUNK_DATA = 223; // max data bytes per RS block (255 - 32 parity max)
  */
 export function rsEncodeChunked(data, nParity) {
   if (nParity === 0) return new Uint8Array(0);
+  const CHUNK_DATA = 255 - nParity;   // derived: data + parity must fit in GF(256)
+  if (CHUNK_DATA < 1) throw new Error(`nParity(${nParity}) leaves no room for data bytes`);
   const chunks = Math.ceil(data.length / CHUNK_DATA);
   const parityParts = [];
   for (let i = 0; i < chunks; i++) {
@@ -265,6 +270,7 @@ export function rsEncodeChunked(data, nParity) {
  */
 export function rsVerifyChunked(data, parity, nParity) {
   if (nParity === 0) return true;
+  const CHUNK_DATA = 255 - nParity;
   const chunks = Math.ceil(data.length / CHUNK_DATA);
   for (let i = 0; i < chunks; i++) {
     const dataChunk   = data.slice(i * CHUNK_DATA, (i + 1) * CHUNK_DATA);
@@ -279,6 +285,7 @@ export function rsVerifyChunked(data, parity, nParity) {
  */
 export function rsDecodeChunked(data, parity, nParity) {
   if (nParity === 0) return data.slice();
+  const CHUNK_DATA = 255 - nParity;
   const chunks = Math.ceil(data.length / CHUNK_DATA);
   const out = new Uint8Array(data.length);
   for (let i = 0; i < chunks; i++) {
