@@ -330,8 +330,13 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
       }
       if (e.key === "ArrowRight" || e.key === "Enter" || e.key === "PageDown") {
         e.preventDefault();
-        if (page < pages.length - 1) setPage((p) => p + 1);
-        else {
+        if (current.permissionPage) {
+          requestFullStoragePermission().catch(() => {});
+          if (dontShowAgain) markOnboardingDone().catch(() => {});
+          onDone?.();
+        } else if (page < pages.length - 1) {
+          setPage((p) => p + 1);
+        } else {
           if (dontShowAgain) markOnboardingDone().catch(() => {});
           onDone?.();
         }
@@ -352,6 +357,11 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
   };
 
   const next = async () => {
+    if (current.permissionPage) {
+      await requestFullStoragePermission();
+      await finish();
+      return;
+    }
     if (page < pages.length - 1) setPage((p) => p + 1);
     else await finish();
   };
@@ -538,7 +548,8 @@ const UPDATE_NOTES = [
   {
     icon: FolderKey,
     title: "All files access",
-    body: "You can now grant AuthNo access to every folder on your device — including Downloads and external drives. Open Settings → AuthNo to enable it any time.",
+    body: "You can now grant AuthNo access to every folder on your device — including Downloads and external drives.\n\nTap the button below to open the setting, or find it any time under Settings → AuthNo.",
+    permissionPage: true,
   },
   {
     icon: Zap,
@@ -560,10 +571,18 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
 
   useEffect(() => {
     const onKeyDown = (e) => {
-      if (e.key === "Escape" || e.key === "Enter" || e.key === "ArrowRight" || e.key === "PageDown") {
+      if (e.key === "Escape") { markUpdateSeen().catch(() => {}); onDone?.(); }
+      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === "PageDown") {
         e.preventDefault();
-        if (!isLast) setPage((p) => p + 1);
-        else { markUpdateSeen().catch(() => {}); onDone?.(); }
+        if (current.permissionPage) {
+          requestFullStoragePermission().catch(() => {});
+          markUpdateSeen().catch(() => {});
+          onDone?.();
+        } else if (!isLast) {
+          setPage((p) => p + 1);
+        } else {
+          markUpdateSeen().catch(() => {}); onDone?.();
+        }
       }
       if ((e.key === "ArrowLeft" || e.key === "PageUp") && page > 0) {
         e.preventDefault();
@@ -575,7 +594,15 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
   }, [page, isLast, onDone]);
 
   const finish = async () => { await markUpdateSeen(); onDone?.(); };
-  const next = () => { if (!isLast) setPage((p) => p + 1); else finish(); };
+  const next = async () => {
+    if (current.permissionPage) {
+      await requestFullStoragePermission();
+      await finish();
+      return;
+    }
+    if (!isLast) setPage((p) => p + 1);
+    else await finish();
+  };
   const back = () => setPage((p) => Math.max(0, p - 1));
 
   if (typeof document === "undefined") return null;
@@ -635,6 +662,17 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
               <p className="whitespace-pre-line text-center text-sm leading-relaxed text-white/65">
                 {current.body}
               </p>
+
+              {current.permissionPage && (
+                <button
+                  onClick={() => requestFullStoragePermission()}
+                  className="mt-6 w-full flex items-center justify-center gap-2 rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/12 active:scale-95"
+                  style={{ background: "rgba(255,255,255,0.07)" }}
+                >
+                  <FolderKey size={15} />
+                  Grant All Files Access
+                </button>
+              )}
 
               {/* Navigation */}
               <div className="mt-8 flex gap-3">
