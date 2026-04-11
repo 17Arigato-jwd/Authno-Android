@@ -440,6 +440,320 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
   );
 }
 
+// ─── Page type: ui-file ───────────────────────────────────────────────────────
+//
+// Renders an extension's JS UI file inside a sandboxed iframe.
+// The iframe gets a synchronous window.CloudBackupAPI shim that routes every
+// call back to the parent via postMessage, so Settings.js never needs to poll
+// or wait — the API is available the moment the page runs.
+//
+// PostMessage protocol (iframe → parent):
+//   { source: 'CloudBackupAPI', callId, method, args }
+// Parent response (parent → iframe):
+//   { source: 'CloudBackupAPIResponse', callId, result?, error? }
+//
+// Supported methods:
+//   storage.get(key)          → value string | null
+//   storage.set(key, val)     → void
+//   storage.remove(key)       → void
+//   getStatus()               → { activeProvider, tileStatus, queueEntries }
+//   connectProvider(key, cfg) → void   (WebDAV: stores creds; OAuth: triggers flow)
+//   disconnectProvider()      → void
+
+const EXT_STORAGE_PREFIX = (extId) => `__extstore_${extId}_`;
+
+function buildSrcdoc(scriptContent, accentHex) {
+  const shimJs = `
+(function () {
+  'use strict';
+  let _seq = 0;
+  const _pending = {};
+
+  window.addEventListener('message', function (e) {
+    if (!e.data || e.data.source !== 'CloudBackupAPIResponse') return;
+    var p = _pending[e.data.callId];
+    if (!p) return;
+    delete _pending[e.data.callId];
+    if (e.data.error) p.reject(new Error(e.data.error));
+    else p.resolve(e.data.result);
+  });
+
+  function rpc(method, args) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++_seq);
+      _pending[id] = { resolve: resolve, reject: reject };
+      parent.postMessage({ source: 'CloudBackupAPI', callId: id, method: method, args: args || [] }, '*');
+    });
+  }
+
+  window.CloudBackupAPI = {
+    getStatus: function () { return rpc('getStatus', []); },
+    connectProvider: function (key, cfg) { return rpc('connectProvider', [key, cfg]); },
+    disconnectProvider: function () { return rpc('disconnectProvider', []); },
+    storage: {
+      get:    function (k)    { return rpc('storage.get',    [k]); },
+      set:    function (k, v) { return rpc('storage.set',    [k, v]); },
+      remove: function (k)    { return rpc('storage.remove', [k]); },
+    },
+  };
+})();
+  `;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <style>
+    :root { --accent: ${accentHex ?? '#6366f1'}; }
+    html, body { margin: 0; padding: 0; background: transparent; height: 100%; }
+  </style>
+  <script>${shimJs}<\/script>
+</head>
+<body>
+<script>
+${scriptContent}
+<\/script>
+</body>
+</html>`;
+}
+
+function UiFilePage({ extension, pageDef, accentHex }) {
+  const iframeRef = useRef(null);
+  const [srcdoc, setSrcdoc] = useState(null);
+  const [loadErr, setLoadErr] = useState(null);
+
+  // ── Load the extension's JS file from the Capacitor filesystem ────────────
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const { Filesystem, Directory } = await import('@capacitor/filesystem');
+        const filePath = `AuthNo/extensions/${extension.id}/${pageDef.file}`;
+        const result = await Filesystem.readFile({
+          path: filePath,
+          directory: Directory.Data,
+          encoding: 'utf8',
+        });
+        if (!cancelled) setSrcdoc(buildSrcdoc(result.data, accentHex));
+      } catch (e) {
+        if (!cancelled) setLoadErr(e.message);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [extension.id, pageDef.file, accentHex]);
+
+  // ── Handle postMessage API calls from the iframe ───────────────────────────
+  useEffect(() => {
+    const PREFIX = EXT_STORAGE_PREFIX(extension.id);
+
+    async function handleMessage(event) {
+      if (event.data?.source !== 'CloudBackupAPI') return;
+      const { callId, method, args } = event.data;
+
+      const reply = (result, error) => {
+        iframeRef.current?.contentWindow?.postMessage({
+          source: 'CloudBackupAPIResponse',
+          callId,
+          result:  result  ?? null,
+          error:   error   ? String(error) : undefined,
+        }, '*');
+      };
+
+      try {
+        // ── Storage primitives ──────────────────────────────────────────────
+        if (method === 'storage.get') {
+          const val = localStorage.getItem(PREFIX + args[0]);
+          return reply(val);
+        }
+        if (method === 'storage.set') {
+          if (args[1] == null) localStorage.removeItem(PREFIX + args[0]);
+          else localStorage.setItem(PREFIX + args[0], String(args[1]));
+          return reply(null);
+        }
+        if (method === 'storage.remove') {
+          localStorage.removeItem(PREFIX + args[0]);
+          return reply(null);
+        }
+
+        // ── getStatus ───────────────────────────────────────────────────────
+        if (method === 'getStatus') {
+          const activeProvider = localStorage.getItem(PREFIX + 'activeProvider') || null;
+          const tileStatus     = localStorage.getItem(PREFIX + 'tileStatus')     || 'synced';
+          const rawQueue       = localStorage.getItem(PREFIX + 'queue');
+          const queueEntries   = rawQueue ? JSON.parse(rawQueue) : [];
+          return reply({ activeProvider, tileStatus, queueEntries });
+        }
+
+        // ── connectProvider ─────────────────────────────────────────────────
+        if (method === 'connectProvider') {
+          const [providerKey, config] = args;
+
+          // WebDAV: just store the config — no OAuth needed
+          if (providerKey === 'webdav') {
+            localStorage.setItem(PREFIX + 'activeProvider', 'webdav');
+            localStorage.setItem(PREFIX + `creds:webdav`, JSON.stringify(config));
+            localStorage.setItem(PREFIX + 'tileStatus', 'synced');
+            return reply(null);
+          }
+
+          // OAuth providers: open browser via Capacitor
+          try {
+            const { Browser } = await import('@capacitor/browser');
+            const { App }     = await import('@capacitor/app');
+
+            // PKCE helpers
+            const verifier   = generateCodeVerifier();
+            const challenge  = await sha256Base64url(verifier);
+            const state      = generateCodeVerifier().slice(0, 16);
+
+            const { authUrl, tokenUrl, clientId, redirectUri, scope } = getOAuthConfig(providerKey);
+            if (!authUrl) throw new Error(`OAuth not configured for ${providerKey}. Register a client ID first.`);
+
+            const params = new URLSearchParams({
+              client_id: clientId, redirect_uri: redirectUri,
+              response_type: 'code', scope, state,
+              code_challenge: challenge, code_challenge_method: 'S256',
+              access_type: 'offline', prompt: 'consent',
+            });
+
+            const code = await new Promise((res, rej) => {
+              const listener = App.addListener('appUrlOpen', (ev) => {
+                const url = new URL(ev.url ?? '');
+                if (!url.href.startsWith(redirectUri)) return;
+                listener.then(l => l.remove()).catch(() => {});
+                Browser.close();
+                if (url.searchParams.get('state') !== state) { rej(new Error('State mismatch')); return; }
+                const c = url.searchParams.get('code');
+                if (!c) { rej(new Error('No auth code returned')); return; }
+                res(c);
+              });
+              Browser.open({ url: `${authUrl}?${params}` });
+            });
+
+            const tokenRes = await fetch(tokenUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                client_id: clientId, redirect_uri: redirectUri,
+                grant_type: 'authorization_code', code, code_verifier: verifier,
+              }),
+            });
+            if (!tokenRes.ok) throw new Error(`Token exchange failed: ${tokenRes.status}`);
+            const tokens = await tokenRes.json();
+
+            const creds = {
+              accessToken:  tokens.access_token,
+              refreshToken: tokens.refresh_token,
+              expiresAt:    Date.now() + (tokens.expires_in ?? 3600) * 1000,
+            };
+            localStorage.setItem(PREFIX + 'activeProvider', providerKey);
+            localStorage.setItem(PREFIX + `creds:${providerKey}`, JSON.stringify(creds));
+            localStorage.setItem(PREFIX + 'tileStatus', 'synced');
+            return reply(null);
+          } catch (e) {
+            throw e;
+          }
+        }
+
+        // ── disconnectProvider ──────────────────────────────────────────────
+        if (method === 'disconnectProvider') {
+          const current = localStorage.getItem(PREFIX + 'activeProvider');
+          if (current) localStorage.removeItem(PREFIX + `creds:${current}`);
+          localStorage.removeItem(PREFIX + 'activeProvider');
+          localStorage.removeItem(PREFIX + 'tileStatus');
+          localStorage.removeItem(PREFIX + 'queue');
+          return reply(null);
+        }
+
+        reply(null, `Unknown API method: ${method}`);
+      } catch (e) {
+        reply(null, e.message);
+      }
+    }
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [extension.id]);
+
+  if (loadErr) {
+    return (
+      <StatusBox
+        icon="⚠️"
+        title="Could not load extension page"
+        subtitle={loadErr}
+        accentHex={accentHex}
+      />
+    );
+  }
+
+  if (!srcdoc) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', color: 'var(--text-4)' }}>
+        <Loader size={24} style={{ animation: 'spin 1s linear infinite' }} />
+        <span style={{ fontSize: '13px' }}>Loading…</span>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcdoc}
+      title={pageDef.title ?? extension.name}
+      style={{ flex: 1, width: '100%', border: 'none', display: 'block' }}
+      sandbox="allow-scripts allow-same-origin allow-popups"
+    />
+  );
+}
+
+// ── OAuth config per provider ──────────────────────────────────────────────────
+// Replace __PROVIDER_CLIENT_ID__ placeholders with real values before shipping.
+
+function getOAuthConfig(providerKey) {
+  const configs = {
+    gdrive: {
+      authUrl:     'https://accounts.google.com/o/oauth2/v2/auth',
+      tokenUrl:    'https://oauth2.googleapis.com/token',
+      clientId:    '__GDRIVE_CLIENT_ID__',
+      redirectUri: 'com.aurorastudios.authno:/oauth2/gdrive',
+      scope:       'https://www.googleapis.com/auth/drive.file',
+    },
+    onedrive: {
+      authUrl:     'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize',
+      tokenUrl:    'https://login.microsoftonline.com/consumers/oauth2/v2.0/token',
+      clientId:    '__ONEDRIVE_CLIENT_ID__',
+      redirectUri: 'com.aurorastudios.authno:/oauth2/onedrive',
+      scope:       'Files.ReadWrite.AppFolder offline_access',
+    },
+    dropbox: {
+      authUrl:     'https://www.dropbox.com/oauth2/authorize',
+      tokenUrl:    'https://api.dropboxapi.com/oauth2/token',
+      clientId:    '__DROPBOX_CLIENT_ID__',
+      redirectUri: 'com.aurorastudios.authno:/oauth2/dropbox',
+      scope:       '',
+    },
+  };
+  return configs[providerKey] ?? {};
+}
+
+// ── PKCE utilities ─────────────────────────────────────────────────────────────
+
+function generateCodeVerifier() {
+  const arr = new Uint8Array(48);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function sha256Base64url(str) {
+  const enc  = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', enc);
+  return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
 // ─── Main ExtensionPage ───────────────────────────────────────────────────────
 
 export default function ExtensionPage({ extension, pageId, session, accentHex, onBack, inline = false }) {
@@ -495,6 +809,9 @@ export default function ExtensionPage({ extension, pageId, session, accentHex, o
       )}
       {pageDef.type === 'api-action' && (
         <ApiActionPage extension={extension} page={pageDef} session={session} accentHex={accentHex} onBack={onBack} />
+      )}
+      {pageDef.type === 'ui-file' && (
+        <UiFilePage extension={extension} pageDef={pageDef} accentHex={accentHex} />
       )}
     </div>
   );
