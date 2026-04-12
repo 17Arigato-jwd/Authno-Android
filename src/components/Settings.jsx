@@ -1127,6 +1127,13 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   const extSettingsItems = useExtensionContributions('settings');
   const { navigate }     = useExtensions();
 
+  // True when the active panel is an extension ui-file page.
+  // Swaps settings-content from scroll container to flex container so the
+  // iframe can fill the available height without collapsing to 0px on Android.
+  const isExtSection = extSettingsItems.some(
+    item => activeSection === `ext::${item._extId}::${item.id}`
+  );
+
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
@@ -1261,7 +1268,9 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             {/* Scrollable content */}
             <div
               className="settings-content"
-              style={{ flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}
+              style={isExtSection
+                ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }
+                : { flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}
             >
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} />}
@@ -1338,7 +1347,9 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
 
             <div
               className="settings-content"
-              style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}
+              style={isExtSection
+                ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }
+                : { flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}
             >
               <button
                 onClick={onClose}

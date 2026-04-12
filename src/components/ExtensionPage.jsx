@@ -111,7 +111,7 @@ async function readExtensionFile(extId, relPath) {
   return r.data;
 }
 
-function UiFilePage({ extension, pageDef, session, accentHex }) {
+function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
   const [srcdoc, setSrcdoc]     = useState(null);
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -224,6 +224,11 @@ ${fileCode}
 
     const handler = async (e) => {
       const msg = e.data;
+      // ext-close: ConflictResolution (or any iframe page) signals a back navigation
+      if (msg?.type === 'ext-close' && e.source === iframeRef.current?.contentWindow) {
+        onBack?.();
+        return;
+      }
       if (!msg || msg.type !== 'api-call' || e.source !== iframeRef.current?.contentWindow) return;
 
       const { id, method, args } = msg;
@@ -304,7 +309,7 @@ ${fileCode}
       srcDoc={srcdoc}
       title={pageDef.title ?? extension.name}
       sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-      style={{ flex: 1, width: '100%', border: 'none', background: 'transparent' }}
+      style={{ display: 'flex', flex: 1, width: '100%', height: '100%', minHeight: '200px', border: 'none', background: 'transparent' }}
     />
   );
 }
@@ -590,7 +595,9 @@ export default function ExtensionPage({ extension, pageId, session, accentHex, o
 
   if (!pageDef) {
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--app-bg)' }}>
+      <div style={inline
+        ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'transparent', overflow: 'hidden' }
+        : { position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: 'var(--app-bg)', overflow: 'hidden' }}>
         <PageHeader title={extension?.name ?? 'Extension'} onBack={onBack} accentHex={accentHex} />
         <StatusBox icon="❓" title="Page not found" subtitle={`The extension "${extension?.name}" does not declare a page with id "${pageId}".`} />
       </div>
@@ -610,11 +617,13 @@ export default function ExtensionPage({ extension, pageId, session, accentHex, o
   const title = pageDef.title ?? extension.name;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: inline ? 'transparent' : 'var(--app-bg)', overflow: 'hidden' }}>
+    <div style={inline
+      ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'transparent', overflow: 'hidden' }
+      : { position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: 'var(--app-bg)', overflow: 'hidden' }}>
       {!inline && <PageHeader title={title} onBack={onBack} accentHex={accentHex} action={headerAction} />}
 
       {pageDef.type === 'ui-file' && (
-        <UiFilePage extension={extension} pageDef={pageDef} session={session} accentHex={accentHex} />
+        <UiFilePage extension={extension} pageDef={pageDef} session={session} accentHex={accentHex} onBack={onBack} />
       )}
       {pageDef.type === 'auth-form' && (
         <AuthFormPage extension={extension} accentHex={accentHex} onBack={onBack} />
