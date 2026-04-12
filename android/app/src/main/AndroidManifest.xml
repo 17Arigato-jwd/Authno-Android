@@ -34,17 +34,17 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="*/*"
-                      android:pathPattern=".*\\.authbook" />
+                      android:pathPattern=".*\.authbook" />
             </intent-filter>
 
             <intent-filter android:label="Open with AuthNo">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" android:mimeType="*/*"
-                      android:pathPattern=".*\\.authbook" />
+                      android:pathPattern=".*\.authbook" />
             </intent-filter>
 
-            <!-- Open .extbk extension bundles tapped in file managers / email / browser -->
+            <!-- Open .extbk extension bundles tapped in file managers / browser -->
             <intent-filter android:label="Install AuthNo Extension">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -55,14 +55,54 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="*/*"
-                      android:pathPattern=".*\\.extbk" />
+                      android:pathPattern=".*\.extbk" />
             </intent-filter>
 
             <intent-filter android:label="Install AuthNo Extension">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" android:mimeType="*/*"
-                      android:pathPattern=".*\\.extbk" />
+                      android:pathPattern=".*\.extbk" />
+            </intent-filter>
+
+            <!--
+                ── OAuth redirect URI handlers (v1.2.0) ──────────────────────
+                Required for all cloud providers using the PKCE flow.
+                @capacitor/browser opens the provider's auth page, then redirects
+                back to this custom scheme. MainActivity.handleOAuthRedirect()
+                catches the intent and forwards the URL to JS via a CustomEvent.
+
+                Each provider has its own path segment so they don't interfere.
+            -->
+
+            <!-- Google Drive -->
+            <intent-filter android:label="AuthNo OAuth — Google Drive">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.aurorastudios.authno"
+                      android:host="oauth2"
+                      android:pathPrefix="/gdrive" />
+            </intent-filter>
+
+            <!-- Dropbox -->
+            <intent-filter android:label="AuthNo OAuth — Dropbox">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.aurorastudios.authno"
+                      android:host="oauth2"
+                      android:pathPrefix="/dropbox" />
+            </intent-filter>
+
+            <!-- OneDrive / Microsoft -->
+            <intent-filter android:label="AuthNo OAuth — OneDrive">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.aurorastudios.authno"
+                      android:host="oauth2"
+                      android:pathPrefix="/onedrive" />
             </intent-filter>
 
         </activity>
@@ -91,7 +131,7 @@
             </intent-filter>
         </activity>
 
-        <!-- ── File provider (unchanged) ── -->
+        <!-- ── File provider ── -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

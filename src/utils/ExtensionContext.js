@@ -1,21 +1,11 @@
 /**
  * ExtensionContext.js
  *
- * Provides discovered extensions to the whole React tree and exposes the
- * navigation callback so any component can open an extension page.
- *
- * Usage:
- *
- *   // In App.js
- *   <ExtensionProvider onNavigate={(ext, pageId, session) => { ... }}>
- *     <AppInner />
- *   </ExtensionProvider>
- *
- *   // In any component
- *   const { extensions, hasExtensions } = useExtensions();
- *   const homeTiles = useExtensionContributions('homescreen');
- *   const { tabs, actions } = useBookDashboardExtensions(session);
- *   const settingsItems = useExtensionContributions('settings');
+ * Changes from v1.1.14:
+ *   - Imports extensionRuntime (activateExtension, deactivateExtension, deactivateAll)
+ *   - refresh() now activates every discovered extension after the disk scan
+ *   - uninstall() deactivates the extension before removing it
+ *   - Provider unmount deactivates all running extensions
  */
 
 import React, {
@@ -34,76 +24,61 @@ import {
   seedPreinstalledExtensions,
 } from './extbkInstaller';
 import { registerHook } from './sessionHooks';
+import {
+  activateExtension,
+  deactivateExtension,
+  deactivateAll,
+} from './extensionRuntime';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 const ExtensionContext = createContext({
-  /** Array of validated manifest objects */
   extensions: [],
-  /** True while the initial scan is running */
   loading: true,
-  /** True once loading is done and at least one extension is installed */
   hasExtensions: false,
-  /** Re-run the filesystem scan (call after user installs a new extension) */
   refresh: async () => {},
-  /** Get the stored config for a specific extension */
   getConfig: (_extId) => ({}),
-  /** Merge-save config fields for a specific extension */
   setConfig: (_extId, _patch) => {},
-  /** Clear all stored config for a specific extension */
   clearConfig: (_extId) => {},
-  /**
-   * Install a .extbk archive from a base64 string, then refresh.
-   * Dispatched by MainActivity when the user taps an .extbk file.
-   * @param {string} base64
-   * @returns {Promise<object>} validated manifest
-   */
   installExtbk: async (_base64) => {},
-  /**
-   * Uninstall an extension by id, then refresh.
-   * @param {string} extId
-   */
   uninstall: async (_extId) => {},
-  /**
-   * Register a session-lifecycle hook (e.g. 'onSave').
-   * Returns an unregister function — call it in useEffect cleanup.
-   * @param {string}   hookName
-   * @param {function} handler
-   * @returns {function}
-   */
   registerHook: (_hookName, _handler) => () => {},
-  /**
-   * Navigate to an extension page.
-   * Implemented in App.js and injected via the onNavigate prop.
-   * @param {object} extension - the manifest object
-   * @param {string} pageId    - key in manifest.contributes.pages
-   * @param {object|null} session - current book session (or null)
-   */
   navigate: (_extension, _pageId, _session) => {},
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-/**
- * @param {function} onNavigate — called with (extension, pageId, session)
- *                                when any part of the app wants to open an
- *                                extension page.  Implemented in App.js.
- */
 export function ExtensionProvider({ children, onNavigate }) {
   const [extensions, setExtensions] = useState([]);
   const [loading, setLoading]       = useState(true);
 
+  // ── Core refresh — discover + activate ─────────────────────────────────────
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const found = await discoverExtensions();
+
+      // Deactivate all running extensions before re-activating
+      await deactivateAll();
       setExtensions(found);
+
+      // Activate each discovered extension
+      for (const manifest of found) {
+        try {
+          await activateExtension(manifest, onNavigate);
+        } catch (err) {
+          console.error(`[ExtensionContext] Failed to activate ${manifest.id}:`, err);
+        }
+      }
     } catch {
       setExtensions([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onNavigate]);
+
+  // Deactivate everything when provider unmounts (dev HMR / page unload)
+  useEffect(() => () => { deactivateAll(); }, []);
 
   // On mount: seed pre-installed .extbk files from Android assets, then scan
   useEffect(() => {
@@ -131,10 +106,7 @@ export function ExtensionProvider({ children, onNavigate }) {
     window.addEventListener('install-extbk-bytes', onInstallBytes);
     window.addEventListener('install-extbk-error', onInstallError);
 
-    // ── Cold-start .extbk recovery ─────────────────────────────────────────
-    // If the app launched cold from tapping an .extbk file, the evaluateJavascript
-    // event fired before these listeners registered.  Call getPendingExtbkIntent()
-    // now (after listeners are live) to pick it up.
+    // Cold-start .extbk recovery
     (async () => {
       try {
         const { registerPlugin } = await import('@capacitor/core');
@@ -145,7 +117,7 @@ export function ExtensionProvider({ children, onNavigate }) {
             detail: { base64: result.base64 },
           }));
         }
-      } catch (_) { /* not on Android or plugin unavailable — ignore */ }
+      } catch (_) {}
     })();
 
     return () => {
@@ -154,9 +126,9 @@ export function ExtensionProvider({ children, onNavigate }) {
     };
   }, [refresh]);
 
-  const getConfig   = useCallback((id) => getExtensionConfig(id),         []);
-  const setConfig   = useCallback((id, p) => setExtensionConfig(id, p),   []);
-  const clearConfig = useCallback((id) => clearExtensionConfig(id),       []);
+  const getConfig   = useCallback((id) => getExtensionConfig(id),       []);
+  const setConfig   = useCallback((id, p) => setExtensionConfig(id, p), []);
+  const clearConfig = useCallback((id) => clearExtensionConfig(id),     []);
 
   const installExtbk = useCallback(async (base64) => {
     const manifest = await installExtbkBytes(base64);
@@ -164,7 +136,9 @@ export function ExtensionProvider({ children, onNavigate }) {
     return manifest;
   }, [refresh]);
 
+  // Deactivate before removing from disk so hooks are cleaned up
   const uninstall = useCallback(async (extId) => {
+    await deactivateExtension(extId);
     await uninstallExtension(extId);
     await refresh();
   }, [refresh]);
@@ -196,20 +170,10 @@ export function ExtensionProvider({ children, onNavigate }) {
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
-/** Access the full extension context */
 export function useExtensions() {
   return useContext(ExtensionContext);
 }
 
-/**
- * Collect all contributions of a given type across every installed extension.
- *
- * type: 'homescreen' | 'settings'
- *
- * Returns an array where each item is a contribution descriptor merged with
- * _extId, _extName, and _extIcon from the parent manifest so callers can
- * render the extension's identity alongside each item.
- */
 export function useExtensionContributions(type) {
   const { extensions } = useExtensions();
   return useMemo(() => {
@@ -230,10 +194,6 @@ export function useExtensionContributions(type) {
   }, [extensions, type]);
 }
 
-/**
- * Get BookDashboard-specific contributions (tabs + actions) for all installed
- * extensions.  Both arrays include the _ext* identity fields.
- */
 export function useBookDashboardExtensions() {
   const { extensions } = useExtensions();
   return useMemo(() => {
@@ -250,16 +210,6 @@ export function useBookDashboardExtensions() {
   }, [extensions]);
 }
 
-/**
- * Get editor toolbar button contributions from all installed extensions.
- *
- * Extensions declare these in their manifest under:
- *   contributes.editorToolbar: [
- *     { id: "publishChapter", label: "Publish Chapter", icon: "Upload", page: "publish" }
- *   ]
- *
- * Each item includes _ext, _extId, _extName for identity.
- */
 export function useEditorToolbarExtensions() {
   const { extensions } = useExtensions();
   return useMemo(() => {
