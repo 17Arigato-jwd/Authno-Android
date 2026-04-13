@@ -3,6 +3,7 @@ import {
   X, User, Palette, Database, BookOpen,
   Camera, Check, Trash2, RefreshCw, AlertTriangle,
   BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target, PackagePlus, List,
+  Cloud, Puzzle, Upload, Settings2, HardDrive, Server, Box,
 } from 'lucide-react';
 import { buildPalette } from './Background';
 import { ColorPicker } from './ColorPicker';
@@ -1155,7 +1156,16 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     ...extSettingsItems.map(item => ({
       id:    `ext::${item._extId}::${item.id}`,
       label: item.label,
-      icon:  () => <span style={{ fontSize: '16px', lineHeight: 1 }}>{item.icon ?? item._extIcon}</span>,
+      icon:  (() => {
+        // Resolve manifest icon string to a Lucide component, fall back to emoji/puzzle
+        const LUCIDE_MAP = { Cloud, Puzzle, Upload, Settings2, HardDrive, Server, Box, Database, BookOpen, Zap };
+        const iconName = item.icon;
+        const LucideIcon = iconName && LUCIDE_MAP[iconName];
+        if (LucideIcon) return (props) => <LucideIcon {...props} />;
+        // Emoji or any other string — render as text
+        const fallback = item._extIcon ?? item.icon ?? '🧩';
+        return (props) => <span style={{ fontSize: '16px', lineHeight: 1 }}>{fallback}</span>;
+      })(),
       group: 'Extensions',
       _extItem: item,
     })),

@@ -158,6 +158,10 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     connectProvider:    function(k, c)      { return call('connectProvider', [k, c]); },
     disconnectProvider: function()          { return call('disconnectProvider', []); },
     resolveConflict:    function(id, r)     { return call('resolveConflict', [id, r]); },
+    // Browser plugin bridge — @capacitor/browser can't be bare-imported inside
+    // a sandboxed srcdoc iframe. The host app (webpack bundle) has it; proxy here.
+    openBrowser:        function(url)       { return call('openBrowser', [url]); },
+    closeBrowser:       function()          { return call('closeBrowser', []); },
     storage: {
       get: function(k)    { return call('storage.get', [k]); },
       set: function(k, v) { return call('storage.set', [k, v]); },
@@ -269,6 +273,16 @@ ${fileCode}
           window.dispatchEvent(new CustomEvent('__ext-navigate', {
             detail: { extension, pageId: args[0], session: args[1] ?? session }
           }));
+          result = null;
+        }
+        else if (method === 'openBrowser') {
+          const { Browser } = await import('@capacitor/browser');
+          await Browser.open({ url: args[0] });
+          result = null;
+        }
+        else if (method === 'closeBrowser') {
+          const { Browser } = await import('@capacitor/browser');
+          await Browser.close().catch(() => {});
           result = null;
         }
         else throw new Error(`Unknown bridge method: ${method}`);
