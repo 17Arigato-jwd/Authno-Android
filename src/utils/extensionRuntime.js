@@ -26,6 +26,17 @@
 
 import { registerHook }  from './sessionHooks';
 import { logError }      from './ErrorLogger';
+// @capacitor/browser is webpack-bundled here — safe to import directly.
+// Extensions (raw ES modules) can't do bare imports, so we pass these
+// as functions into activate() so extensions access them via the context object.
+let _BrowserPlugin = null;
+async function getBrowser() {
+  if (!_BrowserPlugin) {
+    const { Browser } = await import('@capacitor/browser');
+    _BrowserPlugin = Browser;
+  }
+  return _BrowserPlugin;
+}
 
 const EXT_BASE_URL = 'https://localhost/extensions';
 
@@ -126,7 +137,10 @@ export async function activateExtension(manifest, navigateFn) {
 
   let deactivate;
   try {
-    deactivate = mod.activate({ registerHook, storage, navigate, extension: manifest });
+    const openBrowser  = async (url) => { const B = await getBrowser(); await B.open({ url }); };
+    const closeBrowser = async ()    => { const B = await getBrowser(); await B.close().catch(() => {}); };
+
+    deactivate = mod.activate({ registerHook, storage, navigate, extension: manifest, openBrowser, closeBrowser });
   } catch (err) {
     logError('extensionRuntime:activate', err, { extId });
     console.error(`[extensionRuntime] activate() threw for ${extId}:`, err.message);

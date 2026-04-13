@@ -1,6 +1,17 @@
 // HomeScreen.jsx
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, Cloud, Server, HardDrive, Upload, BookOpen, Settings2,
+  Puzzle, BarChart2, Zap, Globe, Star, Eye, Home, Box } from 'lucide-react';
+
+// Resolve manifest.icon string → Lucide component, or null if not found
+const TILE_ICON_MAP = {
+  Cloud, Server, HardDrive, Upload, BookOpen, Settings2,
+  Puzzle, BarChart2, Zap, Globe, Star, Eye, Home, Box,
+};
+function resolveTileIcon(iconName, size = 28) {
+  const I = iconName && TILE_ICON_MAP[iconName];
+  return I ? <I size={size} /> : null;
+}
 import { PencilIcon, FolderIcon } from './GradientIcons';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
@@ -337,7 +348,10 @@ export default function HomeScreen({
     { icon: <FolderIcon size={28} />,                        label: 'Edit an Existing Book',    onClick: handleOpenExisting },
     // Extension-contributed action tiles (dynamically populated)
     ...extHomeTiles.map(tile => ({
-      icon: <span style={{ fontSize: '26px', lineHeight: 1 }}>{tile.icon ?? tile._extIcon}</span>,
+      icon: (() => {
+        const lucide = resolveTileIcon(tile.icon ?? tile._extIcon, 28);
+        return lucide ?? <span style={{ fontSize: '26px', lineHeight: 1 }}>{tile.icon ?? tile._extIcon ?? '🧩'}</span>;
+      })(),
       label: tile.label,
       onClick: () => navigate(tile._ext, tile.page),
     })),

@@ -283,9 +283,9 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
             </span>
             {ext.tier && (
               <span style={ext.tier === 'premium'
-                ? { fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '5px',
-                    background: '#f0f0ff', color: '#4f46e5', letterSpacing: '0.04em', textTransform: 'uppercase' }
-                : { fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '5px',
+                ? { fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
+                    background: '#4f46e522', color: '#818cf8', letterSpacing: '0.04em', textTransform: 'uppercase' }
+                : { fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
                     background: accentHex + '22', color: accentHex, letterSpacing: '0.04em', textTransform: 'uppercase' }
               }>
                 {ext.tier === 'premium' ? 'Premium' : 'Free'}
