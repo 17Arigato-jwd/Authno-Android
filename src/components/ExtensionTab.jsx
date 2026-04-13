@@ -13,6 +13,7 @@ import {
   Upload, Eye, FileText, BarChart2, Rocket, Star, Link,
   MessageCircle, Home, ChevronRight, ChevronDown, ChevronUp,
   RefreshCw, FolderOpen, Zap, Edit3, Globe, Play, Trash2,
+  Cloud, Server, HardDrive, Box,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useExtensions } from '../utils/ExtensionContext';
@@ -28,6 +29,16 @@ const EMOJI_MAP = {
   '🌐': Globe,   '⚡': Zap,       '▸': Play,    '↗': ExternalLink,
   '▶': Play,
 };
+
+// Lucide icon name → component (manifest.icon string like "Cloud", "Server", etc.)
+const LUCIDE_ICON_MAP = {
+  Cloud, Server, HardDrive, Box, Upload, BookOpen, Settings2,
+  Puzzle, BarChart2, Zap, Globe, Star, Edit3, Eye, Home,
+};
+
+function resolveLucideIcon(iconName) {
+  return iconName && LUCIDE_ICON_MAP[iconName] ? LUCIDE_ICON_MAP[iconName] : null;
+}
 
 const LABEL_MAP = {
   'open': ExternalLink, 'open dashboard': LayoutDashboard,
@@ -249,7 +260,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: accentHex,
           }}>
-            <Puzzle size={18} />
+            {(() => { const I = resolveLucideIcon(ext.icon); return I ? <I size={18} /> : <Puzzle size={18} />; })()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
@@ -262,17 +273,25 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
               {ext.id}
             </div>
           </div>
-          <span style={{
-            flexShrink: 0,
-            fontSize: '10px',
-            color: accentHex,
-            background: accentHex + '22',
-            padding: '2px 7px',
-            borderRadius: '6px',
-            fontWeight: 600,
-          }}>
-            v{ext.version}
-          </span>
+          <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+            <span style={{
+              fontSize: '10px', color: accentHex,
+              background: accentHex + '22', padding: '2px 7px',
+              borderRadius: '6px', fontWeight: 600,
+            }}>
+              v{ext.version}
+            </span>
+            {ext.tier && (
+              <span style={ext.tier === 'premium'
+                ? { fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '5px',
+                    background: '#f0f0ff', color: '#4f46e5', letterSpacing: '0.04em', textTransform: 'uppercase' }
+                : { fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '5px',
+                    background: accentHex + '22', color: accentHex, letterSpacing: '0.04em', textTransform: 'uppercase' }
+              }>
+                {ext.tier === 'premium' ? 'Premium' : 'Free'}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Description */}
