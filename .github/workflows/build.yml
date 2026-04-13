@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
-      - run: npm install
+      - run: npm install --omit=dev
       - run: npm run build
         env: { CI: false }
       - uses: actions/upload-artifact@v4
@@ -52,7 +52,7 @@ jobs:
 
           EOF
 
-      - run: npm install
+      - run: npm install --omit=dev
 
       - name: "📊 Progress: Dependencies Installed"
         run: |
