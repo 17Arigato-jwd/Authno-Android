@@ -2,6 +2,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Menu, Cloud, Server, HardDrive, Upload, BookOpen, Settings2,
   Puzzle, BarChart2, Zap, Globe, Star, Eye, Home, Box } from 'lucide-react';
+import { PencilIcon, FolderIcon } from './GradientIcons';
+import { useError } from '../utils/ErrorContext';
+import { folderFromPath } from '../utils/storage';
+import Logo from '../logo.svg';
+import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 
 // Resolve manifest.icon string → Lucide component, or null if not found
 const TILE_ICON_MAP = {
@@ -12,11 +17,6 @@ function resolveTileIcon(iconName, size = 28) {
   const I = iconName && TILE_ICON_MAP[iconName];
   return I ? <I size={size} /> : null;
 }
-import { PencilIcon, FolderIcon } from './GradientIcons';
-import { useError } from '../utils/ErrorContext';
-import { folderFromPath } from '../utils/storage';
-import Logo from '../logo.svg';
-import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
 // Reads the .light-mode class from the app-root div — no prop needed from App.js.
