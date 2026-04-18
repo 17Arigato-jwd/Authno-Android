@@ -66,33 +66,62 @@ function makeExtStorage(extId) {
 // Set once and shared across all extensions.
 
 let _replaceSessionFn = null;
+let _importSessionFn  = null;
+let _getSessionsFn    = null;
 
 /** Called by App.js so conflict resolution can hot-swap a session. */
-export function setReplaceSessionHandler(fn) {
-  _replaceSessionFn = fn;
-}
+export function setReplaceSessionHandler(fn) { _replaceSessionFn = fn; }
+/** Called by App.js to let extensions import downloaded books. */
+export function setImportSessionHandler(fn)  { _importSessionFn  = fn; }
+/** Called by App.js to expose the sessions list to extensions. */
+export function setGetSessionsHandler(fn)    { _getSessionsFn    = fn; }
 
 function ensureHostAPI() {
   if (window.AuthNoExtensionAPI) return;
   window.AuthNoExtensionAPI = {
-    /**
-     * Encode a session object into base64 .authbook bytes.
-     * Used by cloud-backup extension to upload a session to cloud providers.
-     */
+    /** Encode a session → base64 .authbook bytes for upload. */
     async encodeSession(session) {
       const { packSession, bytesToBase64 } = await import('./authbook');
       const bytes = await packSession(session);
       return bytesToBase64(bytes);
     },
 
-    /**
-     * Replace the current in-memory session with a cloud-downloaded version.
-     * Used by conflict resolution (use-cloud path).
-     */
+    /** Replace in-memory session with downloaded bytes (conflict: use-cloud). */
     async replaceSession(sessionId, base64) {
       if (typeof _replaceSessionFn === 'function') {
         await _replaceSessionFn(sessionId, base64);
       }
+    },
+
+    /** Import a downloaded .authbook base64 into the app as a new/updated session. */
+    async importSession(base64) {
+      if (typeof _importSessionFn === 'function') {
+        return _importSessionFn(base64);
+      }
+      throw new Error('importSession handler not registered');
+    },
+
+    /** Return lightweight metadata for all sessions (id, title, updated, filePath). */
+    getSessions() {
+      if (typeof _getSessionsFn === 'function') return _getSessionsFn();
+      return [];
+    },
+
+    /**
+     * Export a session to a non-.authbook format.
+     * format: 'txt' | 'html' | 'epub'
+     * Returns { filename, base64, mimeType }
+     */
+    async exportSessionAs(session, format) {
+      const { exportAsTxt, exportAsHtml, exportAsEpub } = await import('./storage');
+      const handlers = {
+        txt:  async (s) => { const r = await exportAsTxt(s,  { returnBytes: true }); return r; },
+        html: async (s) => { const r = await exportAsHtml(s, { returnBytes: true }); return r; },
+        epub: async (s) => { const r = await exportAsEpub(s, { returnBytes: true }); return r; },
+      };
+      const fn = handlers[format];
+      if (!fn) throw new Error(`Unknown export format: ${format}`);
+      return fn(session);
     },
   };
 }

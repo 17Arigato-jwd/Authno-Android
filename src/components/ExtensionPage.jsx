@@ -12,6 +12,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowLeft, RefreshCw, ExternalLink, Check, AlertTriangle, Loader } from 'lucide-react';
+import { Browser } from '@capacitor/browser';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
 import { isAndroid } from '../utils/platform';
@@ -169,6 +170,13 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     navigate: function(ext, pageId, session) {
       return call('navigate', [pageId, session]);
     },
+    // Feature A/B/E
+    exportSessionAs:       function(s, fmt) { return call('exportSessionAs', [s, fmt]); },
+    importSession:         function(b64)    { return call('importSession', [b64]); },
+    getSessions:           function()       { return call('getSessions', []); },
+    // Feature C
+    isBookBackupDisabled:  function(id)      { return call('isBookBackupDisabled', [id]); },
+    setBookBackupDisabled: function(id, val) { return call('setBookBackupDisabled', [id, val]); },
     providers: {},
     queue: null,
     extension: ${JSON.stringify(extension)},
@@ -276,13 +284,34 @@ ${fileCode}
           result = null;
         }
         else if (method === 'openBrowser') {
-          const { Browser } = await import('@capacitor/browser');
           await Browser.open({ url: args[0] });
           result = null;
         }
         else if (method === 'closeBrowser') {
-          const { Browser } = await import('@capacitor/browser');
           await Browser.close().catch(() => {});
+          result = null;
+        }
+        else if (method === 'exportSessionAs') {
+          const api = window.AuthNoExtensionAPI;
+          if (!api?.exportSessionAs) throw new Error('exportSessionAs not available');
+          result = await api.exportSessionAs(args[0], args[1]);
+        }
+        else if (method === 'importSession') {
+          const api = window.AuthNoExtensionAPI;
+          if (!api?.importSession) throw new Error('importSession not available');
+          result = await api.importSession(args[0]);
+        }
+        else if (method === 'getSessions') {
+          const api = window.AuthNoExtensionAPI;
+          result = api?.getSessions ? api.getSessions() : [];
+        }
+        else if (method === 'isBookBackupDisabled') {
+          const api = window.CloudBackupAPI;
+          result = api?.isBookBackupDisabled ? await api.isBookBackupDisabled(args[0]) : false;
+        }
+        else if (method === 'setBookBackupDisabled') {
+          const api = window.CloudBackupAPI;
+          if (api?.setBookBackupDisabled) await api.setBookBackupDisabled(args[0], args[1]);
           result = null;
         }
         else throw new Error(`Unknown bridge method: ${method}`);

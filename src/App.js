@@ -22,6 +22,7 @@ import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
 import { Onboarding, hasSeenOnboarding, UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
 import { ExtensionProvider } from "./utils/ExtensionContext";
+import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
 
 const BurgerIcon = ({ className }) => (
@@ -181,6 +182,16 @@ function Editor({
 function AppInner({ navigateRef }) {
   const { showError } = useError();
   const [sessions, setSessions]   = useState([]);
+
+  // Register getSessions so extensions can read the session list
+  useEffect(() => {
+    setGetSessionsHandler(() => sessions.map(s => ({
+      id:       s.id,
+      title:    s.title || 'Untitled',
+      updated:  s.updated ?? s.created ?? null,
+      filePath: s.filePath ?? null,
+    })));
+  }, [sessions]);
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
   const [menuOpen, setMenuOpen]   = useState(false);
@@ -189,6 +200,25 @@ function AppInner({ navigateRef }) {
   const [view, setView]           = useState("home");
   // Extension page state — set by the navigate() callback in ExtensionProvider
   const [extPageState, setExtPageState] = useState(null); // { extension, pageId, session }
+
+  // Register importSession handler for extensions (Feature B, E)
+  useEffect(() => {
+    setImportSessionHandler(async (base64) => {
+      const { openBookFromBytes } = await import('./utils/storage');
+      const session = await openBookFromBytes(base64, null);
+      if (!session) throw new Error('Failed to decode imported .authbook');
+      setSessions(prev => {
+        const idx = prev.findIndex(s => s.id === session.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...prev[idx], ...session };
+          return next;
+        }
+        return [session, ...prev];
+      });
+      return session;
+    });
+  }, []);
 
   // Wire the navigate implementation into the ref so ExtensionProvider can call it
   // from anywhere in the tree without prop-drilling.
