@@ -21,8 +21,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
-import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException;
-
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.concurrent.Executors;
@@ -119,24 +117,28 @@ public class GoogleSignInPlugin extends Plugin {
             CustomCredential customCred = (CustomCredential) credential;
             if (GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
                     .equals(customCred.getType())) {
+                // GoogleIdTokenParsingException is unchecked in googleid 1.1.x+
+                // (extends RuntimeException), so we catch RuntimeException here.
+                GoogleIdTokenCredential googleIdTokenCredential;
                 try {
-                    GoogleIdTokenCredential googleIdTokenCredential =
+                    googleIdTokenCredential =
                         GoogleIdTokenCredential.createFrom(customCred.getData());
-
-                    JSObject ret = new JSObject();
-                    ret.put("idToken",      googleIdTokenCredential.getIdToken());
-                    ret.put("displayName",  googleIdTokenCredential.getDisplayName());
-                    ret.put("email",        googleIdTokenCredential.getId());
-                    ret.put("profilePicture",
-                        googleIdTokenCredential.getProfilePictureUri() != null
-                            ? googleIdTokenCredential.getProfilePictureUri().toString()
-                            : null);
-                    call.resolve(ret);
-
-                } catch (GoogleIdTokenParsingException e) {
-                    Log.e(TAG, "Invalid Google ID token", e);
-                    call.reject("TOKEN_PARSE_ERROR", "Invalid Google ID token: " + e.getMessage());
+                } catch (RuntimeException e) {
+                    Log.e(TAG, "Invalid Google ID token response", e);
+                    call.reject("TOKEN_PARSE_ERROR",
+                        "Invalid Google ID token: " + e.getMessage(), e);
+                    return;
                 }
+
+                JSObject ret = new JSObject();
+                ret.put("idToken",      googleIdTokenCredential.getIdToken());
+                ret.put("displayName",  googleIdTokenCredential.getDisplayName());
+                ret.put("email",        googleIdTokenCredential.getId());
+                ret.put("profilePicture",
+                    googleIdTokenCredential.getProfilePictureUri() != null
+                        ? googleIdTokenCredential.getProfilePictureUri().toString()
+                        : null);
+                call.resolve(ret);
             } else {
                 call.reject("UNKNOWN_CREDENTIAL", "Unexpected credential type: " + customCred.getType());
             }
