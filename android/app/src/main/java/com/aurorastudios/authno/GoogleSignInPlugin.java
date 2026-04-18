@@ -23,24 +23,28 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 /**
- * GoogleSignInPlugin — v1.2.3
+ * GoogleSignInPlugin — v1.2.4
  *
- * Replaces the broken @capacitor/browser OAuth flow for Google Drive.
- * Uses the Jetpack Credential Manager API which shows the native bottom-sheet
- * account picker — no browser needed, no intent-filter issues.
+ * Fix from v1.2.3:
+ *   - Create CredentialManager ONCE per signIn() call and pass it through to
+ *     signInWithFilter(), instead of calling CredentialManager.create(activity)
+ *     inside signInWithFilter() on every invocation.
  *
- * JS usage (called from extensionRuntime.js or gdrive.js via bridge):
- *   const result = await GoogleSignIn.signIn({ clientId: '...' });
- *   // result = { idToken: '...' } on success
- *   // throws on cancel / error
+ *     Root cause of the bug: CredentialManager.create(activity) registers an
+ *     ActivityResultLauncher with the Activity's ActivityResultRegistry using a
+ *     fixed internal key. Pass 1 (filterAuthorized=true) creates instance A and
+ *     registers that key. When Pass 1 gets NoCredentialException (no pre-authorized
+ *     accounts), Pass 2 (filterAuthorized=false) created a NEW instance B and tried
+ *     to register the SAME key. The conflicting registration caused the account-picker
+ *     result to be lost when the user completed sign-in, which Credential Manager
+ *     surfaced as GetCredentialCancellationException — i.e. "Google sign-in was
+ *     cancelled" appearing right after the user tapped "Continue as Blader".
  *
- * Two-pass strategy:
- *   Pass 1: setFilterByAuthorizedAccounts(true)  — show only pre-authorized accounts
- *   Pass 2: setFilterByAuthorizedAccounts(false) — show full account selector
- *   This gives returning users a one-tap experience while still supporting new accounts.
+ *   - Share a single Executor across both passes (minor resource fix).
  */
 @CapacitorPlugin(name = "GoogleSignIn")
 public class GoogleSignInPlugin extends Plugin {
@@ -61,13 +65,21 @@ public class GoogleSignInPlugin extends Plugin {
             return;
         }
 
+        // Create ONE CredentialManager instance for this sign-in attempt and
+        // reuse it across both passes. This ensures only one ActivityResultLauncher
+        // is registered with the Activity's ActivityResultRegistry, preventing
+        // the key-conflict that caused GetCredentialCancellationException after
+        // the user completed account selection.
+        CredentialManager credentialManager = CredentialManager.create(activity);
+        Executor executor = Executors.newSingleThreadExecutor();
+
         // Pass 1: try authorized accounts first (fast path for returning users)
-        signInWithFilter(call, clientId, activity, true);
+        signInWithFilter(call, clientId, activity, credentialManager, executor, true);
     }
 
     private void signInWithFilter(PluginCall call, String clientId,
-                                  Activity activity, boolean filterAuthorized) {
-        CredentialManager credentialManager = CredentialManager.create(activity);
+                                  Activity activity, CredentialManager credentialManager,
+                                  Executor executor, boolean filterAuthorized) {
 
         GetGoogleIdOption googleIdOption = new GetGoogleIdOption.Builder()
             .setServerClientId(clientId)
@@ -84,7 +96,7 @@ public class GoogleSignInPlugin extends Plugin {
             activity,
             request,
             null,
-            Executors.newSingleThreadExecutor(),
+            executor,
             new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                 @Override
                 public void onResult(GetCredentialResponse result) {
@@ -97,9 +109,10 @@ public class GoogleSignInPlugin extends Plugin {
                         + e.getClass().getSimpleName() + " — " + e.getMessage());
 
                     if (e instanceof NoCredentialException && filterAuthorized) {
-                        // No pre-authorized accounts: fall through to full account selector
+                        // No pre-authorized accounts: fall through to full account selector.
+                        // Reuse the same credentialManager instance — this is the key fix.
                         Log.d(TAG, "No authorized accounts, retrying with full selector");
-                        signInWithFilter(call, clientId, activity, false);
+                        signInWithFilter(call, clientId, activity, credentialManager, executor, false);
                     } else if (e instanceof GetCredentialCancellationException) {
                         call.reject("CANCELLED", "User cancelled the sign-in");
                     } else {
