@@ -142,6 +142,17 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!--
+            OAuthFinishActivity: closes the Custom Tab browser after OAuth redirect.
+            noHistory=true keeps it off the back stack.
+            Theme.NoDisplay makes it invisible (no flash).
+        -->
+        <activity
+            android:name=".OAuthFinishActivity"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="false" />
+
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -154,5 +165,32 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
                      android:minSdkVersion="30" />
+
+    <!--
+        ── Package visibility (Android 11 / API 30+) ──────────────────────────
+        Without this <queries> block, PackageManager.resolveActivity() and
+        CustomTabsClient.getPackageName() return null on Android 11+ even if
+        a browser is installed. This is the #1 cause of the silent "Opening
+        browser..." hang — the intent fires but finds no target.
+
+        We declare two intents:
+          1. CustomTabsService — lets CustomTabsClient.getPackageName() find
+             browsers that support Custom Tabs (Chrome, Firefox, Brave, etc.)
+          2. ACTION_VIEW + https — fallback so startActivity(ACTION_VIEW) works
+             when no Custom Tabs browser is available.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
 
 </manifest>

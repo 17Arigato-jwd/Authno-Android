@@ -41,6 +41,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FilePickerPlugin.class);
         registerPlugin(WidgetDataPlugin.class);
         registerPlugin(ExtbkAssetsPlugin.class);
+        // v1.2.3: native auth plugins replacing @capacitor/browser OAuth
+        registerPlugin(GoogleSignInPlugin.class);
+        registerPlugin(OAuthPlugin.class);
         super.onCreate(savedInstanceState);
 
         internalFilesDir = getFilesDir();

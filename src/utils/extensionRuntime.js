@@ -26,17 +26,14 @@
 
 import { registerHook }  from './sessionHooks';
 import { logError }      from './ErrorLogger';
-// @capacitor/browser is webpack-bundled here — safe to import directly.
-// Extensions (raw ES modules) can't do bare imports, so we pass these
-// as functions into activate() so extensions access them via the context object.
-let _BrowserPlugin = null;
-async function getBrowser() {
-  if (!_BrowserPlugin) {
-    const { Browser } = await import('@capacitor/browser');
-    _BrowserPlugin = Browser;
-  }
-  return _BrowserPlugin;
-}
+// OAuth browser helpers — use native OAuthPlugin (Custom Tabs) and
+// GoogleSignInPlugin (Credential Manager) instead of @capacitor/browser.
+// @capacitor/browser hardcodes com.android.chrome which causes a silent hang
+// when Chrome isn't the default browser on the device.
+import { registerPlugin } from '@capacitor/core';
+
+const _OAuthPlugin    = registerPlugin('OAuth');
+const _GoogleSignIn   = registerPlugin('GoogleSignIn');
 
 const EXT_BASE_URL = 'https://localhost/extensions';
 
@@ -166,10 +163,25 @@ export async function activateExtension(manifest, navigateFn) {
 
   let deactivate;
   try {
-    const openBrowser  = async (url) => { const B = await getBrowser(); await B.open({ url }); };
-    const closeBrowser = async ()    => { const B = await getBrowser(); await B.close().catch(() => {}); };
+    // openBrowser: uses Android Custom Tabs via OAuthPlugin (no Chrome lock-in)
+    const openBrowser  = async (url) => {
+      try {
+        await _OAuthPlugin.openAuthUrl({ url });
+      } catch (err) {
+        logError('extensionRuntime:openBrowser', err, { url });
+        throw err;
+      }
+    };
+    // closeBrowser: launches OAuthFinishActivity to pop Custom Tab from back stack
+    const closeBrowser = async () => {
+      await _OAuthPlugin.closeAuthBrowser().catch(() => {});
+    };
+    // googleSignIn: uses Credential Manager bottom-sheet (no browser/redirect needed)
+    const googleSignIn = async (clientId) => {
+      return _GoogleSignIn.signIn({ clientId });
+    };
 
-    deactivate = mod.activate({ registerHook, storage, navigate, extension: manifest, openBrowser, closeBrowser });
+    deactivate = mod.activate({ registerHook, storage, navigate, extension: manifest, openBrowser, closeBrowser, googleSignIn });
   } catch (err) {
     logError('extensionRuntime:activate', err, { extId });
     console.error(`[extensionRuntime] activate() threw for ${extId}:`, err.message);
