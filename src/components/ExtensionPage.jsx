@@ -177,7 +177,23 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     // Feature C
     isBookBackupDisabled:  function(id)      { return call('isBookBackupDisabled', [id]); },
     setBookBackupDisabled: function(id, val) { return call('setBookBackupDisabled', [id, val]); },
-    providers: {},
+    // Sync now: uploads all enabled books then polls for cloud changes
+    syncNow: function() { return call('syncNow', []); },
+    // Proxy-based provider bridge — allows API.providers['dropbox'].listFiles(creds),
+    // API.providers['dropbox'].download(sessionId, creds), and uploadRaw(filename, base64, creds)
+    // from inside the sandboxed iframe without direct module access.
+    providers: new Proxy({}, {
+      get: function(_, providerKey) {
+        return new Proxy({}, {
+          get: function(__, method) {
+            return function() {
+              var args = Array.prototype.slice.call(arguments);
+              return call('provider.' + method, [providerKey].concat(args));
+            };
+          }
+        });
+      }
+    }),
     queue: null,
     extension: ${JSON.stringify(extension)},
   };
@@ -313,6 +329,35 @@ ${fileCode}
           const api = window.CloudBackupAPI;
           if (api?.setBookBackupDisabled) await api.setBookBackupDisabled(args[0], args[1]);
           result = null;
+        }
+        else if (method === 'syncNow') {
+          // Triggered by Settings.js "Sync now" button.
+          // Calls index.js syncNow() which uploads all enabled books then polls.
+          const api = window.CloudBackupAPI;
+          if (!api?.syncNow) throw new Error('syncNow not available');
+          await api.syncNow();
+          result = null;
+        }
+        else if (method.startsWith('provider.')) {
+          // Proxy bridge for DropboxProvider / GDriveProvider / WebDAVProvider methods.
+          // args[0] = providerKey (e.g. 'dropbox'), args[1..] = method arguments.
+          //
+          // Supported methods: listFiles(creds), download(sessionId, creds),
+          //                    uploadRaw(filename, base64, creds)
+          //
+          // The provider instances live in index.js's PROVIDERS object, which is
+          // exposed as window.CloudBackupAPI.providers in the PARENT frame.
+          // The iframe shim exposes a Proxy that forwards these calls here.
+          const providerMethod = method.slice('provider.'.length); // e.g. 'listFiles'
+          const providerKey    = args[0];                          // e.g. 'dropbox'
+          const methodArgs     = args.slice(1);                    // e.g. [creds]
+          const api = window.CloudBackupAPI;
+          const provider = api?.providers?.[providerKey];
+          if (!provider) throw new Error(`Provider '${providerKey}' not available`);
+          if (typeof provider[providerMethod] !== 'function') {
+            throw new Error(`Provider '${providerKey}' has no method '${providerMethod}'`);
+          }
+          result = await provider[providerMethod](...methodArgs);
         }
         else throw new Error(`Unknown bridge method: ${method}`);
 

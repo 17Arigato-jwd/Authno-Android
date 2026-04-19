@@ -417,7 +417,7 @@ function _safeName(session) {
 /**
  * Export all chapters as a plain text file.
  */
-export async function exportAsTxt(session) {
+export async function exportAsTxt(session, options = {}) {
   const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const lines = [];
   lines.push(session.title || 'Untitled');
@@ -427,7 +427,16 @@ export async function exportAsTxt(session) {
     lines.push(`\n${'─'.repeat(40)}\n${ch.title}\n${'─'.repeat(40)}\n`);
     lines.push(_stripHtml(ch.content));
   }
-  await _triggerDownload(`${_safeName(session)}.txt`, lines.join('\n'), 'text/plain');
+  const text     = lines.join('\n');
+  const filename = `${_safeName(session)}.txt`;
+
+  if (options.returnBytes) {
+    const bytes = new TextEncoder().encode(text);
+    let bin = '';
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    return { filename, base64: btoa(bin), mimeType: 'text/plain' };
+  }
+  await _triggerDownload(filename, text, 'text/plain');
 }
 
 /**
@@ -436,7 +445,7 @@ export async function exportAsTxt(session) {
  * Page 2: book metadata (title, author, description, genre, …).
  * Page 3+: chapters.
  */
-export async function exportAsHtml(session) {
+export async function exportAsHtml(session, options = {}) {
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const title     = session.title    || 'Untitled';
   const language  = session.language || 'en';
@@ -528,14 +537,21 @@ export async function exportAsHtml(session) {
 </body>
 </html>`;
 
-  await _triggerDownload(`${_safeName(session)}.html`, html, 'text/html');
+  const filename = `${_safeName(session)}.html`;
+  if (options.returnBytes) {
+    const bytes = new TextEncoder().encode(html);
+    let bin = '';
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    return { filename, base64: btoa(bin), mimeType: 'text/html' };
+  }
+  await _triggerDownload(filename, html, 'text/html');
 }
 
 /**
  * Export as a valid ePub 3 file.
  * Builds the zip structure in-memory without any external library.
  */
-export async function exportAsEpub(session) {
+export async function exportAsEpub(session, options = {}) {
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const bookId    = session.id || String(Date.now());
   const title     = session.title    || 'Untitled';
@@ -785,5 +801,11 @@ export async function exportAsEpub(session) {
   let at = 0;
   for (const b of allParts) { out.set(b, at); at += b.length; }
 
-  await _triggerDownload(`${_safeName(session)}.epub`, out, 'application/epub+zip');
+  const epubFilename = `${_safeName(session)}.epub`;
+  if (options.returnBytes) {
+    let bin = '';
+    out.forEach(b => { bin += String.fromCharCode(b); });
+    return { filename: epubFilename, base64: btoa(bin), mimeType: 'application/epub+zip' };
+  }
+  await _triggerDownload(epubFilename, out, 'application/epub+zip');
 }

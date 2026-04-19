@@ -183,14 +183,13 @@ function AppInner({ navigateRef }) {
   const { showError } = useError();
   const [sessions, setSessions]   = useState([]);
 
-  // Register getSessions so extensions can read the session list
+  // Register getSessions so extensions can read the session list.
+  // Returns the FULL session objects (with chapters) so that
+  // AuthNoExtensionAPI.encodeSession() can produce real .authbook content
+  // during "Sync now" / backup-all flows — lightweight objects (id/title only)
+  // would produce empty files because packSession() needs session.chapters.
   useEffect(() => {
-    setGetSessionsHandler(() => sessions.map(s => ({
-      id:       s.id,
-      title:    s.title || 'Untitled',
-      updated:  s.updated ?? s.created ?? null,
-      filePath: s.filePath ?? null,
-    })));
+    setGetSessionsHandler(() => sessions);
   }, [sessions]);
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
