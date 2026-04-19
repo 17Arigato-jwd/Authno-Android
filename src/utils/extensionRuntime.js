@@ -78,8 +78,16 @@ function ensureHostAPI() {
   window.AuthNoExtensionAPI = {
     /** Encode a session → base64 .authbook bytes for upload. */
     async encodeSession(session) {
-      const { packSession, bytesToBase64 } = await import('./authbook');
-      const bytes = await packSession(session);
+      const { packSession, bytesToBase64, sessionToBook } = await import('./authbook');
+      // React sessions are flat objects: { id, title, authors[], chapters[], ... }
+      // packSession expects book format:  { meta: { authors, devices, ... }, chapters[], ... }
+      // When packSession receives an object with a .chapters array it skips the
+      // legacy-migration path and uses the object directly as "book" — then crashes
+      // on book.meta.authors because flat sessions have no .meta wrapper.
+      // sessionToBook() is the canonical flat→book converter: it builds meta from
+      // the top-level fields and keeps all chapters intact.
+      const book  = sessionToBook(session);
+      const bytes = await packSession(book);
       return bytesToBase64(bytes);
     },
 
