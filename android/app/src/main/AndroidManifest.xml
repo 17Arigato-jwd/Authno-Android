@@ -11,19 +11,20 @@
 
         <!-- ── Main activity ── -->
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:exported="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode">
 
+            <!-- Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Open .authbook files tapped in file managers / email / browser -->
+            <!-- .authbook -->
             <intent-filter android:label="Open with AuthNo">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -34,17 +35,17 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="*/*"
-                      android:pathPattern=".*\.authbook" />
+                      android:pathPattern=".*\\.authbook" />
             </intent-filter>
 
             <intent-filter android:label="Open with AuthNo">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" android:mimeType="*/*"
-                      android:pathPattern=".*\.authbook" />
+                      android:pathPattern=".*\\.authbook" />
             </intent-filter>
 
-            <!-- Open .extbk extension bundles tapped in file managers / browser -->
+            <!-- .extbk -->
             <intent-filter android:label="Install AuthNo Extension">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -55,28 +56,28 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="*/*"
-                      android:pathPattern=".*\.extbk" />
+                      android:pathPattern=".*\\.extbk" />
             </intent-filter>
 
             <intent-filter android:label="Install AuthNo Extension">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" android:mimeType="*/*"
-                      android:pathPattern=".*\.extbk" />
+                      android:pathPattern=".*\\.extbk" />
             </intent-filter>
 
-            <!--
-                ── OAuth redirect URI handlers (v1.2.0) ──────────────────────
-                Required for all cloud providers using the PKCE flow.
-                @capacitor/browser opens the provider's auth page, then redirects
-                back to this custom scheme. MainActivity.handleOAuthRedirect()
-                catches the intent and forwards the URL to JS via a CustomEvent.
+        </activity>
 
-                Each provider has its own path segment so they don't interfere.
-            -->
+        <!-- ── OAuth redirect handler (FIXED) ── -->
+        <activity
+            android:name=".OAuthFinishActivity"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:launchMode="singleTask"
+            android:exported="true">
 
             <!-- Google Drive -->
-            <intent-filter android:label="AuthNo OAuth — Google Drive">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -86,7 +87,7 @@
             </intent-filter>
 
             <!-- Dropbox -->
-            <intent-filter android:label="AuthNo OAuth — Dropbox">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -95,8 +96,8 @@
                       android:pathPrefix="/dropbox" />
             </intent-filter>
 
-            <!-- OneDrive / Microsoft -->
-            <intent-filter android:label="AuthNo OAuth — OneDrive">
+            <!-- OneDrive -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -107,7 +108,7 @@
 
         </activity>
 
-        <!-- ── Streak Widget: provider ── -->
+        <!-- ── Widget provider ── -->
         <receiver
             android:name=".StreakWidgetProvider"
             android:label="@string/widget_label"
@@ -120,7 +121,7 @@
                 android:resource="@xml/streak_widget_info" />
         </receiver>
 
-        <!-- ── Streak Widget: configuration activity ── -->
+        <!-- ── Widget config ── -->
         <activity
             android:name=".StreakWidgetConfigActivity"
             android:label="@string/widget_config_label"
@@ -142,43 +143,21 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!--
-            OAuthFinishActivity: closes the Custom Tab browser after OAuth redirect.
-            noHistory=true keeps it off the back stack.
-            Theme.NoDisplay makes it invisible (no flash).
-        -->
-        <activity
-            android:name=".OAuthFinishActivity"
-            android:noHistory="true"
-            android:theme="@android:style/Theme.NoDisplay"
-            android:exported="false" />
-
     </application>
 
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-                     android:maxSdkVersion="32" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-                     android:minSdkVersion="30" />
+        android:minSdkVersion="30" />
 
-    <!--
-        ── Package visibility (Android 11 / API 30+) ──────────────────────────
-        Without this <queries> block, PackageManager.resolveActivity() and
-        CustomTabsClient.getPackageName() return null on Android 11+ even if
-        a browser is installed. This is the #1 cause of the silent "Opening
-        browser..." hang — the intent fires but finds no target.
-
-        We declare two intents:
-          1. CustomTabsService — lets CustomTabsClient.getPackageName() find
-             browsers that support Custom Tabs (Chrome, Firefox, Brave, etc.)
-          2. ACTION_VIEW + https — fallback so startActivity(ACTION_VIEW) works
-             when no Custom Tabs browser is available.
-    -->
+    <!-- Package visibility -->
     <queries>
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
