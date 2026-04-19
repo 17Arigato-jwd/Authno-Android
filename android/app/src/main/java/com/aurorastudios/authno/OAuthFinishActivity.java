@@ -1,32 +1,27 @@
 package com.aurorastudios.authno;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 
-/**
- * OAuthFinishActivity — v1.2.3
- *
- * Single-use Activity whose only job is to finish itself and take the Custom Tab
- * off the back stack.
- *
- * Why this is needed:
- *   When a Custom Tab is launched via CustomTabsIntent.launchUrl(), it sits on
- *   top of the back stack as a separate task. There is no API to close it
- *   programmatically. The only reliable approach is to launch an Activity with
- *   FLAG_ACTIVITY_CLEAR_TOP that clears everything above the target, then
- *   immediately finishes. This is the documented pattern for "closing a CCT".
- *
- * Declared in AndroidManifest.xml with:
- *   android:noHistory="true"    — never kept in back stack
- *   android:theme="@android:style/Theme.NoDisplay" — invisible, no flash
- *
- * MainActivity's launchMode="singleTask" means returning to it after finish()
- * brings the existing instance back without recreating it.
- */
 public class OAuthFinishActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        finish();  // Immediately finish — this pops the Custom Tab off the stack
+
+        // 1. Capture the redirect URI (the one with the token/code)
+        Uri data = getIntent().getData();
+
+        if (data != null) {
+            // 2. Pass it to MainActivity (which is singleTask)
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setData(data);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        }
+
+        // 3. Close this invisible activity
+        finish();
     }
 }
