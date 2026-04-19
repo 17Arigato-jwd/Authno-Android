@@ -14,8 +14,8 @@ public class OAuthFinishActivity extends Activity {
         Uri data = getIntent().getData();
 
         if (data != null) {
-            // 2. Pass it to MainActivity (which is singleTask)
             Intent intent = new Intent(this, MainActivity.class);
+            intent.setAction(Intent.ACTION_VIEW);
             intent.setData(data);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(intent);
