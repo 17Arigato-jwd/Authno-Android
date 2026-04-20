@@ -198,6 +198,15 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     extension: ${JSON.stringify(extension)},
   };
 
+  // Expose Capacitor native plugins needed by extension code.
+  // gdrive.js calls window.Capacitor.Plugins.GoogleDrive.requestDriveToken()
+  // which is only available in the parent frame — bridge it here.
+  window.Capacitor = window.Capacitor || {};
+  window.Capacitor.Plugins = window.Capacitor.Plugins || {};
+  window.Capacitor.Plugins.GoogleDrive = {
+    requestDriveToken: function() { return call('native.GoogleDrive.requestDriveToken', []); },
+  };
+
   window.addEventListener('message', function(e) {
     var msg = e.data;
     if (!msg || msg.type !== 'api-result') return;
@@ -331,33 +340,51 @@ ${fileCode}
           result = null;
         }
         else if (method === 'syncNow') {
-          // Triggered by Settings.js "Sync now" button.
-          // Calls index.js syncNow() which uploads all enabled books then polls.
           const api = window.CloudBackupAPI;
-          if (!api?.syncNow) throw new Error('syncNow not available');
-          await api.syncNow();
+          if (!api?.syncNow) throw new Error(
+            'syncNow not available on CloudBackupAPI. ' +
+            'The extension may not be fully activated yet — try reopening Cloud Backup.'
+          );
+          console.log('[ext-bridge] syncNow started');
+          try {
+            await api.syncNow();
+            console.log('[ext-bridge] syncNow finished');
+          } catch (err) {
+            throw new Error(`syncNow failed: ${err.message}`);
+          }
           result = null;
         }
         else if (method.startsWith('provider.')) {
-          // Proxy bridge for DropboxProvider / GDriveProvider / WebDAVProvider methods.
-          // args[0] = providerKey (e.g. 'dropbox'), args[1..] = method arguments.
-          //
-          // Supported methods: listFiles(creds), download(sessionId, creds),
-          //                    uploadRaw(filename, base64, creds)
-          //
-          // The provider instances live in index.js's PROVIDERS object, which is
-          // exposed as window.CloudBackupAPI.providers in the PARENT frame.
-          // The iframe shim exposes a Proxy that forwards these calls here.
-          const providerMethod = method.slice('provider.'.length); // e.g. 'listFiles'
-          const providerKey    = args[0];                          // e.g. 'dropbox'
-          const methodArgs     = args.slice(1);                    // e.g. [creds]
+          const providerMethod = method.slice('provider.'.length);
+          const providerKey    = args[0];
+          const methodArgs     = args.slice(1);
           const api = window.CloudBackupAPI;
           const provider = api?.providers?.[providerKey];
-          if (!provider) throw new Error(`Provider '${providerKey}' not available`);
-          if (typeof provider[providerMethod] !== 'function') {
-            throw new Error(`Provider '${providerKey}' has no method '${providerMethod}'`);
+          if (!provider) throw new Error(
+            `Provider '${providerKey}' not available. ` +
+            `Available: ${Object.keys(api?.providers ?? {}).join(', ') || 'none'}. ` +
+            `Ensure the extension is active and CloudBackupAPI is initialised.`
+          );
+          if (typeof provider[providerMethod] !== 'function') throw new Error(
+            `Provider '${providerKey}' has no method '${providerMethod}'. ` +
+            `Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(provider)).filter(k => k !== 'constructor').join(', ')}`
+          );
+          console.log(`[ext-bridge] provider.${providerMethod}(${providerKey}, ...)`);
+          try {
+            result = await provider[providerMethod](...methodArgs);
+          } catch (err) {
+            // Re-throw with provider context so the error shown in the UI is actionable
+            throw new Error(`[${providerKey}] ${providerMethod} failed: ${err.message}`);
           }
-          result = await provider[providerMethod](...methodArgs);
+        }
+        else if (method === 'native.GoogleDrive.requestDriveToken') {
+          // Bridge to the native GoogleDrivePlugin in the parent frame.
+          const plugin = window.Capacitor?.Plugins?.GoogleDrive;
+          if (!plugin?.requestDriveToken) throw new Error(
+            'GoogleDrive native plugin not available in parent frame. ' +
+            'Ensure GoogleDrivePlugin is registered in MainActivity.java and the app is rebuilt.'
+          );
+          result = await plugin.requestDriveToken();
         }
         else throw new Error(`Unknown bridge method: ${method}`);
 

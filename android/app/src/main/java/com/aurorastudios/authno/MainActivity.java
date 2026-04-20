@@ -43,6 +43,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ExtbkAssetsPlugin.class);
         // v1.2.3: native auth plugins replacing @capacitor/browser OAuth
         registerPlugin(GoogleSignInPlugin.class);
+        registerPlugin(GoogleDrivePlugin.class);   // v1.3.0: Drive scope via Identity Authorization API
         registerPlugin(OAuthPlugin.class);
         super.onCreate(savedInstanceState);
 
@@ -146,13 +147,6 @@ public class MainActivity extends BridgeActivity {
         Uri uri = intent.getData();
         if (uri == null) return;
 
-        // Only handle content:// and file:// URIs — custom schemes like
-        // com.aurorastudios.authno:// are OAuth redirects and must NOT be
-        // processed here (ContentResolver cannot open them and would throw,
-        // showing a false "corrupt authbook" error dialog).
-        String scheme = uri.getScheme();
-        if (!"content".equals(scheme) && !"file".equals(scheme)) return;
-
         String uriLower = uri.toString().toLowerCase();
         String mime = intent.getType();
         if (uriLower.endsWith(".extbk") || uriLower.contains(".extbk?")
@@ -194,10 +188,6 @@ public class MainActivity extends BridgeActivity {
 
         android.net.Uri uri = intent.getData();
         if (uri == null) return;
-
-        // Only handle content:// and file:// URIs — same guard as handleAuthBookIntent.
-        String uriScheme = uri.getScheme();
-        if (!"content".equals(uriScheme) && !"file".equals(uriScheme)) return;
 
         String uriStr = uri.toString().toLowerCase();
         if (!uriStr.endsWith(".extbk") && !uriStr.contains(".extbk?")) {

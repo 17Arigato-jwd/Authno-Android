@@ -64,6 +64,9 @@ dependencies {
     implementation "androidx.credentials:credentials-play-services-auth:1.3.0"
     // Google Identity library — provides GetGoogleIdOption and GoogleIdTokenCredential
     implementation "com.google.android.libraries.identity.googleid:googleid:1.1.1"
+    // Google Identity Authorization API — used by GoogleDrivePlugin to request
+    // drive.file scope and get an access token without a browser redirect or client secret
+    implementation "com.google.android.gms:play-services-auth:21.2.0"
 
     // ── Custom Tabs (replaces @capacitor/browser for OAuth) ──────────────────
     // Provides CustomTabsIntent, CustomTabsClient, CustomTabsSession
