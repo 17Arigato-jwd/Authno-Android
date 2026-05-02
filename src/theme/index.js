@@ -15,6 +15,13 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+// ── All imports must appear before any export statements (import/first rule) ──
+import { DARK_DEFAULT }  from './ThemeDarkDefault';
+import { LIGHT_DEFAULT } from './ThemeLightDefault';
+import { DARK_OLED }     from './ThemeDarkOLED';
+import { SEPIA }         from './ThemeSepia';
+import { PAPER }         from './ThemePaper';
+
 // ── Engine ────────────────────────────────────────────────────────────────────
 export {
   createTheme,
@@ -32,14 +39,6 @@ export {
 } from './ThemeBase';
 
 // ── Presets ───────────────────────────────────────────────────────────────────
-// Imported once at the top so they can be both re-exported and used in ALL_THEMES.
-// (Avoids `import/first` lint errors caused by having imports after export-from lines.)
-import { DARK_DEFAULT }  from './ThemeDarkDefault';
-import { LIGHT_DEFAULT } from './ThemeLightDefault';
-import { DARK_OLED }     from './ThemeDarkOLED';
-import { SEPIA }         from './ThemeSepia';
-import { PAPER }         from './ThemePaper';
-
 export { DARK_DEFAULT, LIGHT_DEFAULT, DARK_OLED, SEPIA, PAPER };
 
 // ── Registry — ordered list for the theme picker dropdown ─────────────────────
