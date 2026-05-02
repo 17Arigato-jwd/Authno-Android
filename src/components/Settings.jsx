@@ -6,6 +6,7 @@ import {
   Cloud, Puzzle, Upload, Settings2, HardDrive, Server, Box,
 } from 'lucide-react';
 import { buildPalette } from './Background';
+import { useTheme, ALL_THEMES, themeById, injectThemeFonts } from '../theme';
 import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
@@ -247,7 +248,7 @@ function ProfilePanel({ settings, onChange, accentHex }) {
   );
 }
 
-function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer }) {
+function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, switchTheme }) {
   const [customHex, setCustomHex] = useState(settings.accentHex || '#3b82f6');
   const isCustom = !ACCENT_PRESETS.some(p => p.hex === settings.accentHex);
 
@@ -255,6 +256,71 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer }) {
     <div>
       <SectionTitle>Appearance</SectionTitle>
       <SectionSubtitle>Personalise the look and feel of the editor.</SectionSubtitle>
+
+
+      {/* ── Theme ── */}
+      <Label>Theme</Label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
+        {ALL_THEMES.map(t => {
+          const active = (settings.themeId ?? 'dark-default') === t.meta.id;
+          return (
+            <button
+              key={t.meta.id}
+              onClick={() => {
+                injectThemeFonts(t);
+                switchTheme(t);
+                onChange({ themeId: t.meta.id, lightMode: !t.meta.isDark });
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '12px 14px', borderRadius: '10px', border: 'none',
+                cursor: 'pointer', textAlign: 'left',
+                background: active ? `${accentHex}18` : 'var(--surface)',
+                border: `1px solid ${active ? accentHex + '55' : 'var(--border)'}`,
+                transition: 'all 0.15s',
+              }}
+            >
+              {/* Mini palette swatch */}
+              <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
+                {[t.backgrounds.app, t.backgrounds.modal, t.accent.primary, t.text.t1].map((c, i) => (
+                  <div key={i} style={{
+                    width: 14, height: 14, borderRadius: 3,
+                    background: c,
+                    border: '1px solid rgba(128,128,128,0.25)',
+                  }} />
+                ))}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: '13px', fontWeight: 600,
+                  color: active ? accentHex : 'var(--text-2)',
+                  marginBottom: '2px',
+                }}>
+                  {t.meta.name}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-5)', lineHeight: 1.4 }}>
+                  {t.meta.description}
+                </div>
+              </div>
+              {active && (
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: accentHex,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                    stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <Divider />
 
       {/* ── Accent Color ── */}
       <Label>Accent Color</Label>
@@ -1113,6 +1179,7 @@ export const DEFAULT_SETTINGS = {
   displayName: '',
   avatarDataUrl: null,
   accentHex: '#5a00d9',
+  themeId: 'dark-default',   // id from theme.meta.id
   enableGradient: false,
   lightMode: false,
   startupBehavior: 'home',
@@ -1121,6 +1188,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, sessions = [], onSessionChange }) {
+  const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('profile');
   const isPortrait = useIsPortrait();
 
@@ -1283,7 +1351,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                 : { flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}
             >
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
-              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} />}
+              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
@@ -1377,7 +1445,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               </button>
 
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
-              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} />}
+              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}

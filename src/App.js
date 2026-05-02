@@ -13,6 +13,7 @@ import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/Customi
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
+import { ThemeProvider, DARK_DEFAULT, injectThemeFonts, themeById, buildWidgetTheme, useTheme } from "./theme";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -1042,17 +1043,25 @@ function AppInner({ navigateRef }) {
 }
 
 /* ── Root export wrapped in ErrorProvider + ExtensionProvider ──────────────── */
+
+// ── Restore saved theme on startup ──────────────────────────────────────────
+const _savedThemeId = (() => { try { return localStorage.getItem('authno_theme_id') ?? 'dark-default'; } catch { return 'dark-default'; } })();
+const _initialTheme = themeById(_savedThemeId);
+injectThemeFonts(_initialTheme);
+
 export default function App() {
   const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");
   const accentHex = stored.accentHex || "#5a00d9";
 
   return (
-    <ErrorProvider accentHex={accentHex}>
-      {/* ExtensionProvider wraps AppInner so every component in the tree can
-          call useExtensions(). The onNavigate prop is wired inside AppInner
-          via a ref so we don't need to lift state out of AppInner. */}
-      <AppInnerWithExtensions />
-    </ErrorProvider>
+    <ThemeProvider initialTheme={_initialTheme}>
+      <ErrorProvider accentHex={accentHex}>
+        {/* ExtensionProvider wraps AppInner so every component in the tree can
+            call useExtensions(). The onNavigate prop is wired inside AppInner
+            via a ref so we don't need to lift state out of AppInner. */}
+        <AppInnerWithExtensions />
+      </ErrorProvider>
+    </ThemeProvider>
   );
 }
 
