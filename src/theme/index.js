@@ -32,18 +32,17 @@ export {
 } from './ThemeBase';
 
 // ── Presets ───────────────────────────────────────────────────────────────────
-export { DARK_DEFAULT }  from './ThemeDarkDefault';
-export { LIGHT_DEFAULT } from './ThemeLightDefault';
-export { DARK_OLED }     from './ThemeDarkOLED';
-export { SEPIA }         from './ThemeSepia';
-export { PAPER }         from './ThemePaper';
-
-// ── Registry — ordered list for the theme picker dropdown ─────────────────────
+// Imported once at the top so they can be both re-exported and used in ALL_THEMES.
+// (Avoids `import/first` lint errors caused by having imports after export-from lines.)
 import { DARK_DEFAULT }  from './ThemeDarkDefault';
 import { LIGHT_DEFAULT } from './ThemeLightDefault';
 import { DARK_OLED }     from './ThemeDarkOLED';
 import { SEPIA }         from './ThemeSepia';
 import { PAPER }         from './ThemePaper';
+
+export { DARK_DEFAULT, LIGHT_DEFAULT, DARK_OLED, SEPIA, PAPER };
+
+// ── Registry — ordered list for the theme picker dropdown ─────────────────────
 
 /**
  * ALL_THEMES — array of every built-in preset, in display order.
