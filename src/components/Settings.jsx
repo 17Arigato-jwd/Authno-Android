@@ -17,9 +17,9 @@ import {
 import {
   COLORS, TYPOGRAPHY,
   Toggle, ColorSwatchRow,
-} from './DesignSystem';
+} from '../DesignSystem';
 // NOTE: buildPalette is re-exported from DesignSystem — no longer from Background.jsx
-import { buildPalette } from './DesignSystem';
+import { buildPalette } from '../DesignSystem';
 
 import { useTheme, ALL_THEMES, injectThemeFonts } from '../theme';
 import { ColorPicker } from './ColorPicker';

@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { FONT_OPTIONS } from './constants';
-import { COLORS } from './DesignSystem';
+import { COLORS } from '../DesignSystem';
 
 const SELECT_STYLE = {
   background: 'transparent',

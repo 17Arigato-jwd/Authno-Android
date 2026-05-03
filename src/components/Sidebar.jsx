@@ -26,7 +26,7 @@ import {
   Divider,
   COLORS,
   TYPOGRAPHY,
-} from "./DesignSystem";
+} from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Sidebar({

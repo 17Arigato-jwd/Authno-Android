@@ -18,7 +18,7 @@ import SizeSelector from './SizeSelector';
 import FormatButton from './FormatButton';
 import { isAndroid } from '../utils/platform';
 import { useEditorToolbarExtensions, useExtensions } from '../utils/ExtensionContext';
-import { COLORS } from './DesignSystem';
+import { COLORS } from '../DesignSystem';
 
 const initialState = { bold: false, italic: false, underline: false, highlight: false };
 const reducer = (state, action) => action.type === 'SET_STATE' ? { ...state, ...action.payload } : state;

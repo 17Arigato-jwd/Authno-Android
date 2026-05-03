@@ -15,7 +15,7 @@ import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
-import { MinimalButton, Divider, COLORS } from "./DesignSystem";
+import { MinimalButton, Divider, COLORS } from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function BurgerMenu({

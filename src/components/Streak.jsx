@@ -12,7 +12,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Flame, ChevronLeft, ChevronRight, X, Target, CheckCircle2, XCircle } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
-import { MinimalButton, COLORS } from './DesignSystem';
+import { MinimalButton, COLORS } from '../DesignSystem';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 

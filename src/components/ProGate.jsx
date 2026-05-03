@@ -14,7 +14,7 @@
 
 import { useState, useEffect } from 'react';
 import { isPro } from '../utils/entitlements';
-import { GradientButton, Badge, COLORS } from './DesignSystem';
+import { GradientButton, Badge, COLORS } from '../DesignSystem';
 
 function StarIcon() {
   return (
