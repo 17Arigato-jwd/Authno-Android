@@ -1,19 +1,20 @@
-// ProGate.jsx — Wraps any Pro-only feature.
-// Shows the feature normally for Pro users; shows an upgrade prompt for Free users.
-//
-// Usage:
-//   <ProGate feature="Unlimited pinned books">
-//     <MyProFeature />
-//   </ProGate>
-//
-// Props:
-//   children     — the Pro feature to render
-//   feature      string   Short label shown in the upgrade prompt (e.g. "Unlimited pinned books")
-//   accentHex    string   Theme accent colour (optional, falls back to #6366f1)
-//   inline       bool     If true, renders a compact inline badge instead of a full card
+/**
+ * ProGate.jsx — Wraps any Pro-only feature.
+ *
+ * Changes from original:
+ *   - InlinePrompt  → Badge from DesignSystem (same visual, consistent with all other badges)
+ *   - "Upgrade to Pro" button → GradientButton from DesignSystem
+ *   - COLORS from tokens replace hardcoded rgba strings
+ *
+ * Usage and Props unchanged — drop-in replacement.
+ *   <ProGate feature="Unlimited pinned books">
+ *     <MyProFeature />
+ *   </ProGate>
+ */
 
 import { useState, useEffect } from 'react';
 import { isPro } from '../utils/entitlements';
+import { GradientButton, Badge, COLORS } from './DesignSystem';
 
 function StarIcon() {
   return (
@@ -32,20 +33,16 @@ function LockIcon() {
   );
 }
 
-// Compact inline badge — for use inside rows/buttons
-function InlinePrompt({ feature, accentHex }) {
+// Compact inline badge — uses DesignSystem Badge
+function InlinePrompt({ accentHex }) {
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '4px',
-      padding: '2px 8px', borderRadius: '99px',
-      background: `${accentHex}22`,
-      color: accentHex,
-      fontSize: '11px', fontWeight: 700,
-      letterSpacing: '0.3px',
-    }}>
-      <StarIcon />
+    <Badge
+      variant="pro"
+      accentHex={accentHex}
+      icon={<StarIcon />}
+    >
       Pro
-    </span>
+    </Badge>
   );
 }
 
@@ -54,14 +51,14 @@ function UpgradePrompt({ feature, accentHex }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', gap: '12px',
-      padding: '28px 20px', borderRadius: '16px',
-      background: 'rgba(255,255,255,0.03)',
+      justifyContent: 'center', gap: 12,
+      padding: '28px 20px', borderRadius: 16,
+      background: `${accentHex}08`,
       border: `1px solid ${accentHex}33`,
       textAlign: 'center',
     }}>
       <div style={{
-        width: '44px', height: '44px', borderRadius: '50%',
+        width: 44, height: 44, borderRadius: '50%',
         background: `${accentHex}22`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: accentHex,
@@ -70,57 +67,38 @@ function UpgradePrompt({ feature, accentHex }) {
       </div>
 
       <div>
-        <div style={{
-          fontSize: '15px', fontWeight: 700,
-          color: 'var(--text-1)', marginBottom: '4px',
-        }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>
           {feature || 'This feature'} is Pro
         </div>
-        <div style={{
-          fontSize: '13px', color: 'var(--text-4)', lineHeight: '1.4',
-        }}>
+        <div style={{ fontSize: 13, color: COLORS.textSubtle, lineHeight: 1.4 }}>
           Upgrade to unlock this and all other Pro features.
         </div>
       </div>
 
-      <button style={{
-        display: 'inline-flex', alignItems: 'center', gap: '6px',
-        padding: '10px 22px', borderRadius: '10px', border: 'none',
-        background: accentHex, color: '#fff',
-        fontSize: '14px', fontWeight: 700, cursor: 'pointer',
-        boxShadow: `0 4px 14px ${accentHex}55`,
-      }}>
-        <StarIcon />
+      {/* Uses DesignSystem GradientButton */}
+      <GradientButton
+        variant="primary"
+        size="md"
+        icon={<StarIcon />}
+        style={{ background: accentHex, boxShadow: `0 4px 14px ${accentHex}55` }}
+        onClick={() => { /* future: open store / paywall */ }}
+      >
         Upgrade to Pro
-      </button>
+      </GradientButton>
     </div>
   );
 }
 
-/**
- * ProGate
- *
- * Props:
- *   children    — Pro feature JSX
- *   feature     string   Label for the upgrade prompt
- *   accentHex   string   Theme accent colour
- *   inline      bool     Render compact inline badge instead of full card
- */
 export function ProGate({ children, feature, accentHex = '#6366f1', inline = false }) {
   const [pro, setPro] = useState(() => isPro());
 
-  // Re-check when storage changes (e.g. dev toggling tier in another tab)
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'authno_tier') setPro(isPro());
-    };
+    const handler = (e) => { if (e.key === 'authno_tier') setPro(isPro()); };
     window.addEventListener('storage', handler);
     return () => window.removeEventListener('storage', handler);
   }, []);
 
   if (pro) return children;
-
-  if (inline) return <InlinePrompt feature={feature} accentHex={accentHex} />;
-
+  if (inline) return <InlinePrompt accentHex={accentHex} />;
   return <UpgradePrompt feature={feature} accentHex={accentHex} />;
 }

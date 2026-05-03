@@ -1,15 +1,38 @@
+/**
+ * SizeSelector.jsx — Font size picker for the editor toolbar
+ *
+ * Changes from original:
+ *   - Tailwind className removed
+ *   - Inline styles using COLORS from DesignSystem tokens
+ *
+ * Props unchanged — drop-in replacement.
+ */
+
 import React from "react";
 import { SIZE_OPTIONS } from "./constants";
+import { COLORS } from "../DesignSystem";
 
 export default function SizeSelector({ onChange, defaultValue }) {
   return (
     <select
       defaultValue={defaultValue}
       onChange={onChange}
-      className="bg-transparent border border-white/40 text-white text-sm px-2 py-1 rounded-md focus:outline-none hover:border-white/60 transition"
+      style={{
+        background: "transparent",
+        border: `1px solid ${COLORS.borderStrong}`,
+        color: "#fff",
+        fontSize: 13,
+        padding: "4px 8px",
+        borderRadius: 6,
+        outline: "none",
+        cursor: "pointer",
+        transition: "border-color 0.15s",
+      }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = "#fff")}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = COLORS.borderStrong)}
     >
       {SIZE_OPTIONS.map((s) => (
-        <option className="text-black" key={s} value={s}>
+        <option key={s} value={s} style={{ background: COLORS.surface1, color: "#fff" }}>
           {s}
         </option>
       ))}

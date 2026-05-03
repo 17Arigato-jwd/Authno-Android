@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Logo from "./logo.svg";
-import { Background } from "./components/Background";
 import { RotateCw, Menu } from "lucide-react";
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { App as CapApp } from '@capacitor/app';
@@ -17,7 +16,6 @@ import { ThemeProvider, DARK_DEFAULT, injectThemeFonts, themeById, buildWidgetTh
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
-
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
@@ -25,6 +23,15 @@ import { Onboarding, hasSeenOnboarding, UpdateOnboarding, hasSeenUpdate } from "
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
+
+// ── DesignSystem ─────────────────────────────────────────────────────────────
+// BackgroundRouter replaces the old <Background /> import.
+// It reads the active theme's backgroundFx config and renders the right
+// background component (GradientBackground or GrainGradientBackground).
+// Also inject fonts once at startup.
+import { BackgroundRouter, injectDesignSystemFonts } from "./DesignSystem";
+injectDesignSystemFonts();
+// ─────────────────────────────────────────────────────────────────────────────
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -61,7 +68,6 @@ function Editor({
       <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
         style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-2 min-w-0">
-          {/* Back to book dashboard */}
           {onBack && (
             <button onClick={onBack}
               className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
@@ -182,26 +188,21 @@ function Editor({
 /* ── App ────────────────────────────────────────────────────────────────── */
 function AppInner({ navigateRef }) {
   const { showError } = useError();
+  const { theme } = useTheme(); // ← active theme object; passed to BackgroundRouter
   const [sessions, setSessions]   = useState([]);
 
-  // Register getSessions so extensions can read the session list.
-  // Returns the FULL session objects (with chapters) so that
-  // AuthNoExtensionAPI.encodeSession() can produce real .authbook content
-  // during "Sync now" / backup-all flows — lightweight objects (id/title only)
-  // would produce empty files because packSession() needs session.chapters.
   useEffect(() => {
     setGetSessionsHandler(() => sessions);
   }, [sessions]);
+
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
   const [menuOpen, setMenuOpen]   = useState(false);
   const [lastSaved]               = useState(null);
   const [inactive]                = useState(false);
   const [view, setView]           = useState("home");
-  // Extension page state — set by the navigate() callback in ExtensionProvider
-  const [extPageState, setExtPageState] = useState(null); // { extension, pageId, session }
+  const [extPageState, setExtPageState] = useState(null);
 
-  // Register importSession handler for extensions (Feature B, E)
   useEffect(() => {
     setImportSessionHandler(async (base64) => {
       const { openBookFromBytes } = await import('./utils/storage');
@@ -220,15 +221,14 @@ function AppInner({ navigateRef }) {
     });
   }, []);
 
-  // Wire the navigate implementation into the ref so ExtensionProvider can call it
-  // from anywhere in the tree without prop-drilling.
   useEffect(() => {
     if (!navigateRef) return;
     navigateRef.current = (extension, pageId, session) => {
       setExtPageState({ extension, pageId, session, _prevView: view });
       setView("extension-page");
     };
-  }); // no dep array — always write the latest `view` closure
+  });
+
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -251,45 +251,18 @@ function AppInner({ navigateRef }) {
   // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
   useEffect(() => {
     if (!android) return;
-    const EDGE_ZONE   = 22;
-    const MIN_SWIPE_X = 60;
-    const MAX_DRIFT_Y = 50;
+    const EDGE_ZONE = 22, MIN_SWIPE_X = 60, MAX_DRIFT_Y = 50;
     let startX = null, startY = null, tracking = false;
-
-    const onStart = (e) => {
-      const t = e.touches[0];
-      if (t.clientX <= EDGE_ZONE) {
-        startX = t.clientX;
-        startY = t.clientY;
-        tracking = true;
-      }
-    };
-
-    const onMove = (e) => {
-      if (!tracking) return;
-      const t = e.touches[0];
-      if (Math.abs(t.clientY - startY) > MAX_DRIFT_Y) {
-        tracking = false;
-        return;
-      }
-      if (t.clientX - startX > MIN_SWIPE_X) {
-        tracking = false;
-        setDrawerOpen(true);
-      }
-    };
-
-    const onEnd = () => {
-      tracking = false;
-    };
-
+    const onStart = (e) => { const t = e.touches[0]; if (t.clientX <= EDGE_ZONE) { startX = t.clientX; startY = t.clientY; tracking = true; } };
+    const onMove  = (e) => { if (!tracking) return; const t = e.touches[0]; if (Math.abs(t.clientY - startY) > MAX_DRIFT_Y) { tracking = false; return; } if (t.clientX - startX > MIN_SWIPE_X) { tracking = false; setDrawerOpen(true); } };
+    const onEnd   = () => { tracking = false; };
     document.addEventListener("touchstart", onStart, { passive: true });
-    document.addEventListener("touchmove", onMove, { passive: true });
-    document.addEventListener("touchend", onEnd, { passive: true });
-
+    document.addEventListener("touchmove",  onMove,  { passive: true });
+    document.addEventListener("touchend",   onEnd,   { passive: true });
     return () => {
       document.removeEventListener("touchstart", onStart);
-      document.removeEventListener("touchmove", onMove);
-      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchmove",  onMove);
+      document.removeEventListener("touchend",   onEnd);
     };
   }, [android]);
 
@@ -298,17 +271,14 @@ function AppInner({ navigateRef }) {
     if (!android) return;
     let listener;
     CapApp.addListener('backButton', () => {
-      // 1. Close any overlay first
-      if (menuOpen)      { setMenuOpen(false);    return; }
-      if (drawerOpen)    { setDrawerOpen(false);  return; }
-      if (settingsOpen)  { setSettingsOpen(false); return; }
-      if (customizerOpen){ setCustomizerOpen(false); return; }
-      // 2. Navigate back through screens
+      if (menuOpen)       { setMenuOpen(false);        return; }
+      if (drawerOpen)     { setDrawerOpen(false);      return; }
+      if (settingsOpen)   { setSettingsOpen(false);    return; }
+      if (customizerOpen) { setCustomizerOpen(false);  return; }
       if (view === 'extension-page') { setView(extPageState?._prevView ?? 'home'); setExtPageState(null); return; }
-      if (view === 'editor')        { setView('book-dashboard'); return; }
-      if (view === 'book-dashboard'){ setView('home');           return; }
-      if (view === 'layout')        { setView('home');           return; }
-      // 3. On home screen — minimize rather than kill the app
+      if (view === 'editor')         { setView('book-dashboard'); return; }
+      if (view === 'book-dashboard') { setView('home');           return; }
+      if (view === 'layout')         { setView('home');           return; }
       CapApp.minimizeApp();
     }).then(h => { listener = h; });
     return () => { listener?.remove(); };
@@ -318,46 +288,23 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     hasSeenOnboarding().then((seen) => {
       if (!seen) setShowOnboarding(true);
-      else hasSeenUpdate().then((seenUpdate) => {
-        if (!seenUpdate) setShowUpdateOnboarding(true);
-      });
+      else hasSeenUpdate().then((seenUpdate) => { if (!seenUpdate) setShowUpdateOnboarding(true); });
     });
-
     const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
-    if (saved) {
-      setSessions(JSON.parse(saved));
-      if (savedId) setCurrentId(savedId);
-    }
-
+    if (saved) { setSessions(JSON.parse(saved)); if (savedId) setCurrentId(savedId); }
     if (window.electron) {
       const openBooks = localStorage.getItem("openBooks");
       if (openBooks) {
-        try {
-          const books = JSON.parse(openBooks);
-          if (Array.isArray(books) && window.electron?.restoreBooks) {
-            window.electron.restoreBooks(books);
-          }
-        } catch (e) {
-          console.error(e);
-        }
+        try { const books = JSON.parse(openBooks); if (Array.isArray(books) && window.electron?.restoreBooks) window.electron.restoreBooks(books); }
+        catch (e) { console.error(e); }
       }
     }
-
     if (android) {
       initStoragePermissions();
-      // Restore the book index from the physical .authno-library file.
-      // This brings back the On Device list after a fresh install (no scan needed).
       initBookIndex();
-
-      // Scan file paths on startup and flag any that are no longer accessible.
       const saved = localStorage.getItem("offlineWriterSessions");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        checkFileIntegrity(parsed).then(broken => {
-          if (broken.length > 0) setBrokenFiles(broken);
-        });
-      }
+      if (saved) { const parsed = JSON.parse(saved); checkFileIntegrity(parsed).then(broken => { if (broken.length > 0) setBrokenFiles(broken); }); }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -367,23 +314,13 @@ function AppInner({ navigateRef }) {
     if (startupApplied.current) return;
     if (!sessions.length) return;
     startupApplied.current = true;
-
     const behavior = settings?.startupBehavior ?? "last";
-
     if (behavior === "last") {
       const savedId = localStorage.getItem("offlineWriterCurrentId");
-      if (savedId && sessions.some((s) => s.id === savedId)) {
-        setCurrentId(savedId);
-      } else if (sessions.length > 0) {
-        setCurrentId(sessions[0].id);
-      }
+      if (savedId && sessions.some((s) => s.id === savedId)) setCurrentId(savedId);
+      else if (sessions.length > 0) setCurrentId(sessions[0].id);
     } else if (behavior === "blank") {
-      const blank = {
-        id: Date.now().toString(),
-        title: "Untitled Book",
-        content: "",
-        createdAt: Date.now(),
-      };
+      const blank = { id: Date.now().toString(), title: "Untitled Book", content: "", createdAt: Date.now() };
       setSessions((prev) => [blank, ...prev]);
       setCurrentId(blank.id);
     } else if (behavior === "none") {
@@ -394,92 +331,47 @@ function AppInner({ navigateRef }) {
     }
   }, [sessions, settings]);
 
-  // Persist sessions to localStorage whenever they change so they survive app restarts.
-    useEffect(() => {
-      if (sessions.length > 0) {
-        localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
-
-        // Also write a native-readable file so the widget config activity can
-        // show the book list without needing the app to be opened first.
-        if (isAndroid()) {
-          const slim = sessions
-            .filter(s => s.type !== 'storyboard')
-            .map(s => ({ id: s.id, title: s.title || 'Untitled Book', streak: s.streak ?? {} }));
-          // Ensure the directory exists before writing (prevents FILE_NOTCREATED on first run)
-          Filesystem.mkdir({ path: '', directory: Directory.Data, recursive: true })
-            .catch(() => {})
-            .then(() => Filesystem.writeFile({
-              path: 'authno_books.json',
-              data: JSON.stringify(slim),
-              directory: Directory.Data,
-              encoding: 'utf8',
-            }))
-            .catch(() => {});
-        }
+  // Persist sessions
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
+      if (isAndroid()) {
+        const slim = sessions.filter(s => s.type !== 'storyboard').map(s => ({ id: s.id, title: s.title || 'Untitled Book', streak: s.streak ?? {} }));
+        Filesystem.mkdir({ path: '', directory: Directory.Data, recursive: true }).catch(() => {})
+          .then(() => Filesystem.writeFile({ path: 'authno_books.json', data: JSON.stringify(slim), directory: Directory.Data, encoding: 'utf8' }))
+          .catch(() => {});
       }
-    }, [sessions]);
-
-  // Sync book data to the native widget layer whenever sessions or accent colour changes.
-  useEffect(() => {
-    syncWidget(sessions, customization.accentHex);
-  }, [sessions, customization.accentHex]);
-
-  // Open the correct book when the app is launched by tapping a home-screen widget.
-  useWidgetDeepLink((bookId) => {
-    handleSelect(bookId);
-  });
-
-  // Persist the current open book ID so startup-behavior 'last' can restore it.
-  useEffect(() => {
-    if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId);
-  }, [currentId]);
-
-  useEffect(() => {
-    if (window.electron) localStorage.setItem("openBooks", JSON.stringify(sessions));
+    }
   }, [sessions]);
+
+  useEffect(() => { syncWidget(sessions, customization.accentHex); }, [sessions, customization.accentHex]);
+  useWidgetDeepLink((bookId) => { handleSelect(bookId); });
+  useEffect(() => { if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId); }, [currentId]);
+  useEffect(() => { if (window.electron) localStorage.setItem("openBooks", JSON.stringify(sessions)); }, [sessions]);
 
   useEffect(() => {
     const handler = (e) => {
       if (e.data.type === "restored-books") {
-        Promise.all(
-          e.data.books.map(({ base64, filePath }) =>
-            openBookFromBytes(base64, filePath).catch(() => null)
-          )
-        ).then((decoded) => {
+        Promise.all(e.data.books.map(({ base64, filePath }) => openBookFromBytes(base64, filePath).catch(() => null))).then((decoded) => {
           const valid = decoded.filter(Boolean);
           if (!valid.length) return;
-          setSessions((prev) => {
-            const fresh = valid.filter((b) => !prev.some((s) => s.filePath === b.filePath));
-            return [...fresh, ...prev];
-          });
+          setSessions((prev) => { const fresh = valid.filter((b) => !prev.some((s) => s.filePath === b.filePath)); return [...fresh, ...prev]; });
         });
       }
       if (e.data.type === "missing-books") e.data.messages.forEach(alert);
     };
-
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
 
   useEffect(() => {
     if (!window.electron?.onOpenAuthBook) return;
-
     const listener = (book) => {
       if (sessions.some((s) => s.filePath === book.filePath)) return;
-      const nb = {
-        id: Date.now().toString(),
-        title: book.title || "Untitled Book",
-        content: book.content || "",
-        preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...",
-        filePath: book.filePath,
-        type: "book",
-        created: new Date().toISOString(),
-        updated: new Date().toISOString(),
-      };
+      const nb = { id: Date.now().toString(), title: book.title || "Untitled Book", content: book.content || "", preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...", filePath: book.filePath, type: "book", created: new Date().toISOString(), updated: new Date().toISOString() };
       setSessions((p) => [nb, ...p]);
       setCurrentId(nb.id);
     };
-
     window.electron.onOpenAuthBook(listener);
     return () => window.removeEventListener("open-authbook", listener);
   }, [sessions]);
@@ -492,122 +384,58 @@ function AppInner({ navigateRef }) {
         const session = await openBookFromBytes(base64, uri);
         if (!session) return;
         setSessions((prev) => {
-          const idx = prev.findIndex(
-            (s) => s.id === session.id || (session.filePath && s.filePath === session.filePath)
-          );
-
+          const idx = prev.findIndex((s) => s.id === session.id || (session.filePath && s.filePath === session.filePath));
           setCurrentId(session.id);
-
           if (idx === -1) return [session, ...prev];
-
-          const next = [...prev];
-          next[idx] = { ...next[idx], ...session };
-          return next;
+          const next = [...prev]; next[idx] = { ...next[idx], ...session }; return next;
         });
-      } catch (err) {
-        alert("⚠️ Could not open that .authbook file — it may be corrupt.\n" + err.message);
-      }
+      } catch (err) { alert("⚠️ Could not open that .authbook file — it may be corrupt.\n" + err.message); }
     };
-
     const legacyHandler = (e) => {
       const book = e.detail;
       if (!book) return;
       setSessions((prev) => {
         if (prev.some((s) => s.id === book.id)) return prev;
-        const nb = {
-          ...book,
-          id: book.id || Date.now().toString(),
-          preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...",
-        };
-        setCurrentId(nb.id);
-        return [nb, ...prev];
+        const nb = { ...book, id: book.id || Date.now().toString(), preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." };
+        setCurrentId(nb.id); return [nb, ...prev];
       });
     };
-
-    const errHandler = () =>
-      alert("⚠️ Could not open that .authbook file — it may be corrupt.");
-
+    const errHandler = () => alert("⚠️ Could not open that .authbook file — it may be corrupt.");
     window.addEventListener("open-authbook-android-bytes", bytesHandler);
-    window.addEventListener("open-authbook-android", legacyHandler);
+    window.addEventListener("open-authbook-android",       legacyHandler);
     window.addEventListener("open-authbook-android-error", errHandler);
-
-    // ── Cold-start file intent recovery ────────────────────────────────────
-    // When the app is launched cold by tapping an .authbook file, the WebView
-    // is not yet loaded when handleAuthBookIntent fires in MainActivity.  The
-    // CustomEvent dispatched via evaluateJavascript lands before these listeners
-    // are registered and is silently lost.
-    //
-    // Fix: MainActivity also stores the file data in FilePickerPlugin static
-    // fields.  We call getPendingIntent() NOW — after the listeners above are
-    // registered — to pick up any file that arrived in that cold-start window.
-    // For warm starts the event already fired correctly; getPendingIntent() will
-    // return hasPending=false and this is a no-op.
     if (android) {
       (async () => {
         try {
           const { registerPlugin } = await import('@capacitor/core');
           const plugin = registerPlugin('AuthnoFilePicker');
           const result = await plugin.getPendingIntent();
-          if (result?.hasPending && result.base64) {
-            // Re-use the same handler so the dedup / setCurrentId logic is shared
-            window.dispatchEvent(new CustomEvent('open-authbook-android-bytes', {
-              detail: { base64: result.base64, uri: result.uri || '' },
-            }));
-          }
-        } catch (_) { /* plugin not available in dev/web builds — ignore */ }
+          if (result?.hasPending && result.base64) window.dispatchEvent(new CustomEvent('open-authbook-android-bytes', { detail: { base64: result.base64, uri: result.uri || '' } }));
+        } catch (_) { /* web build — ignore */ }
       })();
     }
-
     return () => {
       window.removeEventListener("open-authbook-android-bytes", bytesHandler);
-      window.removeEventListener("open-authbook-android", legacyHandler);
+      window.removeEventListener("open-authbook-android",       legacyHandler);
       window.removeEventListener("open-authbook-android-error", errHandler);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!android || sessions.length === 0) return;
-
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       for (const s of sessions) {
-        // Fire onSave for every session (trigger: 'change') so extensions like
-        // cloud-backup can track unsaved books, not just those with a URI.
-        if (hookCount('onSave') > 0) {
-          await fireHook('onSave', { session: s, trigger: 'change' });
-        }
-
-        // Only persist to disk sessions that already have a content:// URI.
-        // Sessions without one need an explicit Save to pick a destination first.
+        if (hookCount('onSave') > 0) await fireHook('onSave', { session: s, trigger: 'change' });
         if (!s.filePath?.startsWith('content://')) continue;
-
         try {
           const result = await saveBook(s);
-          if (result?.staleUri) {
-            setSessions((prev) =>
-              prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))
-            );
-            continue;
-          }
-          if (result?.filePath && result.filePath !== s.filePath) {
-            setSessions((prev) =>
-              prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x))
-            );
-          }
-          // Fire onSave again with trigger:'autosave' so extensions know a disk
-          // write succeeded (e.g. cloud-backup queues an upload at this point).
-          if (hookCount('onSave') > 0) {
-            const saved = result?.filePath
-              ? { ...s, filePath: result.filePath }
-              : s;
-            await fireHook('onSave', { session: saved, trigger: 'autosave' });
-          }
-        } catch (err) {
-          console.error('[AuthNo AutoSave]', err);
-        }
+          if (result?.staleUri) { setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))); continue; }
+          if (result?.filePath && result.filePath !== s.filePath) setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x)));
+          if (hookCount('onSave') > 0) { const saved = result?.filePath ? { ...s, filePath: result.filePath } : s; await fireHook('onSave', { session: saved, trigger: 'autosave' }); }
+        } catch (err) { console.error('[AuthNo AutoSave]', err); }
       }
     }, 2000);
-
     return () => clearTimeout(autoSaveTimer.current);
   }, [android, sessions]);
 
@@ -617,7 +445,6 @@ function AppInner({ navigateRef }) {
       localStorage.setItem("writerSettings", JSON.stringify(next));
       return next;
     });
-
     if (patch.accentHex !== undefined) {
       setCustomization((prev) => {
         const next = { ...prev, accentHex: patch.accentHex };
@@ -627,23 +454,12 @@ function AppInner({ navigateRef }) {
     }
   };
 
-  const handleSessionChange = (id, patch) => {
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  };
+  const handleSessionChange = (id, patch) => setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const handleSaveCustomization = (patch) => { setCustomization(patch); localStorage.setItem("writerCustomization", JSON.stringify(patch)); };
 
-  const handleSaveCustomization = (patch) => {
-    setCustomization(patch);
-    localStorage.setItem("writerCustomization", JSON.stringify(patch));
-  };
-
-  // ── Streak ───────────────────────────────────────────────────────────────
   const handleStreakUpdate = useCallback((updatedStreak) => {
     setSessions((prev) => prev.map((s) =>
-      s.id === currentId ? { ...s, streak: {
-        ...(s.streak ?? {}), ...updatedStreak,
-        log:          { ...(s.streak?.log ?? {}),           ...(updatedStreak.log ?? {}) },
-        dailyBaseline:{ ...(s.streak?.dailyBaseline ?? {}), ...(updatedStreak.dailyBaseline ?? {}) },
-      }} : s
+      s.id === currentId ? { ...s, streak: { ...(s.streak ?? {}), ...updatedStreak, log: { ...(s.streak?.log ?? {}), ...(updatedStreak.log ?? {}) }, dailyBaseline: { ...(s.streak?.dailyBaseline ?? {}), ...(updatedStreak.dailyBaseline ?? {}) } }} : s
     ));
   }, [currentId]);
 
@@ -651,15 +467,8 @@ function AppInner({ navigateRef }) {
   const newBook = () => {
     const id = Date.now().toString(), now = new Date().toISOString();
     const firstChap = { chap_idx: 1, title: "Chapter 1", order: 1, content: "", created: now, updated: now };
-    setSessions((s) => [{
-      id, title: "Untitled Book", preview: "", content: "",
-      type: "book", created: now, updated: now,
-      chapters: [firstChap],
-      authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "",
-    }, ...s]);
-    setCurrentId(id);
-    setCurrentChapterIdx(null);
-    setView("book-dashboard");
+    setSessions((s) => [{ id, title: "Untitled Book", preview: "", content: "", type: "book", created: now, updated: now, chapters: [firstChap], authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "" }, ...s]);
+    setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
     if (android) setDrawerOpen(false);
   };
   const newStoryboard = () => {
@@ -669,71 +478,33 @@ function AppInner({ navigateRef }) {
     if (android) setDrawerOpen(false);
   };
   const handleSelect = (id, sessionObj) => {
-    if (sessionObj) {
-      setSessions((prev) =>
-        prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]
-      );
-    }
-    setCurrentId(id);
-    setCurrentChapterIdx(null);
-    setView("book-dashboard");
+    if (sessionObj) setSessions((prev) => prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]);
+    setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
     if (android) setDrawerOpen(false);
   };
-
-  // Open a specific chapter in the editor
-  const handleEditChapter = useCallback((chapIdx) => {
-    setCurrentChapterIdx(chapIdx);
-    setView("editor");
-  }, []);
-
-  // Create a new chapter and open it — compute idx synchronously to avoid race
+  const handleEditChapter = useCallback((chapIdx) => { setCurrentChapterIdx(chapIdx); setView("editor"); }, []);
   const handleNewChapter = useCallback(() => {
     const cur = sessions.find(s => s.id === currentId);
     if (!cur) return;
-    const now      = new Date().toISOString();
-    const maxIdx   = cur.chapters?.length
-      ? Math.max(...cur.chapters.map(c => c.chap_idx))
-      : 0;
-    const maxOrder = cur.chapters?.length
-      ? Math.max(...cur.chapters.map(c => c.order))
-      : 0;
+    const now = new Date().toISOString();
+    const maxIdx   = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.chap_idx)) : 0;
+    const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.order))    : 0;
     const newIdx   = maxIdx + 1;
-    const newChap  = {
-      chap_idx: newIdx,
-      title:    `Chapter ${newIdx}`,
-      order:    maxOrder + 1,
-      content:  '',
-      created:  now,
-      updated:  now,
-    };
-    setSessions(prev => prev.map(s =>
-      s.id !== currentId ? s :
-      { ...s, chapters: [...(s.chapters || []), newChap], updated: now }
-    ));
-    setCurrentChapterIdx(newIdx);
-    setView('editor');
+    const newChap  = { chap_idx: newIdx, title: `Chapter ${newIdx}`, order: maxOrder + 1, content: '', created: now, updated: now };
+    setSessions(prev => prev.map(s => s.id !== currentId ? s : { ...s, chapters: [...(s.chapters || []), newChap], updated: now }));
+    setCurrentChapterIdx(newIdx); setView('editor');
   }, [currentId, sessions]);
-
-  // Merge metadata/cover/description updates back into session
   const handleUpdateSession = useCallback((updates) => {
-    setSessions((prev) => prev.map((s) =>
-      s.id === currentId
-        ? { ...s, ...updates, updated: new Date().toISOString() }
-        : s
-    ));
+    setSessions((prev) => prev.map((s) => s.id === currentId ? { ...s, ...updates, updated: new Date().toISOString() } : s));
   }, [currentId]);
-
-  // Delete a chapter by chap_idx — guards against deleting the last chapter
   const handleDeleteChapter = useCallback((chapIdx) => {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
-      if ((s.chapters || []).length <= 1) return s; // never delete the last one
+      if ((s.chapters || []).length <= 1) return s;
       const chapters = (s.chapters || []).filter(c => c.chap_idx !== chapIdx);
       return { ...s, chapters, updated: new Date().toISOString() };
     }));
   }, [currentId]);
-
-  // Move a chapter up (-1) or down (+1) in display order
   const handleMoveChapter = useCallback((chapIdx, direction) => {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
@@ -741,46 +512,27 @@ function AppInner({ navigateRef }) {
       const pos = sorted.findIndex(c => c.chap_idx === chapIdx);
       const swapPos = pos + direction;
       if (swapPos < 0 || swapPos >= sorted.length) return s;
-      // Swap order values
-      const ordA = sorted[pos].order;
-      const ordB = sorted[swapPos].order;
+      const ordA = sorted[pos].order, ordB = sorted[swapPos].order;
       const chapters = s.chapters.map(c => {
-        if (c.chap_idx === sorted[pos].chap_idx)   return { ...c, order: ordB };
+        if (c.chap_idx === sorted[pos].chap_idx)    return { ...c, order: ordB };
         if (c.chap_idx === sorted[swapPos].chap_idx) return { ...c, order: ordA };
         return c;
       });
       return { ...s, chapters, updated: new Date().toISOString() };
     }));
   }, [currentId]);
-
   const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId ? { ...x, title: t } : x));
-
-  // Chapter-level content edit — updates the specific chapter and syncs session.content for chap 1
   const handleEditContent = (c) => setSessions((s) => s.map((x) => {
     if (x.id !== currentId) return x;
     const chapIdx = currentChapterIdx || 1;
     const now = new Date().toISOString();
-    const chapters = (x.chapters || []).map((ch) =>
-      ch.chap_idx === chapIdx
-        ? { ...ch, content: c, updated: now }
-        : ch
-    );
-    return {
-      ...x,
-      chapters,
-      content: chapIdx === 1 ? c : x.content,
-      preview: chapIdx === 1 ? c.replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." : x.preview,
-      updated: now,
-    };
+    const chapters = (x.chapters || []).map((ch) => ch.chap_idx === chapIdx ? { ...ch, content: c, updated: now } : ch);
+    return { ...x, chapters, content: chapIdx === 1 ? c : x.content, preview: chapIdx === 1 ? c.replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." : x.preview, updated: now };
   }));
-
-  // Chapter title edit
   const handleEditChapterTitle = useCallback((t) => {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
-      const chapters = (s.chapters || []).map((ch) =>
-        ch.chap_idx === currentChapterIdx ? { ...ch, title: t } : ch
-      );
+      const chapters = (s.chapters || []).map((ch) => ch.chap_idx === currentChapterIdx ? { ...ch, title: t } : ch);
       return { ...s, chapters };
     }));
   }, [currentId, currentChapterIdx]);
@@ -788,7 +540,6 @@ function AppInner({ navigateRef }) {
   const filtered = sessions.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
   const current  = sessions.find((s) => s.id === currentId) || null;
 
-  // Build a virtual "current" for the Editor that has the right chapter's content
   const editorCurrent = React.useMemo(() => {
     if (!current || currentChapterIdx === null) return current;
     const chap = (current.chapters || []).find(c => c.chap_idx === currentChapterIdx);
@@ -801,41 +552,17 @@ function AppInner({ navigateRef }) {
     return (current.chapters || []).find(c => c.chap_idx === currentChapterIdx) || null;
   }, [current, currentChapterIdx]);
 
-  // Sorted chapter list + adjacent indices for Editor prev/next navigation
-  const sortedChapters = React.useMemo(() =>
-    [...(current?.chapters || [])].sort((a, b) => a.order - b.order),
-    [current?.chapters]
-  );
-  const currentChapterPos = React.useMemo(() =>
-    sortedChapters.findIndex(c => c.chap_idx === currentChapterIdx),
-    [sortedChapters, currentChapterIdx]
-  );
-  const prevChapIdx = currentChapterPos > 0
-    ? sortedChapters[currentChapterPos - 1].chap_idx : null;
-  const nextChapIdx = currentChapterPos < sortedChapters.length - 1
-    ? sortedChapters[currentChapterPos + 1].chap_idx : null;
+  const sortedChapters = React.useMemo(() => [...(current?.chapters || [])].sort((a, b) => a.order - b.order), [current?.chapters]);
+  const currentChapterPos = React.useMemo(() => sortedChapters.findIndex(c => c.chap_idx === currentChapterIdx), [sortedChapters, currentChapterIdx]);
+  const prevChapIdx = currentChapterPos > 0 ? sortedChapters[currentChapterPos - 1].chap_idx : null;
+  const nextChapIdx = currentChapterPos < sortedChapters.length - 1 ? sortedChapters[currentChapterPos + 1].chap_idx : null;
 
   // ── Export helpers ────────────────────────────────────────────────────────
-  const handleExportTxt = useCallback(async () => {
-    if (!current) return;
-    const { exportAsTxt } = await import('./utils/storage');
-    try { await exportAsTxt(current); } catch (e) { showError('exportTxt', e); }
-  }, [current, showError]);
-
-  const handleExportHtml = useCallback(async () => {
-    if (!current) return;
-    const { exportAsHtml } = await import('./utils/storage');
-    try { await exportAsHtml(current); } catch (e) { showError('exportHtml', e); }
-  }, [current, showError]);
-
-  const handleExportEpub = useCallback(async () => {
-    if (!current) return;
-    const { exportAsEpub } = await import('./utils/storage');
-    try { await exportAsEpub(current); } catch (e) { showError('exportEpub', e); }
-  }, [current, showError]);
+  const handleExportTxt  = useCallback(async () => { if (!current) return; const { exportAsTxt }  = await import('./utils/storage'); try { await exportAsTxt(current);  } catch (e) { showError('exportTxt',  e); } }, [current, showError]);
+  const handleExportHtml = useCallback(async () => { if (!current) return; const { exportAsHtml } = await import('./utils/storage'); try { await exportAsHtml(current); } catch (e) { showError('exportHtml', e); } }, [current, showError]);
+  const handleExportEpub = useCallback(async () => { if (!current) return; const { exportAsEpub } = await import('./utils/storage'); try { await exportAsEpub(current); } catch (e) { showError('exportEpub', e); } }, [current, showError]);
 
   const handleToggleMenu = () => {
-    // Update CSS vars so BurgerMenu knows exactly where to appear
     if (burgerBtnRef.current) {
       const r = burgerBtnRef.current.getBoundingClientRect();
       document.documentElement.style.setProperty("--bm-top",   `${r.bottom + 8}px`);
@@ -847,186 +574,120 @@ function AppInner({ navigateRef }) {
   return (
     <div className={`app-root flex text-white relative${settings.lightMode ? ' light-mode' : ''}`}>
 
-      {showOnboarding && (
-        <Onboarding
-          accentHex={customization.accentHex}
-          onDone={() => setShowOnboarding(false)}
-        />
-      )}
-
-      {!showOnboarding && showUpdateOnboarding && (
-        <UpdateOnboarding
-          accentHex={customization.accentHex}
-          onDone={() => setShowUpdateOnboarding(false)}
-        />
-      )}
+      {showOnboarding && <Onboarding accentHex={customization.accentHex} onDone={() => setShowOnboarding(false)} />}
+      {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
 
       {brokenFiles.length > 0 && (
         <FileIntegrityModal
-          brokenSessions={brokenFiles}
-          accentHex={customization.accentHex}
-          onRemove={(id) => {
-            setSessions(prev => prev.filter(s => s.id !== id));
-            setBrokenFiles(prev => prev.filter(s => s.id !== id));
-          }}
-          onSaveAs={async (session) => {
-            await saveAsBook(session);
-            setBrokenFiles(prev => prev.filter(s => s.id !== session.id));
-          }}
+          brokenSessions={brokenFiles} accentHex={customization.accentHex}
+          onRemove={(id) => { setSessions(prev => prev.filter(s => s.id !== id)); setBrokenFiles(prev => prev.filter(s => s.id !== id)); }}
+          onSaveAs={async (session) => { await saveAsBook(session); setBrokenFiles(prev => prev.filter(s => s.id !== session.id)); }}
           onDismiss={() => setBrokenFiles([])}
         />
       )}
 
-      <Background
+      {/*
+        ── BackgroundRouter ────────────────────────────────────────────────────
+        Replaces the old <Background /> component.
+        Reads theme.backgroundFx to decide which background type to render:
+          - type: 'gradient'  → animated blob background (dark / light / OLED)
+          - type: 'grain'     → grainy static diagonal gradient (sepia / paper)
+          - type: 'none'      → no background (CSS vars handle colour only)
+        When theme.backgroundFx.type is absent, falls back to gradientEnabled toggle.
+        ───────────────────────────────────────────────────────────────────────
+      */}
+      <BackgroundRouter
         accentHex={customization.accentHex}
-        backgroundOpacity={customization.backgroundOpacity}
-        colorRange={{ from: customization.gradient.colorFrom, to: customization.gradient.colorTo }}
-        minBlobs={customization.gradient.blobCountMin}
-        maxBlobs={customization.gradient.blobCountMax}
-        blobSizeRange={{ min: customization.gradient.blobSizeMin, max: customization.gradient.blobSizeMax }}
-        blobSpeedMultiplier={customization.gradient.speedMultiplier}
-        visible={settings.enableGradient}
+        gradientEnabled={settings.enableGradient}
+        customization={customization}
+        theme={theme}
       />
 
-      {/* Android drawer backdrop — closes instantly on any touch or click */}
+      {/* Android drawer backdrop */}
       {android && drawerOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40"
-          onClick={() => setDrawerOpen(false)}
-          onTouchStart={() => setDrawerOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)} />
       )}
 
       <Sidebar
-        sessions={filtered}
-        onNewBook={newBook}
-        onNewStoryboard={newStoryboard}
-        search={search}
-        setSessions={setSessions}
-        setSearch={setSearch}
-        onSelect={handleSelect}
-        currentId={currentId}
-        setView={setView}
-        accentHex={customization.accentHex}
-        lightMode={settings.lightMode}
-        isDrawerOpen={drawerOpen}
-        onDrawerClose={() => setDrawerOpen(false)}
+        sessions={filtered} onNewBook={newBook} onNewStoryboard={newStoryboard}
+        search={search} setSessions={setSessions} setSearch={setSearch}
+        onSelect={handleSelect} currentId={currentId} setView={setView}
+        accentHex={customization.accentHex} lightMode={settings.lightMode}
+        isDrawerOpen={drawerOpen} onDrawerClose={() => setDrawerOpen(false)}
         session={current}
         onDelete={(id) => {
           const updated = sessions.filter((s) => s.id !== id);
           setSessions(updated);
-          if (id === currentId) {
-            setCurrentId(null);
-            setView("home");
-          }
+          if (id === currentId) { setCurrentId(null); setView("home"); }
           localStorage.setItem("offlineWriterSessions", JSON.stringify(updated));
         }}
       />
 
       {view === "extension-page" && extPageState ? (
-        <ExtensionPage
-          extension={extPageState.extension}
-          pageId={extPageState.pageId}
-          session={extPageState.session ?? current}
-          accentHex={customization.accentHex}
-          onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }}
-        />
+        <ExtensionPage extension={extPageState.extension} pageId={extPageState.pageId} session={extPageState.session ?? current} accentHex={customization.accentHex} onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }} />
       ) : view === "layout" ? (
         <EditLayout sessions={sessions} setSessions={setSessions} />
       ) : view === "home" ? (
         <HomeScreen
-          sessions={sessions}
-          accentHex={customization.accentHex}
-          onNewBook={newBook}
-          onSelect={handleSelect}
+          sessions={sessions} accentHex={customization.accentHex}
+          onNewBook={newBook} onSelect={handleSelect}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
-          onToggleMenu={handleToggleMenu}
-          burgerBtnRef={burgerBtnRef}
-          current={current}
-          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
-          onStreakUpdate={handleStreakUpdate}
-          streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
+          current={current} goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
           onRefresh={async () => {
-            try {
-              const { listSavedBooks } = await import('./utils/storage');
-              const books = await listSavedBooks();
-              if (books.length) {
-                setSessions(prev => {
-                  const ids = new Set(prev.map(s => s.id));
-                  return [...prev, ...books.filter(b => !ids.has(b.id))];
-                });
-              }
-            } catch (e) { showError('refresh', e); }
+            try { const { listSavedBooks } = await import('./utils/storage'); const books = await listSavedBooks(); if (books.length) setSessions(prev => { const ids = new Set(prev.map(s => s.id)); return [...prev, ...books.filter(b => !ids.has(b.id))]; }); }
+            catch (e) { showError('refresh', e); }
           }}
         />
       ) : view === "book-dashboard" ? (
         <BookDashboard
-          session={current}
-          accentHex={customization.accentHex}
-          onBack={() => setView("home")}
-          onEditChapter={handleEditChapter}
-          onNewChapter={handleNewChapter}
-          onUpdateSession={handleUpdateSession}
-          onDeleteChapter={handleDeleteChapter}
-          onMoveChapter={handleMoveChapter}
-          onExportTxt={handleExportTxt}
-          onExportHtml={handleExportHtml}
-          onExportEpub={handleExportEpub}
-          onToggleMenu={handleToggleMenu}
-          burgerBtnRef={burgerBtnRef}
+          session={current} accentHex={customization.accentHex}
+          onBack={() => setView("home")} onEditChapter={handleEditChapter}
+          onNewChapter={handleNewChapter} onUpdateSession={handleUpdateSession}
+          onDeleteChapter={handleDeleteChapter} onMoveChapter={handleMoveChapter}
+          onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub}
+          onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
-          onStreakUpdate={handleStreakUpdate}
-          streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
       ) : (
         <Editor
-          current={editorCurrent}
-          onEditTitle={handleEditTitle}
-          onEditContent={handleEditContent}
+          current={editorCurrent} onEditTitle={handleEditTitle} onEditContent={handleEditContent}
           onEditChapterTitle={currentChapterIdx ? handleEditChapterTitle : undefined}
           chapterTitle={currentChapter?.title ?? null}
           onBack={() => setView("book-dashboard")}
           onPrevChapter={prevChapIdx !== null ? () => handleEditChapter(prevChapIdx) : null}
           onNextChapter={nextChapIdx !== null ? () => handleEditChapter(nextChapIdx) : null}
           chapterPosition={currentChapterPos >= 0 ? { pos: currentChapterPos + 1, total: sortedChapters.length } : null}
-          onToggleMenu={handleToggleMenu}
-          accentHex={customization.accentHex}
+          onToggleMenu={handleToggleMenu} accentHex={customization.accentHex}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
-          burgerBtnRef={burgerBtnRef}
-          streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
       )}
 
       <BurgerMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        current={current}
+        open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
-        accentHex={customization.accentHex}
-        anchorRef={burgerBtnRef}
+        accentHex={customization.accentHex} anchorRef={burgerBtnRef}
       />
 
       <Settings
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onSave={handleSaveSettings}
+        isOpen={settingsOpen} onClose={() => setSettingsOpen(false)}
+        settings={settings} onSave={handleSaveSettings}
         onOpenCustomizer={() => setCustomizerOpen(true)}
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
-        sessions={sessions}
-        onSessionChange={handleSessionChange}
+        sessions={sessions} onSessionChange={handleSessionChange}
       />
 
       <CustomizationSlider
-        isOpen={customizerOpen}
-        onClose={() => setCustomizerOpen(false)}
-        customization={customization}
-        onSave={handleSaveCustomization}
+        isOpen={customizerOpen} onClose={() => setCustomizerOpen(false)}
+        customization={customization} onSave={handleSaveCustomization}
       />
 
       <div className="fixed bottom-4 right-4 flex items-center gap-3 text-white/40 text-sm select-none"
@@ -1043,8 +704,6 @@ function AppInner({ navigateRef }) {
 }
 
 /* ── Root export wrapped in ErrorProvider + ExtensionProvider ──────────────── */
-
-// ── Restore saved theme on startup ──────────────────────────────────────────
 const _savedThemeId = (() => { try { return localStorage.getItem('authno_theme_id') ?? 'dark-default'; } catch { return 'dark-default'; } })();
 const _initialTheme = themeById(_savedThemeId);
 injectThemeFonts(_initialTheme);
@@ -1052,31 +711,18 @@ injectThemeFonts(_initialTheme);
 export default function App() {
   const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");
   const accentHex = stored.accentHex || "#5a00d9";
-
   return (
     <ThemeProvider initialTheme={_initialTheme}>
       <ErrorProvider accentHex={accentHex}>
-        {/* ExtensionProvider wraps AppInner so every component in the tree can
-            call useExtensions(). The onNavigate prop is wired inside AppInner
-            via a ref so we don't need to lift state out of AppInner. */}
         <AppInnerWithExtensions />
       </ErrorProvider>
     </ThemeProvider>
   );
 }
 
-/**
- * Thin wrapper that creates the navigate callback (which needs setView /
- * setExtPageState from AppInner's state) and passes it into ExtensionProvider.
- * We do this by keeping a stable ref that AppInner writes to on every render.
- */
 function AppInnerWithExtensions() {
   const navigateRef = React.useRef(null);
-
-  const onNavigate = React.useCallback((extension, pageId, session) => {
-    navigateRef.current?.(extension, pageId, session);
-  }, []);
-
+  const onNavigate = React.useCallback((extension, pageId, session) => { navigateRef.current?.(extension, pageId, session); }, []);
   return (
     <ExtensionProvider onNavigate={onNavigate}>
       <AppInner navigateRef={navigateRef} />

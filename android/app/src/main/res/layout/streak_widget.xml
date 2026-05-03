@@ -3,9 +3,9 @@
   streak_widget.xml
   Home-screen widget layout for the AuthNo Streak Widget.
 
-  All views must be RemoteViews-compatible (no custom views).
-  The calendar is rendered as a Bitmap and set on the ImageView by
-  StreakWidgetRenderer — no GridView/RecyclerView needed.
+  All colours reference @color/ds_* from ds_colors.xml, which mirrors
+  src/DesignSystem/tokens.js.  Never write colour literals here —
+  update ds_colors.xml (and tokens.js) instead.
 -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -26,7 +26,7 @@
         android:gravity="center_vertical"
         android:layout_marginBottom="8dp">
 
-        <!-- Book icon (gradient SVG drawn as vector drawable) -->
+        <!-- Book icon -->
         <ImageView
             android:id="@+id/widget_book_icon"
             android:layout_width="28dp"
@@ -35,50 +35,49 @@
             android:layout_marginEnd="10dp"
             android:contentDescription="Book" />
 
-        <!-- Title (takes all remaining space) -->
+        <!-- Title (takes all remaining space) — ds_text_secondary (#dcddde) -->
         <TextView
             android:id="@+id/widget_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="AuthNo"
-            android:textColor="#f2f3f5"
+            android:textColor="@color/ds_text_secondary"
             android:textSize="13sp"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end" />
 
-        <!-- Streak count (large) -->
+        <!-- Streak count (large) — tinted by accent at runtime via StreakWidgetRenderer -->
         <TextView
             android:id="@+id/widget_streak_count"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="0"
-            android:textColor="#5a00d9"
+            android:textColor="@color/ds_violet_dark"
             android:textSize="26sp"
             android:textStyle="bold"
             android:lineSpacingExtra="-2dp" />
 
-        <!-- Flame icon (gradient SVG vector drawable) -->
+        <!-- Flame icon -->
         <ImageView
             android:id="@+id/widget_flame_icon"
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_flame_gradient"
             android:layout_marginStart="2dp"
-            android:gravity="bottom"
             android:paddingBottom="4dp"
             android:contentDescription="Streak fire" />
 
     </LinearLayout>
 
-    <!-- Streak sub-label (e.g. "7 days streak") -->
+    <!-- Streak sub-label — ds_text_subtle (#72767d) -->
     <TextView
         android:id="@+id/widget_streak_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="no streak yet"
-        android:textColor="#72767d"
+        android:textColor="@color/ds_text_subtle"
         android:textSize="10sp"
         android:layout_marginBottom="8dp" />
 
@@ -90,16 +89,17 @@
         android:layout_height="4dp"
         android:max="100"
         android:progress="0"
-        android:progressTint="#5a00d9"
-        android:progressBackgroundTint="#2e3035"
+        android:progressTint="@color/ds_violet_dark"
+        android:progressBackgroundTint="@color/ds_progress_track"
         android:layout_marginBottom="3dp" />
 
+    <!-- Progress label — ds_text_subtle (#72767d) -->
     <TextView
         android:id="@+id/widget_progress_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="0 / 300 words today"
-        android:textColor="#72767d"
+        android:textColor="@color/ds_text_subtle"
         android:textSize="10sp"
         android:layout_marginBottom="8dp" />
 

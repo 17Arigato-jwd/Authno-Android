@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ds_colors.xml — Authno Design System colors (Android resource mirror)
+    ─────────────────────────────────────────────────────────────────────────
+    Mirror of src/DesignSystem/tokens.js › COLORS.
+    Used by layouts and drawables via @color/ds_*.
+
+    Keep in sync with tokens.js — change both files together.
+    For programmatic access use DSTokens.COLORS.* instead of Resources.getColor().
+-->
+<resources>
+
+    <!-- Brand ────────────────────────────────────────────────────────────── -->
+    <color name="ds_violet">#8b5cf6</color>
+    <color name="ds_violet_dark">#5a00d9</color>
+    <color name="ds_indigo">#6366f1</color>
+    <color name="ds_sky">#38bdf8</color>
+
+    <!-- Semantic ─────────────────────────────────────────────────────────── -->
+    <color name="ds_success">#22c55e</color>
+    <color name="ds_warning">#f59e0b</color>
+    <color name="ds_danger">#ef4444</color>
+    <color name="ds_rose">#ec4899</color>
+    <color name="ds_ember">#f97316</color>
+
+    <!-- Surfaces (dark-first) ────────────────────────────────────────────── -->
+    <color name="ds_surface_0">#0b0b0c</color>
+    <color name="ds_surface_1">#111113</color>
+    <color name="ds_surface_2">#1a1b1e</color>
+    <color name="ds_surface_3">#2b2d31</color>
+    <color name="ds_surface_4">#313338</color>
+
+    <!-- Text ─────────────────────────────────────────────────────────────── -->
+    <color name="ds_text_primary">#ffffff</color>
+    <color name="ds_text_secondary">#dcddde</color>
+    <color name="ds_text_muted">#b9bbbe</color>
+    <color name="ds_text_subtle">#72767d</color>
+    <color name="ds_text_disabled">#4f545c</color>
+
+    <!-- Widget composites ────────────────────────────────────────────────── -->
+    <!-- surface_2 at 90 % opacity (0xE6) — widget card background -->
+    <color name="ds_widget_bg">#E61a1b1e</color>
+    <!-- progress track — surface_3 -->
+    <color name="ds_progress_track">#2b2d31</color>
+    <!-- default accent for the progress bar tint -->
+    <color name="ds_accent_default">#5a00d9</color>
+
+</resources>

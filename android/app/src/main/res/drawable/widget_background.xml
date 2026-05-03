@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dark frosted-glass card background for the streak widget -->
+<!--
+  widget_background.xml — Dark frosted-glass card background for the streak widget.
+  Colour: ds_widget_bg = surface_2 (#1a1b1e) at 90 % opacity (0xE6).
+  Defined in ds_colors.xml, which mirrors src/DesignSystem/tokens.js › COLORS.surface2.
+  Corner radius mirrors RADIUS.xl (20dp) from tokens.js.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#E6131417" />   <!-- #E6 ≈ 90 % opacity dark -->
+    <solid android:color="@color/ds_widget_bg" />
     <corners android:radius="20dp" />
 </shape>
