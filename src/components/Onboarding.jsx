@@ -1,25 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  ArrowRight,
-  BookOpen,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Flame,
-  FolderOpen,
-  Palette,
-  Sparkles,
-  ShieldCheck,
-  Target,
-  PenTool,
-  Layers3,
-  Save,
-  Repeat,
-  X,
-  FolderKey,
-  Zap,
-} from "lucide-react";
+import { Flame } from "lucide-react";
+import { DSIcons } from "../DesignSystem";
 import { requestFullStoragePermission } from "../utils/storage";
 
 const ONBOARDING_KEY = "authno_onboarding_v1";
@@ -211,7 +193,7 @@ function FloatingBlobs({ accentHex = "#5a00d9" }) {
 function PageBadge({ index, total }) {
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60 backdrop-blur-md">
-      <Sparkles size={13} />
+      <DSIcons.Sparkle size={13} />
       <span>
         {index + 1} / {total}
       </span>
@@ -454,7 +436,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                     className="mt-1 flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/12 active:scale-95"
                     style={{ background: "rgba(255,255,255,0.07)" }}
                   >
-                    <FolderKey size={15} />
+                    <DSIcons.Key size={15} />
                     Grant All Files Access
                   </button>
                 )}
@@ -478,7 +460,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                       background: dontShowAgain ? accentHex : "transparent",
                     }}
                   >
-                    {dontShowAgain && <Check size={10} color="#fff" />}
+                    {dontShowAgain && <DSIcons.Check size={10} color="#fff" />}
                   </span>
                   <span className="text-xs text-white/45">Don’t show this again</span>
                 </label>
@@ -491,7 +473,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                   className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition disabled:opacity-35"
                 >
                   <span className="inline-flex items-center gap-2">
-                    <ChevronLeft size={16} />
+                    <DSIcons.ChevronLeft size={16} />
                     Back
                   </span>
                 </button>
@@ -506,7 +488,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                 >
                   <span className="inline-flex items-center gap-2">
                     {page === pages.length - 1 ? "Start writing" : "Next"}
-                    {page === pages.length - 1 ? <ArrowRight size={16} /> : <ChevronRight size={16} />}
+                    {page === pages.length - 1 ? <DSIcons.ChevronRight size={16} /> : <DSIcons.ChevronRight size={16} />}
                   </span>
                 </button>
               </div>
@@ -624,7 +606,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
           {/* Header row */}
           <div className="mb-4 flex items-center justify-between">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60 backdrop-blur-md">
-              <Zap size={12} style={{ color: accentHex }} />
+              <DSIcons.Lightning size={12} style={{ color: accentHex }} />
               <span>What's new — {page + 1} / {UPDATE_NOTES.length}</span>
             </div>
             <button
@@ -632,7 +614,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
               className="rounded-full border border-white/10 bg-white/5 p-1.5 text-white/40 backdrop-blur-md transition hover:text-white/70"
               aria-label="Dismiss"
             >
-              <X size={14} />
+              <DSIcons.X size={14} />
             </button>
           </div>
 
@@ -669,7 +651,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
                   className="mt-6 w-full flex items-center justify-center gap-2 rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/12 active:scale-95"
                   style={{ background: "rgba(255,255,255,0.07)" }}
                 >
-                  <FolderKey size={15} />
+                  <DSIcons.Key size={15} />
                   Grant All Files Access
                 </button>
               )}
@@ -682,7 +664,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
                   className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/70 transition disabled:opacity-30"
                 >
                   <span className="inline-flex items-center gap-2">
-                    <ChevronLeft size={16} /> Back
+                    <DSIcons.ChevronLeft size={16} /> Back
                   </span>
                 </button>
                 <button
@@ -695,7 +677,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
                 >
                   <span className="inline-flex items-center gap-2">
                     {isLast ? "Got it" : "Next"}
-                    {isLast ? <Check size={16} /> : <ChevronRight size={16} />}
+                    {isLast ? <DSIcons.Check size={16} /> : <DSIcons.ChevronRight size={16} />}
                   </span>
                 </button>
               </div>

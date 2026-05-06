@@ -1,6 +1,7 @@
+import { BackgroundRouter, DSIcons, injectDesignSystemFonts } from "./DesignSystem";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Logo from "./logo.svg";
-import { RotateCw, Menu } from "lucide-react";
+
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { App as CapApp } from '@capacitor/app';
 import EditorToolbar from "./components/EditorToolbar";
@@ -29,7 +30,7 @@ import ExtensionPage from "./components/ExtensionPage";
 // It reads the active theme's backgroundFx config and renders the right
 // background component (GradientBackground or GrainGradientBackground).
 // Also inject fonts once at startup.
-import { BackgroundRouter, injectDesignSystemFonts } from "./DesignSystem";
+
 injectDesignSystemFonts();
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,16 +64,14 @@ function Editor({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", overflow: "hidden" }}>
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-        style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-2 min-w-0">
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--app-bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           {onBack && (
             <button onClick={onBack}
-              className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
-              aria-label="Back to book"
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-1)', background: 'none', cursor: 'pointer' }}>
+              style={{ padding: 8, border: "1px solid rgba(255,255,255,0.3)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s", display: "flex", alignItems: "center", gap: 4, color: "var(--text-1)" }}
+              aria-label="Back to book">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -80,9 +79,9 @@ function Editor({
           )}
           {android && !onBack && (
             <button onClick={onToggleSidebar}
-              className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
+              style={{ padding: 8, border: "1px solid rgba(255,255,255,0.3)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s" }}
               aria-label="Sessions">
-              <Menu className="w-5 h-5 text-white" />
+              <DSIcons.Menu size={20} color="white" />
             </button>
           )}
           <input
@@ -97,19 +96,19 @@ function Editor({
               if (onEditChapterTitle) onEditChapterTitle(title);
               else onEditTitle(title);
             }}
-            className="bg-transparent text-white text-lg font-semibold focus:outline-none border-b border-transparent focus:border-white/20 truncate min-w-0"
+            style={{ background: "transparent", color: "white", fontSize: 18, fontWeight: 600, outline: "none", borderBottom: "1px solid transparent", maxWidth: "60%", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
             style={{ maxWidth: android ? "40vw" : "60vw" }}
             placeholder="Untitled"
           />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
           <button
             ref={burgerBtnRef}
             onClick={onToggleMenu}
-            className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition"
+            style={{ padding: 8, border: "2px solid white", borderRadius: 6, background: "none", cursor: "pointer", transition: "background 0.15s" }}
           >
-            <BurgerIcon className="text-white" />
+            <BurgerIcon style={{ color: "white" }} />
           </button>
         </div>
       </header>
@@ -158,7 +157,7 @@ function Editor({
           </button>
         </div>
       )}
-      <main className="relative flex-1 overflow-auto" style={{ padding: android ? "0.75rem" : "1.5rem" }}>
+      <main style={{ position: "relative", flex: 1, overflowY: "auto" }} style={{ padding: android ? "0.75rem" : "1.5rem" }}>
         {current ? (
           <>
             <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} />
@@ -166,7 +165,7 @@ function Editor({
               ref={editorRef}
               contentEditable
               suppressContentEditableWarning
-              className="w-full min-h-[400px] p-4 rounded-lg shadow-inner focus:outline-none leading-relaxed"
+              style={{ width: "100%", minHeight: 400, padding: 16, borderRadius: 8, boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none", lineHeight: 1.7 }}
               style={{
                 background: 'var(--editor-bg)', color: 'var(--text-1)',
                 marginTop: android ? "0.25rem" : "5rem",
@@ -176,7 +175,7 @@ function Editor({
             />
           </>
         ) : (
-          <div className="text-white/40 text-center mt-20 px-4">
+          <div style={{ color: "rgba(255,255,255,0.4)", textAlign: "center", marginTop: 80, padding: "0 16px" }}>
             {android ? "Tap ☰ above to open your sessions." : "Select or create a session to begin."}
           </div>
         )}
@@ -598,6 +597,7 @@ function AppInner({ navigateRef }) {
       */}
       <BackgroundRouter
         accentHex={customization.accentHex}
+        backgroundEffect={settings.backgroundEffect}
         gradientEnabled={settings.enableGradient}
         customization={customization}
         theme={theme}
@@ -605,7 +605,7 @@ function AppInner({ navigateRef }) {
 
       {/* Android drawer backdrop */}
       {android && drawerOpen && (
-        <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)} />
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 40 }} onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)} />
       )}
 
       <Sidebar
@@ -690,13 +690,13 @@ function AppInner({ navigateRef }) {
         customization={customization} onSave={handleSaveCustomization}
       />
 
-      <div className="fixed bottom-4 right-4 flex items-center gap-3 text-white/40 text-sm select-none"
+      <div style={{ position: "fixed", bottom: 16, right: 16, display: "flex", alignItems: "center", gap: 12, color: "rgba(255,255,255,0.4)", fontSize: 14, userSelect: "none" }}
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        {lastSaved && <span className="opacity-80">Saved ✓ ({lastSaved})</span>}
+        {lastSaved && <span style={{ opacity: 0.8 }}>Saved ✓ ({lastSaved})</span>}
         <button onClick={() => window.location.reload()}
           className={`p-2 rounded-full border border-white/20 hover:border-white/40 transition ${inactive ? "opacity-70" : "opacity-30"}`}
           title="Reload">
-          <RotateCw className="w-4 h-4" />
+          <DSIcons.Refresh size={16} />
         </button>
       </div>
     </div>

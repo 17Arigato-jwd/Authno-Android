@@ -5,12 +5,7 @@
  *
  * Install:  npm install @hackernoon/pixel-icon-library
  * Import once in App entry:
- *   import '@hackernoon/pixel-icon-library/fonts/iconfont.css'
- *
- * Icon browser:  https://pixeliconlibrary.com
- *
- * Usage:
- *   import { DSIcons } from '../DesignSystem';
+ *   
  *   <DSIcons.Home size={20} color={COLORS.violet} />
  *   <DSIcons.Trash size={16} color={COLORS.danger} />
  */
@@ -47,6 +42,7 @@ export const DSIcons = {
   FolderOpen:    icon('folder-open'),
   Archive:       icon('archive'),
   Save:          icon('save'),
+  Target:        icon('bullseye'),
   // Actions
   Check:         icon('check'),
   X:             icon('times'),
@@ -77,6 +73,7 @@ export const DSIcons = {
   // Visual / settings
   Eye:           icon('eye'),
   EyeOff:        icon('eye-slash'),
+  Camera:        icon('camera'),
   Palette:       icon('palette'),
   Text:          icon('font'),
   Sliders:       icon('sliders-h'),
@@ -103,6 +100,7 @@ export const DSIcons = {
   Infinity:      icon('infinity'),
   List:          icon('list'),
   Package:       icon('box'),
+  PackagePlus:   icon('box'),      // pixel lib doesn't have box-plus; box is closest
   Npm:           icon('npm'),
   Github:        icon('github'),
   Figma:         icon('figma'),

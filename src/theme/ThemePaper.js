@@ -129,6 +129,9 @@ export const PAPER = createTheme(DARK_DEFAULT, {
   },
 
   backgroundFx: {
+    type: 'grain',
+    grainOpacity:    0.12,
+    grainSize:       0.55,
     enabled:         false,
     baseColor:       '#f9f9fb',
     colorFrom:       '#2563eb',

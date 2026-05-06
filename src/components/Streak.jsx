@@ -10,9 +10,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Flame, ChevronLeft, ChevronRight, X, Target, CheckCircle2, XCircle } from 'lucide-react';
+import { Flame } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
-import { MinimalButton, COLORS } from '../DesignSystem';
+import { MinimalButton, COLORS, DSIcons } from '../DesignSystem';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -90,8 +90,8 @@ function DayTooltip({ entry, dayLabel, accentHex, cellRef }) {
       <div style={{ fontSize: 11, color: COLORS.textSubtle, marginBottom: 5 }}>{dayLabel}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
         {met
-          ? <CheckCircle2 size={12} color={accentHex} style={{ flexShrink: 0, alignSelf: 'center' }} />
-          : <XCircle      size={12} color={COLORS.textDisabled} style={{ flexShrink: 0, alignSelf: 'center' }} />
+          ? <DSIcons.CheckCircle size={12} color={accentHex} style={{ flexShrink: 0, alignSelf: "center" }} />
+          : <DSIcons.XCircle size={12} color={COLORS.textDisabled} style={{ flexShrink: 0, alignSelf: "center" }} />
         }
         <span style={{ fontSize: 14, fontWeight: 700, color: met ? accentHex : COLORS.textSubtle }}>
           {words.toLocaleString()}
@@ -232,7 +232,7 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
           onClick={onClose}
           style={{ width: 26, height: 26, borderRadius: '50%', justifyContent: 'center', padding: 0 }}
         >
-          <X size={12} />
+          <DSIcons.X size={12} />
         </MinimalButton>
       </div>
 
@@ -264,14 +264,14 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <MinimalButton variant="smooth" size="xs" color={COLORS.textSubtle} onClick={prevMonth}
           style={{ width: 28, height: 28, borderRadius: 6, justifyContent: 'center', padding: 0 }}>
-          <ChevronLeft size={15} />
+          <DSIcons.ChevronLeft size={15} />
         </MinimalButton>
         <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.textSecondary }}>
           {MONTH_NAMES[viewMonth]} {viewYear}
         </span>
         <MinimalButton variant="smooth" size="xs" color={COLORS.textSubtle} onClick={nextMonth}
           style={{ width: 28, height: 28, borderRadius: 6, justifyContent: 'center', padding: 0 }}>
-          <ChevronRight size={15} />
+          <DSIcons.ChevronRight size={15} />
         </MinimalButton>
       </div>
 
@@ -290,7 +290,7 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
       </div>
 
       <div style={{ marginTop: 14, textAlign: 'center', fontSize: 11, color: COLORS.textDisabled, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-        <Target size={11} color={COLORS.textDisabled} />
+        <DSIcons.Target size={11} color={COLORS.textDisabled} />
         Current goal: {goalWords.toLocaleString()} words/day
       </div>
     </div>,

@@ -123,6 +123,7 @@ export const LIGHT_DEFAULT = createTheme(DARK_DEFAULT, {
   },
 
   backgroundFx: {
+    type: 'gradient',
     enabled:         false,
     baseColor:       '#f0f0f2',
     colorFrom:       '#5a00d9',

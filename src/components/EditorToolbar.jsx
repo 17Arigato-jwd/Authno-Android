@@ -12,13 +12,15 @@
  */
 
 import React, { useReducer, useEffect, useCallback } from 'react';
-import { Upload, BarChart2, BookOpen, Eye, FileText, Settings2, Home, ExternalLink, Play, Zap, Edit3, ChevronRight, Puzzle } from 'lucide-react';
+
 import FontSelector from './FontSelector';
 import SizeSelector from './SizeSelector';
 import FormatButton from './FormatButton';
 import { isAndroid } from '../utils/platform';
 import { useEditorToolbarExtensions, useExtensions } from '../utils/ExtensionContext';
-import { COLORS } from '../DesignSystem';
+import { COLORS,
+  DSIcons,
+} from '../DesignSystem';
 
 const initialState = { bold: false, italic: false, underline: false, highlight: false };
 const reducer = (state, action) => action.type === 'SET_STATE' ? { ...state, ...action.payload } : state;
@@ -26,16 +28,18 @@ const reducer = (state, action) => action.type === 'SET_STATE' ? { ...state, ...
 // ── Extension icon resolver ───────────────────────────────────────────────────
 
 const ICON_NAME_MAP = {
-  Upload, BarChart2, BookOpen, Eye, FileText, Settings2, Home,
-  ExternalLink, Play, Zap, Edit3, ChevronRight, Puzzle,
-  upload: Upload, analytics: BarChart2, book: BookOpen, view: Eye,
-  summary: FileText, settings: Settings2, home: Home, open: ExternalLink,
-  publish: Upload, chapter: BookOpen, sparkles: Zap,
+  upload:    'Upload',   analytics: 'Star',     book:      'Book',
+  view:      'Eye',      summary:   'FileText',  settings:  'Settings',
+  home:      'Home',     open:      'Link',      publish:   'Upload',
+  chapter:   'BookOpen', sparkles:  'Sparkle',   puzzle:    'Extension',
+  play:      'Lightning',edit:      'Edit',
 };
 
 function ExtIconResolved({ iconName, size = 14 }) {
-  const Icon = (iconName && ICON_NAME_MAP[iconName]) || Puzzle;
-  return <Icon size={size} />;
+  const key = iconName && (ICON_NAME_MAP[iconName] ?? iconName);
+  const Icon = key && DSIcons[key];
+  if (Icon) return <Icon size={size} />;
+  return <DSIcons.Extension size={size} />;
 }
 
 // ── EditorToolbar ─────────────────────────────────────────────────────────────
@@ -119,7 +123,7 @@ export default function EditorToolbar({ execCommand, accentHex, session }) {
         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       >
-        Insert <Upload size={14} style={{ opacity: 0.7 }} />
+        Insert <DSIcons.Upload size={14} style={{ opacity: 0.7 }} />
       </button>
 
       {/* Extension toolbar buttons */}

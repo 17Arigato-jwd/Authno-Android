@@ -6,20 +6,16 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  X, User, Palette, Database, BookOpen,
-  Camera, Check, Trash2, RefreshCw, AlertTriangle,
-  BookMarked, FilePlus, ChevronRight, Zap, Sliders, Sun, Target, PackagePlus, List,
-  Cloud, Puzzle, Upload, Settings2, HardDrive, Server, Box,
-} from 'lucide-react';
+
 
 // ── DesignSystem imports (all shared UI comes from here now) ──────────────────
 import {
   COLORS, TYPOGRAPHY,
   Toggle, ColorSwatchRow,
+  AboutSection,
+  DSIcons,
+  buildPalette,
 } from '../DesignSystem';
-// NOTE: buildPalette is re-exported from DesignSystem — no longer from Background.jsx
-import { buildPalette } from '../DesignSystem';
 
 import { useTheme, ALL_THEMES, injectThemeFonts } from '../theme';
 import { ColorPicker } from './ColorPicker';
@@ -50,11 +46,12 @@ const ACCENT_PRESETS = [
 ];
 
 const NAV_ITEMS = [
-  { id: 'profile',    label: 'Profile',         icon: User,     group: 'User' },
-  { id: 'appearance', label: 'Appearance',       icon: Palette,  group: 'User' },
-  { id: 'writing',    label: 'Writing Goal',     icon: Target,   group: 'User' },
-  { id: 'startup',    label: 'Startup Behavior', icon: BookOpen, group: 'App'  },
-  { id: 'data',       label: 'Data Management',  icon: Database, group: 'App'  },
+  { id: 'profile',    label: 'Profile',         icon: (p) => <DSIcons.User {...p} />,     group: 'User' },
+  { id: 'appearance', label: 'Appearance',       icon: (p) => <DSIcons.Palette {...p} />,  group: 'User' },
+  { id: 'writing',    label: 'Writing Goal',     icon: (p) => <DSIcons.Target {...p} />,   group: 'User' },
+  { id: 'startup',    label: 'Startup Behavior', icon: (p) => <DSIcons.BookOpen {...p} />, group: 'App'  },
+  { id: 'data',       label: 'Data Management',  icon: (p) => <DSIcons.Package {...p} />, group: 'App'  },
+  { id: 'about',      label: 'About',            icon: (p) => <DSIcons.Info {...p} />,     group: 'App'  },
 ];
 
 // ─── Local-only primitives (settings-specific layout, not shared UI) ──────────
@@ -104,7 +101,7 @@ function ConfirmModal({ title, message, type, onConfirm, onCancel }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
       <div style={{ background: 'var(--modal-bg)', border: '1px solid var(--border)', borderRadius: '16px', padding: '28px', maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <AlertTriangle size={20} color={type === 'danger' ? '#ed4245' : '#faa61a'} />
+          <DSIcons.Warning size={20} color={type === 'danger' ? '#ed4245' : '#faa61a'} />
           <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)' }}>{title}</span>
         </div>
         <p style={{ fontSize: '14px', color: 'var(--text-4)', lineHeight: 1.5, marginBottom: '24px' }}>{message}</p>
@@ -141,14 +138,14 @@ function ProfilePanel({ settings, onChange, accentHex }) {
           <div style={{ width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', border: `3px solid ${accentHex}`, background: 'var(--surface-md)' }}>
             {settings.avatarDataUrl
               ? <img src={settings.avatarDataUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={32} color="var(--text-4)" /></div>
+              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><DSIcons.User size={32} color="var(--text-4)" /></div>
             }
           </div>
           <button
             onClick={() => fileRef.current?.click()}
             style={{ position: 'absolute', bottom: 0, right: 0, width: '26px', height: '26px', borderRadius: '50%', background: accentHex, border: '2px solid var(--modal-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
           >
-            <Camera size={12} color="#fff" />
+            <DSIcons.Camera size={12} color="#fff" />
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} />
         </div>
@@ -175,6 +172,87 @@ function ProfilePanel({ settings, onChange, accentHex }) {
             Remove Avatar
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+
+// ── Background effect options ─────────────────────────────────────────────────
+const BG_EFFECTS = [
+  {
+    id: 'none',
+    label: 'None',
+    description: 'Solid colour — no background effect',
+    preview: (accent) => `linear-gradient(135deg, #111 60%, #1a1a1a)`,
+  },
+  {
+    id: 'gradient',
+    label: 'Gradient Blobs',
+    description: 'Animated ambient blobs (default dark/light)',
+    preview: (accent) => `radial-gradient(circle at 30% 40%, ${accent}55, transparent 50%), radial-gradient(circle at 70% 70%, ${accent}33, transparent 50%), #0a0a0a`,
+  },
+  {
+    id: 'grain',
+    label: 'Grainy Gradient',
+    description: 'Static diagonal gradient with film grain texture',
+    preview: () => `linear-gradient(135deg, #3d1a0a 0%, #0d0f2e 100%)`,
+  },
+];
+
+function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCustomizer }) {
+  return (
+    <div>
+      <Label>Background Effect</Label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {BG_EFFECTS.map(effect => {
+          const active = value === effect.id;
+          return (
+            <button
+              key={effect.id}
+              onClick={() => onChange(effect.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '11px 14px', borderRadius: 10, border: 'none',
+                cursor: 'pointer', textAlign: 'left',
+                background: active ? `${accentHex}18` : 'var(--surface)',
+                border: `1px solid ${active ? accentHex + '55' : 'var(--border)'}`,
+                transition: 'all 0.15s',
+              }}
+            >
+              <div style={{
+                width: 40, height: 28, borderRadius: 6, flexShrink: 0,
+                background: effect.preview(accentHex),
+                border: '1px solid rgba(255,255,255,0.1)',
+              }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: active ? accentHex : 'var(--text-2)', marginBottom: 2 }}>
+                  {effect.label}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-5)', lineHeight: 1.4 }}>
+                  {effect.description}
+                </div>
+              </div>
+              {active && (
+                <div style={{ width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <DSIcons.Check size={10} color="#fff" />
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {value === 'gradient' && (
+        <SettingRow icon={Sliders} title="Gradient Customizer" description="Fine-tune blob colours, count, and speed" accentHex={accentHex}>
+          <button
+            onClick={onOpenCustomizer}
+            style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: `${accentHex}22`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', transition: 'background 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.background = `${accentHex}44`}
+            onMouseLeave={e => e.currentTarget.style.background = `${accentHex}22`}
+          >
+            Open <DSIcons.ChevronRight size={14} />
+          </button>
+        </SettingRow>
       )}
     </div>
   );
@@ -250,26 +328,26 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
 
       <SettingsDivider />
 
-      {/* Effects — uses DesignSystem Toggle */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SettingRow icon={Zap} title="Gradient Background" description="Animated ambient blobs behind the interface" accentHex={accentHex}>
-          <Toggle checked={settings.enableGradient ?? false} onChange={(v) => onChange({ enableGradient: v })} accentHex={accentHex} />
-        </SettingRow>
+      {/* Light Mode toggle */}
+      <div style={{ marginBottom: 20 }}>
         <SettingRow icon={Sun} title="Light Mode" description="Switch to a light colour scheme" accentHex={accentHex}>
-          <Toggle checked={settings.lightMode ?? false} onChange={(v) => onChange({ lightMode: v })} accentHex={accentHex} />
-        </SettingRow>
-        <div style={{ height: '8px' }} />
-        <SettingRow icon={Sliders} title="Gradient Customizer" description="Fine-tune blobs, colours, and speed" accentHex={accentHex}>
-          <button
-            onClick={onOpenCustomizer}
-            style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: `${accentHex}22`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = `${accentHex}44`}
-            onMouseLeave={e => e.currentTarget.style.background = `${accentHex}22`}
-          >
-            Open <ChevronRight size={14} />
-          </button>
+          <Toggle
+            on={settings.lightMode ?? false}
+            onChange={(v) => onChange({ lightMode: v })}
+            accentHex={accentHex}
+          />
         </SettingRow>
       </div>
+
+      <SettingsDivider />
+
+      {/* Background Effect dropdown */}
+      <BackgroundEffectPicker
+        value={settings.backgroundEffect ?? (settings.enableGradient ? 'gradient' : 'none')}
+        onChange={(v) => onChange({ backgroundEffect: v, enableGradient: v === 'gradient' })}
+        accentHex={accentHex}
+        onOpenCustomizer={onOpenCustomizer}
+      />
     </div>
   );
 }
@@ -278,7 +356,7 @@ function StartupPanel({ settings, onChange, accentHex }) {
   const options = [
     { id: 'last',  icon: BookMarked, title: 'Reopen last book',  description: 'Pick up exactly where you left off'   },
     { id: 'blank', icon: FilePlus,   title: 'Open a blank book', description: 'Start fresh every time you launch'    },
-    { id: 'home',  icon: BookOpen,   title: 'Show home screen',  description: 'Browse and choose a book on launch'   },
+    { id: 'home',  icon: (p) => <DSIcons.BookOpen {...p} />,   title: 'Show home screen',  description: 'Browse and choose a book on launch'   },
   ];
 
   return (
@@ -309,7 +387,7 @@ function StartupPanel({ settings, onChange, accentHex }) {
                 <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>{opt.description}</div>
               </div>
               <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: `2px solid ${selected ? accentHex : 'var(--text-5)'}`, background: selected ? accentHex : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
-                {selected && <Check size={10} color="#fff" />}
+                {selected && <DSIcons.Check size={10} color="#fff" />}
               </div>
             </div>
           );
@@ -321,7 +399,7 @@ function StartupPanel({ settings, onChange, accentHex }) {
       <Label>Session Persistence</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <SettingRow icon={BookOpen} title="Restore previously open books" description="Re-open all books that were open last session" accentHex={accentHex}>
-          <Toggle checked={settings.restoreOpenBooks ?? true} onChange={(v) => onChange({ restoreOpenBooks: v })} accentHex={accentHex} />
+          <Toggle on={settings.restoreOpenBooks ?? true} onChange={(v) => onChange({ restoreOpenBooks: v })} accentHex={accentHex} />
         </SettingRow>
       </div>
     </div>
@@ -449,6 +527,17 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
   );
 }
 
+
+function AboutPanel({ accentHex }) {
+  return (
+    <div>
+      <SectionTitle>About</SectionTitle>
+      <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
+      <AboutSection accentHex={accentHex} />
+    </div>
+  );
+}
+
 function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
   const [confirm, setConfirm]           = useState(null);
   const [importStatus, setImportStatus] = useState(null);
@@ -501,7 +590,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
       <Label>Diagnostics</Label>
       <div style={{ padding: '14px 16px', borderRadius: '10px', marginBottom: '20px', border: 'rgba(255,255,255,0.07) 1px solid', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <List size={15} color="rgba(255,255,255,0.5)" />
+          <DSIcons.List size={15} color="rgba(255,255,255,0.5)" />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Error Log</div>
@@ -513,18 +602,36 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
         </button>
       </div>
 
+      
+      {/* About button */}
+      <div style={{ padding: '14px 16px', borderRadius: '10px', marginBottom: '20px', border: `1px solid ${accentHex}22`, background: `${accentHex}08`, display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `${accentHex}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <DSIcons.Info size={15} color={accentHex} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>About Authno</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>Version info, open-source credits and attribution</div>
+        </div>
+        <button
+          onClick={onOpenAbout}
+          style={{ padding: '7px 16px', borderRadius: '7px', border: `1px solid ${accentHex}44`, background: `${accentHex}18`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          Open <DSIcons.ChevronRight size={13} />
+        </button>
+      </div>
+
       <SettingsDivider />
       <Label>Extensions</Label>
       <div style={{ padding: '14px 16px', borderRadius: '10px', marginBottom: '20px', border: `1px solid ${accentHex}22`, background: `${accentHex}08`, display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `${accentHex}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <PackagePlus size={15} color={accentHex} />
+          <DSIcons.PackagePlus size={15} color={accentHex} />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Import Extension</div>
           <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>Select a <code style={{ color: 'var(--text-3)' }}>.extbk</code> file to install an extension</div>
           {importStatus && importStatus !== 'loading' && (
             <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 500, color: importStatus.ok ? '#22c55e' : '#f87171', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              {importStatus.ok ? <Check size={12} /> : <AlertTriangle size={12} />}{importStatus.message}
+              {importStatus.ok ? <DSIcons.Check size={12} /> : <DSIcons.Warning size={12} />}{importStatus.message}
             </div>
           )}
         </div>
@@ -567,7 +674,8 @@ export const DEFAULT_SETTINGS = {
   avatarDataUrl: null,
   accentHex: '#5a00d9',
   themeId: 'dark-default',
-  enableGradient: false,
+  backgroundEffect: 'none',   // 'none' | 'gradient' | 'grain'
+  enableGradient: false,       // kept for backward compat
   lightMode: false,
   startupBehavior: 'home',
   restoreOpenBooks: true,
@@ -603,9 +711,11 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       id:    `ext::${item._extId}::${item.id}`,
       label: item.label,
       icon:  (() => {
-        const LUCIDE_MAP = { Cloud, Puzzle, Upload, Settings2, HardDrive, Server, Box, Database, BookOpen, Zap };
-        const LucideIcon = item.icon && LUCIDE_MAP[item.icon];
-        if (LucideIcon) return (props) => <LucideIcon {...props} />;
+        const DS_MAP = { Cloud: 'Star', Puzzle: 'Extension', Upload: 'Upload', Settings2: 'Settings',
+          HardDrive: 'Package', Server: 'Package', Box: 'Package', Database: 'Package',
+          BookOpen: 'BookOpen', Zap: 'Lightning' };
+        const dsKey = item.icon && DS_MAP[item.icon];
+        if (dsKey && DSIcons[dsKey]) return (props) => <DSIcons[dsKey] {...props} />;
         const fallback = item._extIcon ?? item.icon ?? '🧩';
         return (props) => <span style={{ fontSize: '16px', lineHeight: 1 }}>{fallback}</span>;
       })(),
@@ -648,7 +758,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 0', background: 'var(--nav-bg)', flexShrink: 0 }}>
               <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px' }}>Settings</span>
               <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)' }}>
-                <X size={16} />
+                <DSIcons.X size={16} />
               </button>
             </div>
             {/* Scrollable tab bar */}
@@ -671,7 +781,8 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} />}
+              {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
               ))}
@@ -707,13 +818,14 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = 'var(--text-1)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text-4)'; }}
               >
-                <X size={16} />
+                <DSIcons.X size={16} />
               </button>
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'data'       && <DataPanel       {...panelProps} onClearSessions={onClearSessions} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} />}
+              {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
               ))}

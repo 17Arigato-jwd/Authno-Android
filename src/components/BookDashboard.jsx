@@ -22,11 +22,7 @@
  */
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import {
-  ArrowLeft, Upload, Edit3, Plus, Search, ChevronDown, ChevronUp,
-  ArrowUp, SlidersHorizontal, BookOpen, Settings2, Image as ImageIcon,
-  BarChart2, FileText, X,
-} from 'lucide-react';
+
 import { FlameButton } from './Streak';
 import { ChapterRow } from './ChapterRow';
 import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
@@ -177,7 +173,7 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--text-1)' }}>Export Options</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '4px' }}>
-            <X size={20} />
+            <DSIcons.X size={20} />
           </button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -288,7 +284,7 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--text-1)' }}>Book Metadata</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '4px' }}>
-            <X size={20} />
+            <DSIcons.X size={20} />
           </button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -339,7 +335,7 @@ function CoverPicker({ onPick }) {
       <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleChange} />
       <button onClick={() => inputRef.current?.click()}
         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px' }}>
-        <Upload size={28} style={{ opacity: 0.5, color: 'var(--text-4)' }} />
+        <DSIcons.Upload size={28} style={{ opacity: 0.5, color: 'var(--text-4)' }} />
         <span style={{ fontSize: '12px', color: 'var(--text-5)' }}>Add Cover</span>
       </button>
     </>
@@ -510,7 +506,7 @@ export default function BookDashboard({
             background: 'none', border: 'none', color: 'var(--text-1)',
             cursor: 'pointer', fontSize: '15px', fontWeight: 700, padding: '4px',
           }}>
-            <ArrowLeft size={18} />
+            <DSIcons.ChevronLeft size={18} />
             Library
           </button>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -519,9 +515,8 @@ export default function BookDashboard({
                 goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
             )}
             <button ref={burgerBtnRef} onClick={onToggleMenu}
-              className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition"
-              style={{ background: 'none', cursor: 'pointer', color: 'var(--text-1)' }}>
-              <BurgerIcon className="text-white" />
+              style={{ padding: 8, border: '2px solid white', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', transition: 'background 0.15s' }}>
+              <BurgerIcon style={{ color: 'white' }} />
             </button>
           </div>
         </header>
@@ -611,7 +606,7 @@ export default function BookDashboard({
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
               color: accentHex, fontSize: '13px', fontWeight: 600,
             }}>
-              <Settings2 size={13} /> Edit Metadata
+              <DSIcons.Settings size={13} /> Edit Metadata
             </button>
 
             {/* Description */}
@@ -629,8 +624,8 @@ export default function BookDashboard({
                     display: 'flex', alignItems: 'center', gap: '3px',
                   }}>
                     {descExpanded
-                      ? <><span>Show less</span><ChevronUp size={14} /></>
-                      : <><span>Show more</span><ChevronDown size={14} /></>}
+                      ? <><span>Show less</span><DSIcons.ChevronUp size={14} /></>
+                      : <><span>Show more</span><DSIcons.ChevronDown size={14} /></>}
                   </button>
                 )}
               </div>
@@ -674,7 +669,7 @@ export default function BookDashboard({
               boxShadow: `0 4px 20px ${accentHex}44`,
               transition: 'opacity 0.12s',
             }}>
-              <Upload size={17} />
+              <DSIcons.Upload size={17} />
               Export Options
             </button>
 
@@ -721,11 +716,11 @@ export default function BookDashboard({
                   opacity: chapters.length === 0 ? 0.4 : 1,
                   cursor: chapters.length === 0 ? 'default' : 'pointer',
                 }}>
-                <Edit3 size={15} />
+                <DSIcons.Edit size={15} />
                 First Chapter
               </button>
               <button onClick={onNewChapter} style={{ ...ghostBtn, flex: 1 }}>
-                <Edit3 size={15} />
+                <DSIcons.Edit size={15} />
                 New Chapter [{nextChapNum}]
               </button>
             </div>
@@ -813,7 +808,7 @@ export default function BookDashboard({
                 borderRadius: '8px', padding: '7px 12px',
                 color: 'var(--text-3)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               }}>
-                <SlidersHorizontal size={13} />
+                <DSIcons.Sliders size={13} />
                 {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
               </button>
             </div>
@@ -826,7 +821,7 @@ export default function BookDashboard({
               border: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
               padding: '0 14px', marginBottom: '8px',
             }}>
-              <Search size={15} style={{ color: 'var(--text-5)', flexShrink: 0 }} />
+              <DSIcons.Search size={15} style={{ color: 'var(--text-5)', flexShrink: 0 }} />
               <input
                 value={chapterSearch}
                 onChange={e => setChapterSearch(e.target.value)}
@@ -839,7 +834,7 @@ export default function BookDashboard({
               {chapterSearch && (
                 <button onClick={() => setChapterSearch('')}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-5)', padding: '2px' }}>
-                  <X size={14} />
+                  <DSIcons.X size={14} />
                 </button>
               )}
             </div>
@@ -899,7 +894,7 @@ export default function BookDashboard({
           cursor: 'pointer', boxShadow: `0 4px 24px ${accentHex}66`,
           zIndex: 50, transition: 'transform 0.18s ease',
         }}>
-          <ArrowUp size={21} />
+          <DSIcons.ChevronUp size={21} />
         </button>
       )}
     </>

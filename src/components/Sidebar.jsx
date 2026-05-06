@@ -9,7 +9,6 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
 import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
@@ -26,6 +25,7 @@ import {
   Divider,
   COLORS,
   TYPOGRAPHY,
+  DSIcons,
 } from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -248,20 +248,12 @@ export default function Sidebar({
     {
       key: "sessions",
       label: "Sessions",
-      icon: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-      ),
+      icon: <DSIcons.BookOpen size={14} />,
     },
     {
       key: "extensions",
       label: "Extensions",
-      icon: (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2a2 2 0 0 1 2 2v1h3a1 1 0 0 1 1 1v3h1a2 2 0 0 1 0 4h-1v3a1 1 0 0 1-1 1h-3v1a2 2 0 0 1-4 0v-1H7a1 1 0 0 1-1-1v-3H5a2 2 0 0 1 0-4h1V6a1 1 0 0 1 1-1h3V4a2 2 0 0 1 2-2z"/>
-        </svg>
-      ),
+      icon: <DSIcons.Extension size={14} />,
     },
   ];
 
@@ -316,7 +308,7 @@ export default function Sidebar({
             onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           >
-            <X size={18} />
+            <DSIcons.X size={18} />
           </button>
         )}
       </div>

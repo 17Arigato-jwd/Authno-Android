@@ -56,6 +56,7 @@ export const DARK_OLED = createTheme(DARK_DEFAULT, {
   },
 
   backgroundFx: {
+    type: 'none',
     enabled:   false,
     baseColor: '#000000',
     opacity:   0.0,

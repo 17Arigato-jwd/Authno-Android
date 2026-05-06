@@ -149,6 +149,7 @@ export const DARK_DEFAULT = {
   },
 
   backgroundFx: {
+    type: 'gradient',
     enabled:         false,
     baseColor:       '#060606',
     colorFrom:       '#5a00d9',

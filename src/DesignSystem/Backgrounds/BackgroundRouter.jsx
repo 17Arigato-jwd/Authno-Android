@@ -1,45 +1,45 @@
 /**
  * Backgrounds/BackgroundRouter.jsx
  *
- * Reads the active theme's backgroundFx config and renders the correct
- * background component. This is the ONLY background import needed in App.js.
- *
- * Supported types (theme.backgroundFx.type):
- *   'gradient'  → GradientBackground  (animated blobs — default dark/light/OLED)
- *   'grain'     → GrainGradientBackground  (static grainy gradient — sepia/paper)
- *   'none'      → null  (pure CSS var background set by applyTheme)
- *
- * If backgroundFx.type is omitted:
- *   - Falls back to 'gradient' if backgroundFx.enabled is true
- *   - Falls back to 'none' if backgroundFx.enabled is false
- *
- * Usage in App.js:
- *   import { BackgroundRouter } from './DesignSystem/Backgrounds';
- *
- *   // Replace the old <Background ... /> usage:
- *   <BackgroundRouter
- *     accentHex={customization.accentHex}
- *     customization={customization}
- *     gradientEnabled={settings.enableGradient}
- *   />
+ * Reads either the active theme's backgroundFx config OR the user-selected
+ * `backgroundEffect` setting and renders the correct background component.
  *
  * Props:
- *   accentHex         string   current accent colour from customization
- *   gradientEnabled   bool     user toggle for the gradient background
- *   customization     object   full CustomizationSlider state (for blob config)
- *                              { backgroundOpacity, gradient: { colorFrom, colorTo,
- *                                blobCountMin, blobCountMax, blobSizeMin, blobSizeMax,
- *                                speedMultiplier } }
- *   theme             object   active theme (from useTheme()). Optional — falls back
- *                              to gradient when omitted.
+ *   accentHex         string   current accent colour
+ *   backgroundEffect  string   user setting: 'none' | 'gradient' | 'grain'
+ *                              Takes priority over theme.backgroundFx.type
+ *   gradientEnabled   bool     legacy fallback if backgroundEffect is undefined
+ *   customization     object   GradientBackground config (blobs, opacity, etc.)
+ *   theme             object   active theme — theme.backgroundFx.type overrides
+ *                              gradientEnabled but is overridden by backgroundEffect
+ *
+ * Priority chain (highest → lowest):
+ *   backgroundEffect  >  theme.backgroundFx.type  >  gradientEnabled
  */
 
 import { GradientBackground } from './GradientBackground';
 import { GrainGradientBackground } from './GrainGradientBackground';
 
-export function BackgroundRouter({ accentHex, gradientEnabled = false, customization = {}, theme }) {
+export function BackgroundRouter({
+  accentHex,
+  backgroundEffect,     // 'none' | 'gradient' | 'grain'  — user setting
+  gradientEnabled = false,  // legacy bool fallback
+  customization = {},
+  theme,
+}) {
   const fx = theme?.backgroundFx ?? {};
-  const type = fx.type ?? (gradientEnabled ? 'gradient' : 'none');
+
+  // Resolve the effective type
+  let type;
+  if (backgroundEffect && backgroundEffect !== 'none') {
+    type = backgroundEffect;                    // user dropdown wins
+  } else if (backgroundEffect === 'none') {
+    type = 'none';                              // user explicitly chose none
+  } else if (fx.type) {
+    type = fx.type;                             // theme specifies a type
+  } else {
+    type = gradientEnabled ? 'gradient' : 'none'; // legacy bool fallback
+  }
 
   if (type === 'grain') {
     return (
@@ -55,7 +55,7 @@ export function BackgroundRouter({ accentHex, gradientEnabled = false, customiza
     );
   }
 
-  if (type === 'gradient' || (type !== 'none' && gradientEnabled)) {
+  if (type === 'gradient') {
     const g = customization.gradient ?? {};
     return (
       <GradientBackground
@@ -71,6 +71,6 @@ export function BackgroundRouter({ accentHex, gradientEnabled = false, customiza
     );
   }
 
-  // type === 'none' — background colour is handled purely by CSS vars (applyTheme)
+  // 'none' — CSS vars handle background colour only
   return null;
 }

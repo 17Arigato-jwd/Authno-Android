@@ -129,6 +129,9 @@ export const SEPIA = createTheme(DARK_DEFAULT, {
   },
 
   backgroundFx: {
+    type: 'grain',
+    grainOpacity:    0.18,
+    grainSize:       0.65,
     enabled:         false,
     baseColor:       '#f5efe0',
     colorFrom:       '#9a6b2a',

@@ -17,6 +17,8 @@ export function injectDesignSystemFonts() {
   link.href =
     'https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600;700&display=swap';
   document.head.appendChild(link);
+  // Note: @hackernoon/pixel-icon-library CSS is imported in src/index.js
+  // so the <i class="hn hn-{name}"> icon font is available globally.
 }
 
 // ── App Metadata — bump on every release ─────────────────────────────────────

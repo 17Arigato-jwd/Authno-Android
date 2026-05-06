@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Sliders, Sparkles } from 'lucide-react';
+
 import { ColorPicker } from './ColorPicker';
 
 // ─── Default state ────────────────────────────────────────────────────────────
@@ -21,8 +21,8 @@ export const DEFAULT_CUSTOMIZATION = {
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
 const NAV = [
-  { id: 'background', label: 'Background',          icon: Sliders,  group: 'Colors'  },
-  { id: 'gradient',   label: 'Gradient Customizer', icon: Sparkles, group: 'Effects' },
+  { id: 'background', label: 'Background',          icon: () => <DSIcons.Sliders size={15} />,  group: 'Colors'  },
+  { id: 'gradient',   label: 'Gradient Customizer', icon: () => <DSIcons.Sparkle size={15} />, group: 'Effects' },
 ];
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -400,7 +400,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
                       textAlign: 'left', transition: 'all 0.1s',
                     }}
                   >
-                    <item.icon size={15} color={active ? accentHex : '#72767d'} />
+                    <item.icon color={active ? accentHex : '#72767d'} />
                     {item.label}
                     {active && (
                       <div style={{

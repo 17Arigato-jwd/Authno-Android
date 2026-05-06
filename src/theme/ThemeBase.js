@@ -319,6 +319,7 @@ export function resolveActionTile(theme, accentHex, hovered = false, comingSoon 
 export function getBackgroundFxProps(theme) {
   const fx = theme.backgroundFx;
   return {
+    type:                fx.type,           // 'gradient' | 'grain' | 'none'
     visible:             fx.enabled,
     baseColor:           fx.baseColor,
     colorRange:          { from: fx.colorFrom, to: fx.colorTo },
@@ -327,6 +328,8 @@ export function getBackgroundFxProps(theme) {
     blobSizeRange:       fx.blobSizeRange,
     blobSpeedMultiplier: fx.speedMultiplier,
     backgroundOpacity:   fx.opacity,
+    grainOpacity:        fx.grainOpacity,
+    grainSize:           fx.grainSize,
   };
 }
 

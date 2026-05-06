@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Trash2, Save } from 'lucide-react';
+
 import { createPortal } from 'react-dom';
 
 /**
@@ -53,7 +53,7 @@ export default function FileIntegrityModal({ brokenSessions, accentHex, onRemove
       }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-          <AlertTriangle size={20} color="#faa61a" />
+          <DSIcons.Warning size={20} color="#faa61a" />
           <span style={{ fontSize: '17px', fontWeight: 700, color: '#f2f3f5' }}>
             File{remaining.length > 1 ? 's' : ''} No Longer Accessible
           </span>
@@ -92,7 +92,7 @@ export default function FileIntegrityModal({ brokenSessions, accentHex, onRemove
                     opacity: savingId === session.id ? 0.6 : 1,
                   }}
                 >
-                  <Save size={13} />
+                  <DSIcons.Save size={13} />
                   {savingId === session.id ? 'Saving…' : 'Save to New Location'}
                 </button>
                 <button
@@ -106,7 +106,7 @@ export default function FileIntegrityModal({ brokenSessions, accentHex, onRemove
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                   }}
                 >
-                  <Trash2 size={13} />
+                  <DSIcons.Trash size={13} />
                   Remove from Sidebar
                 </button>
               </div>

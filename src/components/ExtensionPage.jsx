@@ -11,7 +11,13 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, RefreshCw, ExternalLink, Check, AlertTriangle, Loader } from 'lucide-react';
+import { DSIcons } from '../DesignSystem';
+
+// ── Spin animation for loading indicator ─────────────────────────────────────
+const _spinStyle = document.createElement('style');
+_spinStyle.textContent = '@keyframes dsSpinIcon { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+if (!document.getElementById('ds-spin')) { _spinStyle.id = 'ds-spin'; document.head.appendChild(_spinStyle); }
+
 import { Browser } from '@capacitor/browser';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
@@ -56,7 +62,7 @@ function PageHeader({ title, onBack, accentHex, action }) {
           }}
           aria-label="Back"
         >
-          <ArrowLeft size={18} />
+          <DSIcons.ChevronLeft size={18} />
         </button>
         <span style={{
           color: 'var(--text-1)', fontWeight: 600, fontSize: '16px',
@@ -401,7 +407,7 @@ ${fileCode}
   if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', color: 'var(--text-4)' }}>
-        <Loader size={28} style={{ animation: 'spin 1s linear infinite' }} />
+        <DSIcons.Refresh size={28} style={{ animation: 'dsSpinIcon 1s linear infinite' }} />
         <span style={{ fontSize: '13px' }}>Loading extension…</span>
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
@@ -502,7 +508,7 @@ function AuthFormPage({ extension, accentHex, onBack }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
           }}
         >
-          {saved ? <><Check size={16} /> Saved!</> : 'Save credentials'}
+          {saved ? <><DSIcons.Check size={16} /> Saved!</> : 'Save credentials'}
         </button>
         <button
           onClick={handleClear}
@@ -536,7 +542,7 @@ function WebviewPage({ url, accentHex }) {
           flexDirection: 'column', gap: '12px', color: 'var(--text-4)',
           zIndex: 2, background: 'var(--app-bg)',
         }}>
-          <Loader size={28} style={{ animation: 'spin 1s linear infinite' }} />
+          <DSIcons.Refresh size={28} style={{ animation: 'dsSpinIcon 1s linear infinite' }} />
           <span style={{ fontSize: '13px' }}>Loading…</span>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
@@ -555,7 +561,7 @@ function WebviewPage({ url, accentHex }) {
       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', background: 'var(--app-bg)', flexShrink: 0 }}>
         <button onClick={() => { try { window.open(url, '_blank', 'noopener'); } catch {} }}
           style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'transparent', border: 'none', color: accentHex, fontSize: '12px', cursor: 'pointer' }}>
-          <ExternalLink size={13} /> Open in browser
+          <DSIcons.Link size={13} /> Open in browser
         </button>
       </div>
     </div>
@@ -586,7 +592,7 @@ function ApiDataPage({ extension, page, session, accentHex }) {
     return () => window.removeEventListener('extension-api-refresh', h);
   }, [load]);
 
-  if (loading) return <StatusBox icon={<Loader size={28} style={{ animation: 'spin 1s linear infinite' }} />} title="Loading data…" />;
+  if (loading) return <StatusBox icon={<DSIcons.Refresh size={28} style={{ animation: 'dsSpinIcon 1s linear infinite' }} />} title="Loading data…" />;
   if (error)   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <StatusBox icon="⚠️" title="Could not load data" subtitle={error} />
@@ -603,7 +609,7 @@ function ApiDataPage({ extension, page, session, accentHex }) {
     <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'transparent', border: 'none', color: 'var(--text-3)', fontSize: '12px', cursor: 'pointer' }}>
-          <RefreshCw size={12} /> Refresh
+          <DSIcons.Refresh size={12} /> Refresh
         </button>
       </div>
       {entries.length === 0
@@ -680,7 +686,7 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
       ))}
       {status === 'error' && (
         <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#dc262622', border: '1px solid #dc262644', color: '#fca5a5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <AlertTriangle size={14} /> {message}
+          <DSIcons.Warning size={14} /> {message}
         </div>
       )}
       <button
@@ -695,7 +701,7 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
         }}
       >
         {status === 'loading'
-          ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing…</>
+          ? <><DSIcons.Refresh size={16} style={{ animation: 'dsSpinIcon 1s linear infinite' }} /> Processing…</>
           : page.submitLabel ?? 'Submit'}
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </button>
@@ -725,7 +731,7 @@ export default function ExtensionPage({ extension, pageId, session, accentHex, o
       style={{ background: 'transparent', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: '6px' }}
       aria-label="Refresh"
     >
-      <RefreshCw size={16} />
+      <DSIcons.Refresh size={16} />
     </button>
   ) : null;
 

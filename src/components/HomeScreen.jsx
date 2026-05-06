@@ -1,21 +1,25 @@
 // HomeScreen.jsx
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Menu, Cloud, Server, HardDrive, Upload, BookOpen, Settings2,
-  Puzzle, BarChart2, Zap, Globe, Star, Eye, Home, Box } from 'lucide-react';
-import { PencilIcon, FolderIcon } from './GradientIcons';
+
+
+import { DSIcons } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
 import Logo from '../logo.svg';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 
 // Resolve manifest.icon string → Lucide component, or null if not found
+// Extension-contributed tile icon resolver — maps string name → DSIcons key
 const TILE_ICON_MAP = {
-  Cloud, Server, HardDrive, Upload, BookOpen, Settings2,
-  Puzzle, BarChart2, Zap, Globe, Star, Eye, Home, Box,
+  Cloud: 'Star', Server: 'Package', HardDrive: 'Package', Upload: 'Upload',
+  BookOpen: 'BookOpen', Settings2: 'Settings', Puzzle: 'Extension',
+  BarChart2: 'Star', Zap: 'Lightning', Globe: 'Link', Star: 'Star',
+  Eye: 'Eye', Home: 'Home', Box: 'Package',
 };
 function resolveTileIcon(iconName, size = 28) {
-  const I = iconName && TILE_ICON_MAP[iconName];
-  return I ? <I size={size} /> : null;
+  const key = iconName && TILE_ICON_MAP[iconName];
+  const Icon = key && DSIcons[key];
+  return Icon ? <Icon size={size} /> : null;
 }
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
@@ -36,9 +40,7 @@ function useLightMode() {
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const BurgerIcon = ({ className, style }) => (
-  <svg className={className} style={style} width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
+  <DSIcons.Menu size={22} style={{ display: 'inline-flex', ...style }} />
 );
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -344,13 +346,13 @@ export default function HomeScreen({
   const extHomeTiles  = useExtensionContributions('homescreen');
 
   const actions = [
-    { icon: <PencilIcon size={28} accentHex={accentHex} />, label: 'Create a New Book',        onClick: onNewBook },
-    { icon: <FolderIcon size={28} />,                        label: 'Edit an Existing Book',    onClick: handleOpenExisting },
+    { icon: <DSIcons.FilePlus size={28} color={accentHex} />, label: 'Create a New Book',        onClick: onNewBook },
+    { icon: <DSIcons.FolderOpen size={28} color="currentColor" />, label: 'Edit an Existing Book', onClick: handleOpenExisting },
     // Extension-contributed action tiles (dynamically populated)
     ...extHomeTiles.map(tile => ({
       icon: (() => {
-        const lucide = resolveTileIcon(tile.icon ?? tile._extIcon, 28);
-        return lucide ?? <span style={{ fontSize: '26px', lineHeight: 1 }}>{tile.icon ?? tile._extIcon ?? '🧩'}</span>;
+        const tileIcon = resolveTileIcon(tile.icon ?? tile._extIcon, 28);
+        return tileIcon ?? <span style={{ fontSize: '26px', lineHeight: 1 }}>{tile.icon ?? tile._extIcon ?? '🧩'}</span>;
       })(),
       label: tile.label,
       onClick: () => navigate(tile._ext, tile.page),
@@ -372,20 +374,19 @@ export default function HomeScreen({
     }}>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-        style={{ background: 'var(--app-bg)', borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-2 min-w-0">
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--app-bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <button onClick={onToggleSidebar}
-            className="p-2 border border-white/30 rounded-md hover:bg-white/5 transition shrink-0"
+            style={{ padding: 8, border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s' }}
             aria-label="Sessions">
-            <Menu className="w-5 h-5 text-white" />
+            <DSIcons.Menu size={20} color="white" />
           </button>
-          <span className="text-white text-lg font-semibold truncate">Welcome Back</span>
+          <span style={{ color: 'white', fontSize: 18, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Welcome Back</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button ref={burgerBtnRef} onClick={onToggleMenu}
-            className="p-2 border-2 border-white rounded-md hover:bg-white/5 transition">
-            <BurgerIcon className="text-white" />
+            style={{ padding: 8, border: '2px solid white', borderRadius: 6, background: 'none', cursor: 'pointer', transition: 'background 0.15s' }}>
+            <BurgerIcon style={{ color: 'white' }} />
           </button>
         </div>
       </header>

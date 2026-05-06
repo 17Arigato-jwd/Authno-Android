@@ -9,13 +9,13 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Save, SaveAll, FolderOpen, Settings as SettingsIcon } from "lucide-react";
+
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
-import { MinimalButton, Divider, COLORS } from "../DesignSystem";
+import { MinimalButton, Divider, COLORS, DSIcons } from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function BurgerMenu({
@@ -179,7 +179,7 @@ export default function BurgerMenu({
         variant="smooth"
         color={saveColor}
         size="md"
-        icon={<Save size={15} />}
+        icon={<DSIcons.Save size={15} />}
         disabled={busy || !current}
         onClick={handleSave}
         style={{ width: "100%", justifyContent: "center" }}
@@ -193,7 +193,7 @@ export default function BurgerMenu({
         variant="smooth"
         color="#ffffff"
         size="md"
-        icon={<SaveAll size={15} />}
+        icon={<DSIcons.Archive size={15} />}
         disabled={busy || !current}
         onClick={handleSaveAs}
         style={{ width: "100%", justifyContent: "center" }}
@@ -207,7 +207,7 @@ export default function BurgerMenu({
         variant="smooth"
         color="#ffffff"
         size="md"
-        icon={<FolderOpen size={15} />}
+        icon={<DSIcons.FolderOpen size={15} />}
         disabled={busy}
         onClick={handleOpen}
         style={{ width: "100%", justifyContent: "center" }}
@@ -221,7 +221,7 @@ export default function BurgerMenu({
         variant="smooth"
         color="#ffffff"
         size="md"
-        icon={<SettingsIcon size={15} />}
+        icon={<DSIcons.Settings size={15} />}
         onClick={onOpenSettings}
         style={{ width: "100%", justifyContent: "center" }}
       >

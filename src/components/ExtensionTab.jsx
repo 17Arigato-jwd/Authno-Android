@@ -7,14 +7,9 @@
  *   - Slightly-hidden "Open Extensions Folder" button in footer
  */
 
+import { DSIcons } from "../DesignSystem";
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Puzzle, BookOpen, LayoutDashboard, Settings2, ExternalLink,
-  Upload, Eye, FileText, BarChart2, Rocket, Star, Link,
-  MessageCircle, Home, ChevronRight, ChevronDown, ChevronUp,
-  RefreshCw, FolderOpen, Zap, Edit3, Globe, Play, Trash2,
-  Cloud, Server, HardDrive, Box,
-} from 'lucide-react';
+
 import { createPortal } from 'react-dom';
 import { useExtensions } from '../utils/ExtensionContext';
 import { isAndroid } from '../utils/platform';
@@ -23,17 +18,20 @@ import { hapticDelete } from '../utils/haptics';
 // ─── Emoji / string → Lucide icon resolver ────────────────────────────────────
 
 const EMOJI_MAP = {
-  '📚': BookOpen, '📖': BookOpen, '📝': Edit3, '📊': BarChart2,
-  '🚀': Rocket,   '⚙️': Settings2, '🏠': Home,  '📤': Upload,
-  '👁️': Eye,     '⭐': Star,      '🔗': Link,  '💬': MessageCircle,
-  '🌐': Globe,   '⚡': Zap,       '▸': Play,    '↗': ExternalLink,
-  '▶': Play,
+  '📚': DSIcons.BookOpen, '📖': DSIcons.BookOpen, '📝': DSIcons.Edit, '📊': DSIcons.Star,
+  '🚀': DSIcons.Rocket,   '⚙️': DSIcons.Settings, '🏠': DSIcons.Home,  '📤': DSIcons.Upload,
+  '👁️': DSIcons.Eye,     '⭐': DSIcons.Star,      '🔗': DSIcons.Link,  '💬': DSIcons.Chat,
+  '🌐': DSIcons.Link,   '⚡': DSIcons.Lightning,       '▸': DSIcons.Lightning,    '↗': DSIcons.Link,
+  '▶': DSIcons.Lightning,
 };
 
 // Lucide icon name → component (manifest.icon string like "Cloud", "Server", etc.)
 const LUCIDE_ICON_MAP = {
-  Cloud, Server, HardDrive, Box, Upload, BookOpen, Settings2,
-  Puzzle, BarChart2, Zap, Globe, Star, Edit3, Eye, Home,
+  Cloud: DSIcons.Star, Server: DSIcons.Package, HardDrive: DSIcons.Package,
+  Box: DSIcons.Package, Upload: DSIcons.Upload, BookOpen: DSIcons.BookOpen,
+  Settings2: DSIcons.Settings, Puzzle: DSIcons.Extension, BarChart2: DSIcons.Star,
+  Zap: DSIcons.Lightning, Globe: DSIcons.Link, Star: DSIcons.Star,
+  Edit3: DSIcons.Edit, Eye: DSIcons.Eye, Home: DSIcons.Home,
 };
 
 function resolveLucideIcon(iconName) {
@@ -41,10 +39,10 @@ function resolveLucideIcon(iconName) {
 }
 
 const LABEL_MAP = {
-  'open': ExternalLink, 'open dashboard': LayoutDashboard,
-  'summary': FileText,  'publish': Upload, 'publish draft': Upload,
-  'view': Eye,          'analytics': BarChart2, 'settings': Settings2,
-  'home': Home,         'book': BookOpen,
+  'open': DSIcons.Link, 'open dashboard': DSIcons.List,
+  'summary': DSIcons.FileText,  'publish': DSIcons.Upload, 'publish draft': DSIcons.Upload,
+  'view': DSIcons.Eye,          'analytics': DSIcons.Star, 'settings': DSIcons.Settings,
+  'home': DSIcons.Home,         'book': DSIcons.BookOpen,
 };
 
 function getContribIcon(contrib, size = 12) {
@@ -59,17 +57,17 @@ function getContribIcon(contrib, size = 12) {
   }
 
   if (LABEL_MAP[label]) { const I = LABEL_MAP[label]; return <I size={size} />; }
-  if (group === 'home')     return <Home size={size} />;
-  if (group === 'settings') return <Settings2 size={size} />;
-  if (group === 'book')     return <BookOpen size={size} />;
-  if (group === 'page')     return <ExternalLink size={size} />;
-  if (label.includes('publish')) return <Upload size={size} />;
-  if (label.includes('analytic') || label.includes('stat')) return <BarChart2 size={size} />;
-  if (label.includes('dashboard')) return <LayoutDashboard size={size} />;
-  if (label.includes('summary')) return <FileText size={size} />;
-  if (label.includes('view')) return <Eye size={size} />;
+  if (group === 'home')     return <DSIcons.Home size={size} />;
+  if (group === 'settings') return <DSIcons.Settings size={size} />;
+  if (group === 'book')     return <DSIcons.BookOpen size={size} />;
+  if (group === 'page')     return <DSIcons.Link size={size} />;
+  if (label.includes('publish')) return <DSIcons.Upload size={size} />;
+  if (label.includes('analytic') || label.includes('stat')) return <DSIcons.Star size={size} />;
+  if (label.includes('dashboard')) return <DSIcons.List size={size} />;
+  if (label.includes('summary')) return <DSIcons.FileText size={size} />;
+  if (label.includes('view')) return <DSIcons.Eye size={size} />;
 
-  return <ChevronRight size={size} />;
+  return <DSIcons.ChevronRight size={size} />;
 }
 
 // ─── Chip: a single tappable contribution ─────────────────────────────────────
@@ -128,7 +126,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
   const settItems  = ext.contributes?.settings ?? [];
 
   const allContribs = [
-    ...homeTiles.map(c  => ({ ...c, _group: 'Home' })),
+    ...homeTiles.map(c  => ({ ...c, _group: 'ds_Home' })),
     ...bdTabs.map(c     => ({ ...c, _group: 'Book' })),
     ...bdActions.map(c  => ({ ...c, _group: 'Book' })),
     ...settItems.map(c  => ({ ...c, _group: 'Settings' })),
@@ -260,7 +258,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: accentHex,
           }}>
-            {(() => { const I = resolveLucideIcon(ext.icon); return I ? <I size={18} /> : <Puzzle size={18} />; })()}
+            {(() => { const I = resolveLucideIcon(ext.icon); return I ? <I size={18} /> : <DSIcons.Extension size={18} />; })()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
@@ -334,8 +332,8 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                 onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
               >
                 {expanded
-                  ? <><ChevronUp size={12} style={{ marginRight: 2 }} /> Show less</>
-                  : <><ChevronDown size={12} style={{ marginRight: 2 }} /> {hiddenCount} more action{hiddenCount !== 1 ? 's' : ''}</>
+                  ? <><DSIcons.ChevronUp size={12} style={{ marginRight: 2 }} /> Show less</>
+                  : <><DSIcons.ChevronDown size={12} style={{ marginRight: 2 }} /> {hiddenCount} more action{hiddenCount !== 1 ? 's' : ''}</>
                 }
               </button>
             )}
@@ -392,7 +390,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                 fontWeight: 600,
               }}
             >
-              <Trash2 size={15} />
+              <DSIcons.Trash size={15} />
               Remove extension
             </button>
           </div>
@@ -434,7 +432,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                 background: '#ef444422', color: '#fca5a5',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <Trash2 size={16} />
+                <DSIcons.Trash size={16} />
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: 'rgba(255,255,255,0.95)', fontWeight: 700, fontSize: 15 }}>
@@ -571,7 +569,7 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
           }}
         >
-          <RefreshCw size={12} />
+          <DSIcons.Refresh size={12} />
           Refresh extensions
         </button>
 
@@ -599,7 +597,7 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
           }}
         >
-          <FolderOpen size={13} />
+          <DSIcons.FolderOpen size={13} />
         </button>
       </div>
     </div>
