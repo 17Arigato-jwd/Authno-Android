@@ -243,7 +243,7 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
         })}
       </div>
       {value === 'gradient' && (
-        <SettingRow icon={Sliders} title="Gradient Customizer" description="Fine-tune blob colours, count, and speed" accentHex={accentHex}>
+        <SettingRow icon={DSIcons.Sliders} title="Gradient Customizer" description="Fine-tune blob colours, count, and speed" accentHex={accentHex}>
           <button
             onClick={onOpenCustomizer}
             style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: `${accentHex}22`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', transition: 'background 0.15s' }}
@@ -330,7 +330,7 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
 
       {/* Light Mode toggle */}
       <div style={{ marginBottom: 20 }}>
-        <SettingRow icon={Sun} title="Light Mode" description="Switch to a light colour scheme" accentHex={accentHex}>
+        <SettingRow icon={DSIcons.Lightning} title="Light Mode" description="Switch to a light colour scheme" accentHex={accentHex}>
           <Toggle
             on={settings.lightMode ?? false}
             onChange={(v) => onChange({ lightMode: v })}
@@ -398,7 +398,7 @@ function StartupPanel({ settings, onChange, accentHex }) {
 
       <Label>Session Persistence</Label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SettingRow icon={BookOpen} title="Restore previously open books" description="Re-open all books that were open last session" accentHex={accentHex}>
+        <SettingRow icon={DSIcons.BookOpen} title="Restore previously open books" description="Re-open all books that were open last session" accentHex={accentHex}>
           <Toggle on={settings.restoreOpenBooks ?? true} onChange={(v) => onChange({ restoreOpenBooks: v })} accentHex={accentHex} />
         </SettingRow>
       </div>
@@ -538,7 +538,7 @@ function AboutPanel({ accentHex }) {
   );
 }
 
-function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
+function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout }) {
   const [confirm, setConfirm]           = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [showErrorLog, setShowErrorLog] = useState(false);
