@@ -233,24 +233,24 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
   const pages = [
     {
-      icon: ShieldCheck,
+      icon: (p) => <DSIcons.Shield {...p} />,
       title: "Write offline, stay focused",
       body:
         "AuthNo is built around a local-first workflow.\n\nNo cloud dependency. No account wall. No internet required to keep writing.",
       chips: [
-        { icon: ShieldCheck, text: "Everything stays on device" },
-        { icon: Repeat, text: "Open it anytime, anywhere" },
+        { icon: (p) => <DSIcons.Shield {...p} />, text: "Everything stays on device" },
+        { icon: (p) => <DSIcons.Refresh {...p} />, text: "Open it anytime, anywhere" },
       ],
     },
     {
-      icon: Layers3,
+      icon: (p) => <DSIcons.List {...p} />,
       title: "Books, storyboards, and quick export",
       body:
         "Create regular books or storyboard drafts, then keep moving without breaking your flow.\n\nUse Save As when you need a copy somewhere else.",
       chips: [
-        { icon: BookOpen, text: "Books for long-form writing" },
-        { icon: PenTool, text: "Storyboards for planning" },
-        { icon: Save, text: "Save As for export" },
+        { icon: (p) => <DSIcons.BookOpen {...p} />, text: "Books for long-form writing" },
+        { icon: (p) => <DSIcons.Edit {...p} />, text: "Storyboards for planning" },
+        { icon: (p) => <DSIcons.Save {...p} />, text: "Save As for export" },
       ],
     },
     {
@@ -259,38 +259,38 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
       body:
         "Each book can track its own progress.\n\nSet a daily goal, watch your streak grow, and turn it into your own writing challenge.",
       chips: [
-        { icon: Target, text: "Set a daily goal" },
+        { icon: (p) => <DSIcons.Target {...p} />, text: "Set a daily goal" },
         { icon: Flame, text: "Keep a streak alive" },
       ],
     },
     {
-      icon: Palette,
+      icon: (p) => <DSIcons.Palette {...p} />,
       title: "Make the space feel like yours",
       body:
         "Tune the accent color, light mode, and ambient background to match your mood.\n\nThe frosted glass look stays, but the vibe is yours.",
       chips: [
-        { icon: Palette, text: "Accent and theme controls" },
-        { icon: Sparkles, text: "Ambient background effects" },
+        { icon: (p) => <DSIcons.Palette {...p} />, text: "Accent and theme controls" },
+        { icon: (p) => <DSIcons.Sparkle {...p} />, text: "Ambient background effects" },
       ],
     },
     {
-      icon: ShieldCheck,
+      icon: (p) => <DSIcons.Shield {...p} />,
       title: "New .authbook format",
       body:
         "Your .authbook files now use VCHS-ECS instead of plain JSON.\n\nThink of it as AuthNo’s \"uncorruptable\" era: stronger structure, better resilience, and a format that is built to survive real-world file problems.\n\nOld files still open, but new saves use the upgraded format.",
       chips: [
-        { icon: ShieldCheck, text: "VCHS-ECS container format" },
-        { icon: FolderOpen, text: "Old files still supported" },
+        { icon: (p) => <DSIcons.Shield {...p} />, text: "VCHS-ECS container format" },
+        { icon: (p) => <DSIcons.FolderOpen {...p} />, text: "Old files still supported" },
       ],
     },
     {
-      icon: FolderKey,
+      icon: (p) => <DSIcons.Key {...p} />,
       title: "One permission to rule them all",
       body:
         "To open and save .authbook files from anywhere on your device — Downloads, USB drives, cloud folders — AuthNo needs the \"All files access\" permission.\n\nTap the button below to open the system settings page. Toggle the switch for AuthNo, then come back.",
       chips: [
-        { icon: FolderKey, text: "Open files from any folder" },
-        { icon: Save, text: "Save to any location" },
+        { icon: (p) => <DSIcons.Key {...p} />, text: "Open files from any folder" },
+        { icon: (p) => <DSIcons.Save {...p} />, text: "Save to any location" },
       ],
       permissionPage: true,
       last: true,
@@ -523,18 +523,18 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
 const UPDATE_NOTES = [
   {
-    icon: ShieldCheck,
+    icon: (p) => <DSIcons.Shield {...p} />,
     title: "Stronger .authbook files",
     body: "Files now use the VCHS-ECS format — more resilient, binary-safe, and built to survive real-world storage hiccups. Old files still open normally.",
   },
   {
-    icon: FolderKey,
+    icon: (p) => <DSIcons.Key {...p} />,
     title: "All files access",
     body: "You can now grant AuthNo access to every folder on your device — including Downloads and external drives.\n\nTap the button below to open the setting, or find it any time under Settings → AuthNo.",
     permissionPage: true,
   },
   {
-    icon: Zap,
+    icon: (p) => <DSIcons.Lightning {...p} />,
     title: "Vibration feedback",
     body: "Taps, saves, deletions, and milestone moments now have distinct haptic patterns. No action required — it just works.",
   },

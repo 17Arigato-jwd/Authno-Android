@@ -354,8 +354,8 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
 
 function StartupPanel({ settings, onChange, accentHex }) {
   const options = [
-    { id: 'last',  icon: BookMarked, title: 'Reopen last book',  description: 'Pick up exactly where you left off'   },
-    { id: 'blank', icon: FilePlus,   title: 'Open a blank book', description: 'Start fresh every time you launch'    },
+    { id: 'last',  icon: DSIcons.Bookmark, title: 'Reopen last book',  description: 'Pick up exactly where you left off'   },
+    { id: 'blank', icon: DSIcons.FilePlus, title: 'Open a blank book', description: 'Start fresh every time you launch'    },
     { id: 'home',  icon: (p) => <DSIcons.BookOpen {...p} />,   title: 'Show home screen',  description: 'Browse and choose a book on launch'   },
   ];
 
@@ -569,12 +569,12 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions }) {
 
   const actions = [
     {
-      id: 'clearSessions', icon: Trash2, label: 'Clear All Sessions', color: '#ed4245',
+      id: 'clearSessions', icon: DSIcons.Trash, label: 'Clear All Sessions', color: '#ed4245',
       description: 'Removes all writing sessions from local storage',
       modal: { title: 'Clear All Sessions?', message: 'This will permanently delete all your writing sessions. Your files on disk will not be affected.', type: 'danger', onConfirm: () => { onClearSessions(); setConfirm(null); } },
     },
     {
-      id: 'resetSettings', icon: RefreshCw, label: 'Reset Settings to Default', color: '#faa61a',
+      id: 'resetSettings', icon: DSIcons.Refresh, label: 'Reset Settings to Default', color: '#faa61a',
       description: 'Resets appearance, startup, and profile to defaults',
       modal: { title: 'Reset All Settings?', message: 'Your profile, appearance, and startup preferences will be restored to their defaults. Sessions will not be affected.', type: 'warning',
         onConfirm: () => { onChange({ displayName: '', avatarDataUrl: null, accentHex: '#3b82f6', enableGradient: false, lightMode: false, startupBehavior: 'home', restoreOpenBooks: true }); setConfirm(null); },
@@ -715,7 +715,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
           HardDrive: 'Package', Server: 'Package', Box: 'Package', Database: 'Package',
           BookOpen: 'BookOpen', Zap: 'Lightning' };
         const dsKey = item.icon && DS_MAP[item.icon];
-        if (dsKey && DSIcons[dsKey]) return (props) => <DSIcons[dsKey] {...props} />;
+        if (dsKey && DSIcons[dsKey]) { const _C = DSIcons[dsKey]; return (props) => <_C {...props} />; }
         const fallback = item._extIcon ?? item.icon ?? '🧩';
         return (props) => <span style={{ fontSize: '16px', lineHeight: 1 }}>{fallback}</span>;
       })(),

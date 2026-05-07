@@ -1,3 +1,18 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { DSIcons } from '../DesignSystem';
+import { Browser } from '@capacitor/browser';
+import { useExtensions } from '../utils/ExtensionContext';
+import { callExtensionApi } from '../utils/extensionLoader';
+import { isAndroid } from '../utils/platform';
+
+// ── Inject spin keyframe once at module load ────────────────────────────────
+if (typeof document !== 'undefined' && !document.getElementById('ds-spin')) {
+  const _s = document.createElement('style');
+  _s.id = 'ds-spin';
+  _s.textContent = '@keyframes dsSpinIcon{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+  document.head.appendChild(_s);
+}
+
 /**
  * ExtensionPage.jsx
  *
@@ -10,18 +25,13 @@
  *     isolated window can call storage.get/set, navigate, etc.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { DSIcons } from '../DesignSystem';
 
-// ── Spin animation for loading indicator ─────────────────────────────────────
-const _spinStyle = document.createElement('style');
-_spinStyle.textContent = '@keyframes dsSpinIcon { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
-if (!document.getElementById('ds-spin')) { _spinStyle.id = 'ds-spin'; document.head.appendChild(_spinStyle); }
 
-import { Browser } from '@capacitor/browser';
-import { useExtensions } from '../utils/ExtensionContext';
-import { callExtensionApi } from '../utils/extensionLoader';
-import { isAndroid } from '../utils/platform';
+
+
+
+
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
