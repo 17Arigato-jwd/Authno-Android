@@ -58,4 +58,17 @@ contextBridge.exposeInMainWorld('electron', {
 
   // ── Cold-launch file (app opened by double-clicking a file) ───────────────
   getInitialFile: () => ipcRenderer.invoke('get-pending-file'),
+
+  // ── Custom title-bar window controls (frameless window) ───────────────────
+  windowControls: {
+    minimize:       () => ipcRenderer.send('window-minimize'),
+    toggleMaximize: () => ipcRenderer.send('window-maximize-toggle'),
+    close:          () => ipcRenderer.send('window-close'),
+    isMaximized:    () => ipcRenderer.invoke('window-is-maximized'),
+    onMaximizeChange: (cb) => {
+      const listener = (_e, val) => cb(val);
+      ipcRenderer.on('window-maximized', listener);
+      return () => ipcRenderer.removeListener('window-maximized', listener);
+    },
+  },
 });

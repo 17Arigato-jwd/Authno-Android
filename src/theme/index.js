@@ -28,6 +28,7 @@ export {
   createTheme,
   applyTheme,
   applyAccent,
+  applyFonts,
   ThemeProvider,
   useTheme,
   buildAccentPalette,

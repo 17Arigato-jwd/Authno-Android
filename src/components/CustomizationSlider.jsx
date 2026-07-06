@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DSIcons } from '../DesignSystem';
+import { DEFAULT_FONTS } from '../utils/fontManager';
 
 import { ColorPicker } from './ColorPicker';
 
@@ -17,6 +18,7 @@ export const DEFAULT_CUSTOMIZATION = {
     blobSizeMax:        450,
     speedMultiplier:    1.0,
   },
+  fonts: DEFAULT_FONTS,
 };
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
@@ -30,7 +32,7 @@ const NAV = [
 
 function SectionTitle({ children }) {
   return (
-    <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '4px', letterSpacing: '-0.3px' }}>
+    <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-1)', marginBottom: '4px', letterSpacing: '-0.3px' }}>
       {children}
     </h2>
   );
@@ -346,15 +348,15 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
       <style>{`
         @keyframes csFadeIn  { from { opacity: 0; } to { opacity: 1; } }
         @keyframes csPanelIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .cs-nav-btn:hover { background: rgba(255,255,255,0.06) !important; color: #dcddde !important; }
+        .cs-nav-btn:hover { background: var(--surface-md) !important; color: var(--text-2) !important; }
       `}</style>
 
       <div style={{
         width: '90vw', maxWidth: '820px',
         height: '80vh', maxHeight: '640px',
         display: 'flex', borderRadius: '16px', overflow: 'hidden',
-        background: '#2b2d31',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--modal-bg)',
+        border: '1px solid var(--border)',
         boxShadow: `0 32px 80px rgba(0,0,0,0.6), 0 0 80px ${accentHex}18`,
         animation: 'csPanelIn 0.2s ease',
       }}>
@@ -362,10 +364,10 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
         {/* ── Left nav ── */}
         <div style={{
           width: '210px', flexShrink: 0,
-          background: '#1e1f22',
+          background: 'var(--nav-bg)',
           padding: '16px 8px',
           display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
+          borderRight: '1px solid var(--border-sm)',
           overflowY: 'auto',
         }}>
           {/* Accent swatch at top */}
@@ -396,7 +398,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
                       width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
                       padding: '8px 10px', borderRadius: '6px', border: 'none',
                       background: active ? `${accentHex}22` : 'transparent',
-                      color: active ? '#fff' : '#96989d',
+                      color: active ? 'var(--text-1)' : 'var(--text-4)',
                       cursor: 'pointer', fontSize: '14px', fontWeight: active ? 600 : 400,
                       textAlign: 'left', transition: 'all 0.1s',
                     }}
@@ -422,20 +424,22 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
 
         {/* ── Content ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}>
-          <button
-            onClick={onClose}
-            style={{
-              position: 'absolute', top: '16px', right: '16px',
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: 'var(--surface)', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--text-4)'; }}
-          >
-            <DSIcons.X size={16} />
-          </button>
+          <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
+            <button
+              onClick={onClose}
+              style={{
+                position: 'absolute', top: '0px', right: '0px',
+                width: '32px', height: '32px', borderRadius: '50%',
+                background: 'var(--surface)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--text-4)'; }}
+            >
+              <DSIcons.X size={16} />
+            </button>
+          </div>
 
           {activeSection === 'background' && <BackgroundPanel {...panelProps} />}
           {activeSection === 'gradient'   && <GradientPanel   {...panelProps} />}

@@ -330,15 +330,15 @@ export default function HomeScreen({
     ...extHomeTiles.map(tile => ({
       icon: (() => {
         const tileIcon = resolveTileIcon(tile.icon ?? tile._extIcon, 28);
-        return tileIcon ?? <span style={{ fontSize: '26px', lineHeight: 1 }}>{tile.icon ?? tile._extIcon ?? '🧩'}</span>;
+        return tileIcon ?? <DSIcons.Extension size={28} color="currentColor" />;
       })(),
       label: tile.label,
       onClick: () => navigate(tile._ext, tile.page),
     })),
     // U2: the three placeholder "Coming Soon" tiles are now real actions.
-    { icon: <span style={{ fontSize: 26, lineHeight: 1 }}>🔊</span>, label: 'Read Aloud', onClick: onReadAloud },
+    { icon: <DSIcons.Volume size={28} color="currentColor" />, label: 'Read Aloud', onClick: onReadAloud },
     { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleOpenExisting },
-    { icon: <span style={{ fontSize: 26, lineHeight: 1 }}>🧩</span>, label: 'Extensions', onClick: onOpenExtensions },
+    { icon: <DSIcons.Extension size={28} color="currentColor" />, label: 'Extensions', onClick: onOpenExtensions },
   ];
 
   const listNudge = refreshing
@@ -356,16 +356,16 @@ export default function HomeScreen({
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--app-bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <button onClick={onToggleSidebar}
-            style={{ padding: 8, border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s' }}
+            style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', color: 'var(--text-1)' }}
             aria-label="Sessions">
-            <DSIcons.Menu size={20} color="white" />
+            <DSIcons.Menu size={20} color="var(--text-1)" />
           </button>
-          <span style={{ color: 'white', fontSize: 18, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Welcome Back</span>
+          <span style={{ color: 'var(--text-1)', fontSize: 18, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Welcome Back</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button ref={burgerBtnRef} onClick={onToggleMenu}
-            style={{ padding: 8, border: '2px solid white', borderRadius: 6, background: 'none', cursor: 'pointer', transition: 'background 0.15s' }}>
-            <BurgerIcon style={{ color: 'white' }} />
+            style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', transition: 'background 0.15s', color: 'var(--text-1)' }}>
+            <BurgerIcon style={{ color: 'var(--text-1)' }} />
           </button>
         </div>
       </header>

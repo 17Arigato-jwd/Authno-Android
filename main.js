@@ -74,6 +74,16 @@ if (!gotTheLock) {
     }
   });
 
+  // ── Custom title-bar window controls (frameless window) ───────────────────
+  ipcMain.on("window-minimize", () => { mainWindow?.minimize(); });
+  ipcMain.on("window-maximize-toggle", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  });
+  ipcMain.on("window-close", () => { mainWindow?.close(); });
+  ipcMain.handle("window-is-maximized", () => !!(mainWindow && mainWindow.isMaximized()));
+
   function resolveAsset(name) {
     // In a packaged build, public/ is unpacked next to the app resources; in
     // dev it's at the project root. Try both so splash + icon always resolve
@@ -103,6 +113,11 @@ if (!gotTheLock) {
       width: 1200,
       height: 800,
       show: false,
+      // Frameless — the app draws its own themed title bar (see TitleBar.jsx).
+      // This is what makes the desktop app stop looking like "a website in a
+      // window". Still resizable; dragging is handled via -webkit-app-region.
+      frame: false,
+      titleBarStyle: "hidden",
       icon: resolveAsset("authno.ico"),
       backgroundColor: "#000000",
       webPreferences: {
@@ -111,6 +126,11 @@ if (!gotTheLock) {
         preload: path.join(__dirname, "Preload.js"), // safe — after handlers registered
       },
     });
+
+    // Notify the renderer's title bar when the maximise state changes so it can
+    // swap the maximise/restore glyph.
+    mainWindow.on("maximize",   () => { if (!mainWindow?.isDestroyed()) mainWindow.webContents.send("window-maximized", true); });
+    mainWindow.on("unmaximize", () => { if (!mainWindow?.isDestroyed()) mainWindow.webContents.send("window-maximized", false); });
 
     if (process.env.NODE_ENV === "development") {
       mainWindow.loadURL("http://localhost:3000");

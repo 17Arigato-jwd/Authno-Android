@@ -10,7 +10,6 @@
 
 import React from "react";
 import { SIZE_OPTIONS } from "./constants";
-import { COLORS } from "../DesignSystem";
 
 export default function SizeSelector({ onChange, defaultValue }) {
   return (
@@ -19,8 +18,8 @@ export default function SizeSelector({ onChange, defaultValue }) {
       onChange={onChange}
       style={{
         background: "transparent",
-        border: `1px solid ${COLORS.borderStrong}`,
-        color: "#fff",
+        border: `1px solid var(--toolbar-divider)`,
+        color: "var(--toolbar-item)",
         fontSize: 13,
         padding: "4px 8px",
         borderRadius: 6,
@@ -28,11 +27,11 @@ export default function SizeSelector({ onChange, defaultValue }) {
         cursor: "pointer",
         transition: "border-color 0.15s",
       }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = "#fff")}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = COLORS.borderStrong)}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--toolbar-item)")}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--toolbar-divider)")}
     >
       {SIZE_OPTIONS.map((s) => (
-        <option key={s} value={s} style={{ background: COLORS.surface1, color: "#fff" }}>
+        <option key={s} value={s} style={{ background: "var(--modal-bg)", color: "var(--text-1)" }}>
           {s}
         </option>
       ))}

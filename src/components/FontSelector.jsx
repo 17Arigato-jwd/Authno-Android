@@ -8,12 +8,11 @@
 
 import React from 'react';
 import { FONT_OPTIONS } from './constants';
-import { COLORS } from '../DesignSystem';
 
 const SELECT_STYLE = {
   background: 'transparent',
-  border: `1px solid ${COLORS.borderStrong}`,
-  color: '#fff',
+  border: `1px solid var(--toolbar-divider)`,
+  color: 'var(--toolbar-item)',
   fontSize: 13,
   padding: '4px 8px',
   borderRadius: 6,
@@ -28,11 +27,11 @@ export function FontSelector({ onChange, defaultValue }) {
       defaultValue={defaultValue}
       onChange={onChange}
       style={SELECT_STYLE}
-      onMouseEnter={e => e.currentTarget.style.borderColor = '#fff'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = COLORS.borderStrong}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--toolbar-item)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--toolbar-divider)'}
     >
       {FONT_OPTIONS.map(font => (
-        <option key={font.value} value={font.value} style={{ background: COLORS.surface1, color: '#fff' }}>
+        <option key={font.value} value={font.value} style={{ background: 'var(--modal-bg)', color: 'var(--text-1)' }}>
           {font.label}
         </option>
       ))}

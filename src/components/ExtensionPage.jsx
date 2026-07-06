@@ -110,7 +110,7 @@ function PageHeader({ title, onBack, accentHex, action }) {
         <button
           onClick={onBack}
           style={{
-            padding: '6px', background: 'none', border: '1px solid rgba(255,255,255,0.3)',
+            padding: '6px', background: 'none', border: '1px solid var(--border)',
             borderRadius: '6px', cursor: 'pointer', color: 'var(--text-1)',
             display: 'flex', alignItems: 'center', flexShrink: 0,
           }}

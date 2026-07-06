@@ -45,6 +45,11 @@ const SVGS = {
   'eye-slash':     ['<path d="M17.9 17.9A10.5 10.5 0 0 1 12 20C5 20 1 12 1 12a19 19 0 0 1 5.1-6M9.9 4.2A10.5 10.5 0 0 1 12 4c7 0 11 8 11 8a19 19 0 0 1-2.2 3.2M14.1 14.1a3 3 0 0 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/>'],
   'user-circle':   ['<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18a5.5 5.5 0 0 1 11 0"/>'],
   'box':           ['<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="21"/>'],
+  'volume':        ['<polygon points="4 9 4 15 8 15 13 20 13 4 8 9 4 9"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a9 9 0 0 1 0 12"/>'],
+  'flask':         ['<path d="M9 2h6M10 2v6.5L4.8 18A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-3L14 8.5V2"/><line x1="8.5" y1="14" x2="15.5" y2="14"/>'],
+  'flame':         ['<path d="M12 2s5 4 5 9a5 5 0 0 1-10 0c0-1.6.6-2.9 1.5-3.9C9 8.4 10 7 9.7 5 11 5.6 12 6.6 12 8c.6-1.3 1-3 0-6z"/>'],
+  'globe':         ['<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>'],
+  'pin':           ['<line x1="12" y1="16" x2="12" y2="22"/><path d="M9 3h6l-1.2 2.2v3.6l2.7 3.2a1 1 0 0 1-.8 1.6H7.3a1 1 0 0 1-.8-1.6l2.7-3.2V5.2L9 3z"/>'],
 };
 
 function SvgIcon({ paths, size = 16, color = 'currentColor', style = {} }) {
@@ -162,6 +167,11 @@ export const DSIcons = {
   List:          icon('list'),
   Package:       icon('box'),
   PackagePlus:   icon('box'),
+  Volume:        icon('volume'),
+  Flask:         icon('flask'),
+  Flame:         icon('flame'),
+  Globe:         icon('globe'),
+  Pin:           icon('pin'),
   Npm:           icon('npm'),
   Github:        icon('github'),
   Figma:         icon('figma'),

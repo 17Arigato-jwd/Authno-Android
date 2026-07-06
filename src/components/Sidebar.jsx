@@ -297,7 +297,7 @@ export default function Sidebar({
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <div style={{
         padding: "16px",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        borderBottom: "1px solid var(--border-sm)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <img src={Logo} alt="AuthNo" style={{ height: 56, width: 56, objectFit: "contain", filter: "drop-shadow(0 0 6px rgba(255,255,255,0.15))" }} />
@@ -306,13 +306,13 @@ export default function Sidebar({
             onClick={onDrawerClose}
             style={{
               width: 34, height: 34, borderRadius: "50%",
-              border: "1px solid rgba(255,255,255,0.2)",
+              border: "1px solid var(--border)",
               background: "transparent",
               display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", color: "rgba(255,255,255,0.6)",
+              cursor: "pointer", color: "var(--text-3)",
               transition: "background 0.15s",
             }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+            onMouseEnter={e => e.currentTarget.style.background = "var(--surface)"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           >
             <DSIcons.X size={18} />
@@ -321,7 +321,7 @@ export default function Sidebar({
       </div>
 
       {/* ── SEARCH — uses DesignSystem TextInput ────────────────────────── */}
-      <div style={{ padding: "12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+      <div style={{ padding: "12px", borderBottom: "1px solid var(--border-sm)" }}>
         <TextInput
           value={search}
           onChange={setSearch}
@@ -333,7 +333,7 @@ export default function Sidebar({
       {/* ── NEW BOOK / STORYBOARD — DesignSystem MinimalButton ──────────── */}
       <div style={{
         padding: "12px", display: "flex", gap: 8,
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        borderBottom: "1px solid var(--border-sm)",
         position: "relative",
       }}>
         {/* New Book dropdown */}
@@ -350,7 +350,7 @@ export default function Sidebar({
           {dropdownOpen && (
             <div style={{
               position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
-              background: "#0f0f10", border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--modal-bg)", border: "1px solid var(--border)",
               borderRadius: 10, overflow: "hidden", zIndex: 20,
               boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
             }}>
@@ -361,10 +361,10 @@ export default function Sidebar({
                 <button key={label} onClick={action} style={{
                   width: "100%", textAlign: "left", padding: "10px 14px",
                   background: "transparent", border: "none",
-                  color: "#fff", fontSize: TYPOGRAPHY.size.sm, cursor: "pointer",
+                  color: "var(--text-1)", fontSize: TYPOGRAPHY.size.sm, cursor: "pointer",
                   transition: "background 0.12s",
                 }}
-                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.08)"}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--surface)"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                 >
                   {label}
@@ -380,7 +380,7 @@ export default function Sidebar({
 
       {/* ── Done Editing button (desktop drag-sort mode) ─────────────────── */}
       {editMode && !android && (
-        <div style={{ padding: "12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ padding: "12px", borderBottom: "1px solid var(--border-sm)" }}>
           <GradientButton
             variant="secondary"
             size="sm"
@@ -408,7 +408,7 @@ export default function Sidebar({
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {sessions.length === 0 ? (
-                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", padding: "0 8px", fontStyle: "italic" }}>
+                <div style={{ fontSize: 13, color: "var(--text-4)", padding: "0 8px", fontStyle: "italic" }}>
                   No sessions yet — create one.
                 </div>
               ) : sessions.map((s, i) => {
@@ -426,20 +426,20 @@ export default function Sidebar({
                     onTouchMove={onTouchEnd}
                     style={{
                       textAlign: "left", padding: "10px 12px", borderRadius: 8,
-                      border: `2px solid ${isActive ? accentHex : editMode && !android ? `${accentHex}55` : "rgba(255,255,255,0.1)"}`,
-                      background: isActive ? "rgba(255,255,255,0.05)" : "transparent",
+                      border: `2px solid ${isActive ? accentHex : editMode && !android ? `${accentHex}55` : "var(--border)"}`,
+                      background: isActive ? "var(--surface)" : "transparent",
                       cursor: "pointer", transition: "border-color 0.15s, background 0.15s",
                       animation: editMode && !android ? "dsWobble 0.3s ease infinite" : "none",
                     }}
-                    onMouseEnter={e => !isActive && (e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)")}
-                    onMouseLeave={e => !isActive && (e.currentTarget.style.borderColor = editMode && !android ? `${accentHex}55` : "rgba(255,255,255,0.1)")}
+                    onMouseEnter={e => !isActive && (e.currentTarget.style.borderColor = `${accentHex}55`)}
+                    onMouseLeave={e => !isActive && (e.currentTarget.style.borderColor = editMode && !android ? `${accentHex}55` : "var(--border)")}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       {/* Book cover thumbnail */}
                       <div style={{
                         width: 36, height: 50, flexShrink: 0, borderRadius: 6,
-                        overflow: "hidden", background: "rgba(255,255,255,0.06)",
-                        border: "1px solid rgba(255,255,255,0.1)",
+                        overflow: "hidden", background: "var(--surface-md)",
+                        border: "1px solid var(--border)",
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
                         {s.coverBase64 ? (
@@ -455,13 +455,13 @@ export default function Sidebar({
                       {/* Title + preview */}
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{
-                          fontWeight: 500, fontSize: 13, color: "#fff",
+                          fontWeight: 500, fontSize: 13, color: "var(--text-1)",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {s.title}
                         </div>
                         <div style={{
-                          fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2,
+                          fontSize: 11, color: "var(--text-4)", marginTop: 2,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
@@ -516,9 +516,9 @@ export default function Sidebar({
             style={{
               position: "fixed", top: contextMenu.y, left: contextMenu.x,
               zIndex: 9999, padding: 4, borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.25)",
+              border: "1px solid var(--border)",
               backdropFilter: "blur(14px)",
-              background: `linear-gradient(to bottom right, ${accentHex}, #000)`,
+              background: `linear-gradient(to bottom right, var(--accent-a08), transparent), var(--modal-bg)`,
               minWidth: 148, overflow: "hidden",
               boxShadow: "0 12px 36px rgba(0,0,0,0.6)",
             }}
@@ -534,10 +534,10 @@ export default function Sidebar({
                 style={{
                   width: "100%", textAlign: "left", padding: "10px 14px",
                   background: "transparent", border: "none",
-                  color: "#fff", fontSize: 13, cursor: "pointer", borderRadius: 8,
+                  color: "var(--text-1)", fontSize: 13, cursor: "pointer", borderRadius: 8,
                   transition: "background 0.12s",
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.12)"}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--surface)"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}
               >
                 {label}

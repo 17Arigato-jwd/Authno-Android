@@ -7,6 +7,10 @@
     "email": "blader.ultramate@gmail.com"
   },
   "homepage": "./",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/17arigato-jwd/authno-android"
+  },
   "main": "main.js",
   "private": true,
   "dependencies": {

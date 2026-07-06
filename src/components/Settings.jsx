@@ -103,13 +103,13 @@ function ConfirmModal({ title, message, type, onConfirm, onCancel }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
       <div style={{ background: 'var(--modal-bg)', border: '1px solid var(--border)', borderRadius: '16px', padding: '28px', maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <DSIcons.Warning size={20} color={type === 'danger' ? '#ed4245' : '#faa61a'} />
+          <DSIcons.Warning size={20} color={type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)'} />
           <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)' }}>{title}</span>
         </div>
         <p style={{ fontSize: '14px', color: 'var(--text-4)', lineHeight: 1.5, marginBottom: '24px' }}>{message}</p>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-2)', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>Cancel</button>
-          <button onClick={onConfirm} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: type === 'danger' ? '#ed4245' : '#faa61a', color: '#fff', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>Confirm</button>
+          <button onClick={onConfirm} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)', color: '#fff', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>Confirm</button>
         </div>
       </div>
     </div>
@@ -225,7 +225,7 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
               <div style={{
                 width: 40, height: 28, borderRadius: 6, flexShrink: 0,
                 background: effect.preview(accentHex),
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid var(--border)',
               }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: active ? accentHex : 'var(--text-2)', marginBottom: 2 }}>
@@ -260,7 +260,7 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
   );
 }
 
-function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, switchTheme }) {
+function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOpenFontCustomizer, switchTheme }) {
   // U4: subscribe to the registry so installed .thmbk themes appear live.
   const [themes, setThemes] = useState(() => ALL_THEMES.slice());
   useEffect(() => {
@@ -388,6 +388,21 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
 
       <SettingsDivider />
 
+      {/* Typography — opens the Font Customizer (per-target fonts + upload) */}
+      <Label>Typography</Label>
+      <SettingRow icon={DSIcons.Text} title="Fonts" description="Choose fonts for the interface, editor and headings — or upload your own" accentHex={accentHex}>
+        <button
+          onClick={onOpenFontCustomizer}
+          style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: `${accentHex}22`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', transition: 'background 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.background = `${accentHex}44`}
+          onMouseLeave={e => e.currentTarget.style.background = `${accentHex}22`}
+        >
+          Customize <DSIcons.ChevronRight size={14} />
+        </button>
+      </SettingRow>
+
+      <div style={{ height: 16 }} />
+
       {/* Background Effect dropdown */}
       <BackgroundEffectPicker
         value={settings.backgroundEffect ?? (settings.enableGradient ? 'gradient' : 'none')}
@@ -421,12 +436,12 @@ function StartupPanel({ settings, onChange, accentHex }) {
               style={{
                 display: 'flex', alignItems: 'center', gap: '14px',
                 padding: '14px 16px', borderRadius: '10px',
-                border: `1px solid ${selected ? accentHex + '80' : 'rgba(255,255,255,0.06)'}`,
-                background: selected ? `${accentHex}14` : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${selected ? accentHex + '80' : 'var(--surface-md)'}`,
+                background: selected ? `${accentHex}14` : 'var(--surface)',
                 cursor: 'pointer', transition: 'all 0.15s ease',
               }}
             >
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: selected ? `${accentHex}30` : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: selected ? `${accentHex}30` : 'var(--surface-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <opt.icon size={17} color={selected ? accentHex : 'var(--text-4)'} />
               </div>
               <div style={{ flex: 1 }}>
@@ -509,14 +524,14 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
               onFocus={e => e.target.style.borderColor = accentHex}
               onBlur={e => e.target.style.borderColor = `${accentHex}55`}
             >
-              <option value="__global__" style={{ background: '#1a1b1e', color: '#fff' }}>🌐 Global (default for all books)</option>
-              {books.map(b => <option key={b.id} value={b.id} style={{ background: '#1a1b1e', color: '#fff' }}>{b.title || 'Untitled Book'}</option>)}
+              <option value="__global__" style={{ background: 'var(--modal-bg)', color: 'var(--text-1)' }}>Global (default for all books)</option>
+              {books.map(b => <option key={b.id} value={b.id} style={{ background: 'var(--modal-bg)', color: 'var(--text-1)' }}>{b.title || 'Untitled Book'}</option>)}
             </select>
             <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: accentHex, fontSize: '12px' }}>▾</div>
           </div>
           <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '12px', color: hasOverride ? accentHex : 'var(--text-5)' }}>
-              {hasOverride ? `📌 Custom goal for this book` : `Using global default (${globalGoal} words)`}
+            <span style={{ fontSize: '12px', color: hasOverride ? accentHex : 'var(--text-5)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              {hasOverride ? (<><DSIcons.Pin size={11} color="currentColor" /> Custom goal for this book</>) : `Using global default (${globalGoal} words)`}
             </span>
             {hasOverride && <button onClick={resetToGlobal} style={{ fontSize: '11px', color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Reset to global</button>}
           </div>
@@ -551,7 +566,7 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
               if (selectedBook && onSessionChange) onSessionChange(selectedBook.id, { streak: { ...(selectedBook.streak ?? {}), goalWords: p } });
               else onChange({ dailyWordGoal: p });
             }}
-            style={{ padding: '6px 16px', borderRadius: '20px', border: `1.5px solid ${effectiveGoal === p ? accentHex : 'rgba(255,255,255,0.12)'}`, background: effectiveGoal === p ? `${accentHex}20` : 'transparent', color: effectiveGoal === p ? accentHex : 'var(--text-4)', cursor: 'pointer', fontSize: '13px', fontWeight: effectiveGoal === p ? 600 : 400, transition: 'all 0.15s' }}
+            style={{ padding: '6px 16px', borderRadius: '20px', border: `1.5px solid ${effectiveGoal === p ? accentHex : 'var(--border)'}`, background: effectiveGoal === p ? `${accentHex}20` : 'transparent', color: effectiveGoal === p ? accentHex : 'var(--text-4)', cursor: 'pointer', fontSize: '13px', fontWeight: effectiveGoal === p ? 600 : 400, transition: 'all 0.15s' }}
           >{p}</button>
         ))}
       </div>
@@ -559,11 +574,18 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
       <SettingsDivider />
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border-sm)', borderRadius: '10px', padding: '14px 16px' }}>
-        <div style={{ fontSize: '12px', color: 'var(--text-4)', lineHeight: 1.7 }}>
-          <div>📖 <strong style={{ color: 'var(--text-3)' }}>150 words</strong> — A short journal entry</div>
-          <div>✍️ <strong style={{ color: 'var(--text-3)' }}>500 words</strong> — A focused session</div>
-          <div>🔥 <strong style={{ color: 'var(--text-3)' }}>1000 words</strong> — A strong daily output</div>
-          <div>⚡ <strong style={{ color: 'var(--text-3)' }}>1500 words</strong> — An average webnovel chapter</div>
+        <div style={{ fontSize: '12px', color: 'var(--text-4)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { Icon: DSIcons.BookOpen, n: '150 words',  t: 'A short journal entry' },
+            { Icon: DSIcons.Edit,     n: '500 words',  t: 'A focused session' },
+            { Icon: DSIcons.Flame,    n: '1000 words', t: 'A strong daily output' },
+            { Icon: DSIcons.Lightning,n: '1500 words', t: 'An average webnovel chapter' },
+          ].map(({ Icon, n, t }) => (
+            <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon size={13} color={accentHex} />
+              <span><strong style={{ color: 'var(--text-3)' }}>{n}</strong> — {t}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -678,16 +700,16 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout
       <SectionSubtitle>Manage stored data and reset the application state.</SectionSubtitle>
 
       <Label>Diagnostics</Label>
-      <div style={{ padding: '14px 16px', borderRadius: '10px', marginBottom: '20px', border: 'rgba(255,255,255,0.07) 1px solid', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <DSIcons.List size={15} color="rgba(255,255,255,0.5)" />
+      <div style={{ padding: '14px 16px', borderRadius: '10px', marginBottom: '20px', border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--surface-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <DSIcons.List size={15} color="var(--text-4)" />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Error Log</div>
           <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>{errorCount > 0 ? `${errorCount} error${errorCount === 1 ? '' : 's'} recorded — tap to review` : 'No errors recorded'}</div>
         </div>
-        <button onClick={() => { setErrorCount(getErrorHistory().length); setShowErrorLog(true); }} style={{ padding: '7px 16px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {errorCount > 0 && <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', background: '#ed424533', color: '#f87171' }}>{errorCount}</span>}
+        <button onClick={() => { setErrorCount(getErrorHistory().length); setShowErrorLog(true); }} style={{ padding: '7px 16px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface-md)', color: 'var(--text-2)', cursor: 'pointer', fontSize: '13px', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {errorCount > 0 && <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>{errorCount}</span>}
           View Log
         </button>
       </div>
@@ -720,7 +742,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout
           <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-2)' }}>Import Extension</div>
           <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>Select a <code style={{ color: 'var(--text-3)' }}>.extbk</code> file to install an extension</div>
           {importStatus && importStatus !== 'loading' && (
-            <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 500, color: importStatus.ok ? '#22c55e' : '#f87171', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: 500, color: importStatus.ok ? 'var(--color-success)' : 'var(--color-danger)', display: 'flex', alignItems: 'center', gap: '5px' }}>
               {importStatus.ok ? <DSIcons.Check size={12} /> : <DSIcons.Warning size={12} />}{importStatus.message}
             </div>
           )}
@@ -767,12 +789,12 @@ export const DEFAULT_SETTINGS = {
   backgroundEffect: 'none',   // 'none' | 'gradient' | 'grain'
   enableGradient: false,       // kept for backward compat
   lightMode: false,
-  startupBehavior: 'home',
+  startupBehavior: 'last',
   restoreOpenBooks: true,
   dailyWordGoal: 500,
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, sessions = [], onSessionChange }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('profile');
   const isPortrait = useIsPortrait();
@@ -806,8 +828,9 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
           BookOpen: 'BookOpen', Zap: 'Lightning' };
         const dsKey = item.icon && DS_MAP[item.icon];
         if (dsKey && DSIcons[dsKey]) { const _C = DSIcons[dsKey]; return (props) => <_C {...props} />; }
-        const fallback = item._extIcon ?? item.icon ?? '🧩';
-        return (props) => <span style={{ fontSize: '16px', lineHeight: 1 }}>{fallback}</span>;
+        const fallback = item._extIcon ?? item.icon;
+        if (!fallback) return (props) => <DSIcons.Extension {...props} />;
+        return () => <span style={{ fontSize: '16px', lineHeight: 1 }}>{fallback}</span>;
       })(),
       group: 'Extensions',
       _extItem: item,
@@ -825,10 +848,10 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       <style>{`
         @keyframes settingsFadeIn  { from { opacity: 0; } to { opacity: 1; } }
         @keyframes settingsPanelIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .settings-nav-item:hover { background: rgba(255,255,255,0.05) !important; color: var(--text-2) !important; }
-        .settings-tab:hover { background: rgba(255,255,255,0.05) !important; }
+        .settings-nav-item:hover { background: var(--surface) !important; color: var(--text-2) !important; }
+        .settings-tab:hover { background: var(--surface) !important; }
         .settings-content::-webkit-scrollbar { width: 4px; }
-        .settings-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .settings-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         .settings-tabs::-webkit-scrollbar { display: none; }
       `}</style>
 
@@ -838,7 +861,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
         display: 'flex', flexDirection: isPortrait ? 'column' : 'row',
         borderRadius: isPortrait ? '0' : '16px', overflow: 'hidden',
         background: 'var(--modal-bg)',
-        border: isPortrait ? 'none' : '1px solid rgba(255,255,255,0.07)',
+        border: isPortrait ? 'none' : '1px solid var(--border)',
         boxShadow: '0 32px 80px rgba(0,0,0,0.7)', animation: 'settingsPanelIn 0.2s ease',
       }}>
 
@@ -847,12 +870,12 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             {/* Portrait header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 0', background: 'var(--nav-bg)', flexShrink: 0 }}>
               <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px' }}>Settings</span>
-              <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)' }}>
+              <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--surface-md)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)' }}>
                 <DSIcons.X size={16} />
               </button>
             </div>
             {/* Scrollable tab bar */}
-            <div className="settings-tabs" style={{ display: 'flex', overflowX: 'auto', gap: '4px', padding: '10px 12px', background: 'var(--nav-bg)', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+            <div className="settings-tabs" style={{ display: 'flex', overflowX: 'auto', gap: '4px', padding: '10px 12px', background: 'var(--nav-bg)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
               {allNavItems.map(item => {
                 const active = activeSection === item.id;
                 return (
@@ -868,7 +891,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             {/* Content */}
             <div className="settings-content" style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : { flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}>
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
-              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} switchTheme={switchTheme} />}
+              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'about'      && <AboutPanel accentHex={accentHex} />}
@@ -881,7 +904,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
         ) : (
           <>
             {/* Landscape sidebar nav */}
-            <div style={{ width: '220px', flexShrink: 0, background: 'var(--nav-bg)', padding: '16px 8px', display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255,255,255,0.05)', overflowY: 'auto' }}>
+            <div style={{ width: '220px', flexShrink: 0, background: 'var(--nav-bg)', padding: '16px 8px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-sm)', overflowY: 'auto' }}>
               {groups.map(group => (
                 <div key={group} style={{ marginBottom: '16px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '4px 10px', marginBottom: '4px' }}>{group}</div>
@@ -903,15 +926,20 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             </div>
             {/* Content */}
             <div className="settings-content" style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : { flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}>
-              <button onClick={onClose}
-                style={{ position: 'absolute', top: '16px', right: '16px', width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--text-4)'; }}
-              >
-                <DSIcons.X size={16} />
-              </button>
+              {/* Zero-height sticky wrapper keeps the close button pinned to the
+                  top-right while the panel scrolls (was position:absolute, which
+                  scrolled away with the content). */}
+              <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
+                <button onClick={onClose}
+                  style={{ position: 'absolute', top: '0px', right: '0px', width: '32px', height: '32px', borderRadius: '50%', background: 'var(--surface-md)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = 'var(--text-1)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-md)'; e.currentTarget.style.color = 'var(--text-4)'; }}
+                >
+                  <DSIcons.X size={16} />
+                </button>
+              </div>
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
-              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} switchTheme={switchTheme} />}
+              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'about'      && <AboutPanel accentHex={accentHex} />}

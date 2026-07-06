@@ -5,17 +5,37 @@
 /* ─── Global Background Fix (Prevents blank/white flash on load) ─── */
 :root {
   --app-bg: #060606;
+  /* Font defaults — overridden per-theme by applyTheme() and per-user by the
+     Font Customizer (applyFonts). Set here so text NEVER falls back to the
+     browser's Times New Roman default before hydration. */
+  --font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-editor:  'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+  --titlebar-h:   0px;
 }
 
 body {
   background-color: var(--app-bg);
   margin: 0;
   padding: 0;
+  /* One global UI font for the whole app — the "inconsistent fonts" fix. */
+  font-family: var(--font-body);
 }
 
 #root {
   background-color: var(--app-bg);
   min-height: 100vh;
+}
+
+/* Inherit the themed UI font everywhere unless a component opts into mono/editor. */
+button, input, select, textarea, optgroup {
+  font-family: inherit;
+}
+
+/* Semantic headings follow the Headings font target. */
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
 }
 
 @keyframes flamePulse {
@@ -49,7 +69,7 @@ body {
 
 /* smooth textarea font */
 textarea {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-family: var(--font-editor);
   letter-spacing: 0.002em;
 }
 
@@ -123,3 +143,31 @@ button, input, select, [contenteditable], [role="button"] {
 /* Hide scrollbar on toolbar scroll strip */
 .toolbar-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .toolbar-scroll::-webkit-scrollbar { display: none; }
+
+/* ─── Native-feel polish (desktop) ────────────────────────────────────────── */
+
+/* Themed scrollbars — the default web scrollbar is a big "this is a website"
+   tell. These follow the active theme's border/accent vars. Themes that opt
+   into `pixelatedScrollbar` override this with their own thinner style. */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--accent-a33, rgba(128,128,128,0.5)); background-clip: padding-box; }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* Native apps don't let you select and drag chrome/labels. Default the app
+   chrome to non-selectable, then re-enable selection for real content. */
+.app-root { user-select: none; -webkit-user-select: none; }
+input, textarea, [contenteditable], .selectable, .selectable * {
+  user-select: text; -webkit-user-select: text;
+}
+
+/* Custom title bar (Electron only — see TitleBar.jsx + main.js frameless). */
+.is-electron .app-root { height: calc(100dvh - var(--titlebar-h, 36px)); }
+.authno-titlebar { -webkit-app-region: drag; app-region: drag; }
+.authno-titlebar button, .authno-titlebar .no-drag { -webkit-app-region: no-drag; app-region: no-drag; }
