@@ -22,11 +22,11 @@ export default function FormatButton({
   const base = {
     padding: "4px 8px",
     borderRadius: 6,
-    border: "2px solid rgba(255,255,255,0.6)",
+    border: "1px solid var(--toolbar-divider)",
     fontSize: 14,
     lineHeight: 1.2,
     cursor: "pointer",
-    color: "#fff",
+    color: "var(--toolbar-item)",
     background: "transparent",
     transition: "all 0.2s",
   };
@@ -35,11 +35,11 @@ export default function FormatButton({
   if (isActive) {
     dynamic = isHighlight
       ? { background: "rgba(253,224,71,0.30)", boxShadow: "0 0 0 1px rgba(250,204,21,0.9)" }
-      : { background: "rgba(255,255,255,0.30)" };
+      : { background: "var(--accent-a33)" };
   } else if (hover) {
     dynamic = isHighlight
       ? { background: "rgba(253,224,71,0.20)" }
-      : { background: "rgba(255,255,255,0.10)" };
+      : { background: "var(--toolbar-item-hover)" };
   } else {
     dynamic = {};
   }

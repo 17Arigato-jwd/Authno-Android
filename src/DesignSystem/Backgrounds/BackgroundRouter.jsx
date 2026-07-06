@@ -60,6 +60,8 @@ export function BackgroundRouter({
     return (
       <GradientBackground
         accentHex={accentHex}
+        baseColor={fx.baseColor ?? theme?.backgrounds?.app ?? '#0a0a0a'}
+        isDark={theme?.meta?.isDark !== false}
         backgroundOpacity={customization.backgroundOpacity ?? 1}
         colorRange={g.colorFrom && g.colorTo ? { from: g.colorFrom, to: g.colorTo } : undefined}
         minBlobs={g.blobCountMin ?? fx.minBlobs ?? 7}

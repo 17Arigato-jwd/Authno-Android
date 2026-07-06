@@ -546,8 +546,8 @@ export default function BookDashboard({
                 goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
             )}
             <button ref={burgerBtnRef} onClick={onToggleMenu}
-              style={{ padding: 8, border: '2px solid white', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', transition: 'background 0.15s' }}>
-              <BurgerIcon style={{ color: 'white' }} />
+              style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', transition: 'background 0.15s' }}>
+              <BurgerIcon style={{ color: 'var(--text-1)' }} />
             </button>
           </div>
         </header>

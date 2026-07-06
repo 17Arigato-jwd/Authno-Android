@@ -101,29 +101,33 @@ export function GradientBackground({
   maxBlobs = 9,
   blobSizeRange,
   blobSpeedMultiplier = 1,
+  isDark = true,
   style,
   className = '',
 }) {
   const [blobs, setBlobs] = useState([]);
   const configRef = useRef(null);
   const palette = paletteProp ?? buildPalette(accentHex);
-  configRef.current = { palette, colorRange, blobSizeRange, blobSpeedMultiplier };
+  configRef.current = { palette, colorRange, blobSizeRange, blobSpeedMultiplier, isDark };
 
   const ABSOLUTE_MAX = maxBlobs + 1;
   const FADE_TIME    = 2000;
   const FADE_IN_TIME = 2000;
 
   function generateBlob() {
-    const { palette: c, colorRange: cr, blobSizeRange: bsr, blobSpeedMultiplier: bsm } = configRef.current;
+    const { palette: c, colorRange: cr, blobSizeRange: bsr, blobSpeedMultiplier: bsm, isDark: dark } = configRef.current;
     const isLight = Math.random() > 0.7;
     let color;
-    if (isLight)     color = Math.random() > 0.5 ? '#ffffff' : c.light;
+    // On dark themes, white highlights + black shadow blobs read as depth. On
+    // light themes those same blobs look like dirt, so we keep everything in
+    // the accent family (no pure #ffffff / #000000) — the "blobs ignore theme" fix.
+    if (isLight)     color = dark ? (Math.random() > 0.5 ? '#ffffff' : c.light) : c.light;
     else if (cr)     color = interpolateColor(cr.from, cr.to, Math.random());
     else {
       const r = Math.random();
       if (r < 0.33)      color = c.accent;
       else if (r < 0.66) color = c.dark;
-      else               color = '#000000';
+      else               color = dark ? '#000000' : c.accent;
     }
     let size;
     if (bsr) {

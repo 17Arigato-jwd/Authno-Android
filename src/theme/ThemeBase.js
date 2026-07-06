@@ -19,6 +19,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces } from '../utils/fontManager';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Colour math
@@ -153,6 +154,7 @@ export function applyTheme(theme, selector = ':root') {
     --font-mono:            ${theme.typography.monoFont};
     --font-body:            ${theme.typography.bodyFont};
     --font-editor:          ${theme.typography.editorFont};
+    --font-heading:         ${theme.typography.headingFont ?? theme.typography.bodyFont};
 
     --editor-font-size:     ${theme.editor.fontSize}px;
     --editor-line-height:   ${theme.editor.lineHeight};
@@ -167,6 +169,7 @@ export function applyTheme(theme, selector = ':root') {
     --modal-panel-shadow:   ${theme.modals.panelShadow};
 
     --toolbar-bg:           ${resolveToolbarBg(theme, theme.accent.primary)};
+    --toolbar-stop:         ${theme.toolbar.darkStop ?? 'rgba(0,0,0,0.45)'};
     --toolbar-border:       ${theme.toolbar.border};
     --toolbar-divider:      ${theme.toolbar.dividerColor};
     --toolbar-item:         ${theme.toolbar.itemColor};
@@ -233,6 +236,40 @@ export function applyTheme(theme, selector = ':root') {
 
   // Re-assert the user's custom accent (if any) on top of the theme's default.
   _reapplyAccentOverride();
+  // Re-assert the user's custom fonts (if any) on top of the theme's default.
+  _reapplyFontOverride();
+}
+
+// ── Font override ─────────────────────────────────────────────────────────────
+// The Font Customizer lets the user pick a font per target (body / editor /
+// headings) and upload their own. Like the accent override, we write a second
+// style tag that outranks the base theme's --font-* vars, and re-assert it after
+// every theme switch so the choice survives.
+let _fontOverride = null;
+const FONT_STYLE_ID = 'authno-font-override';
+
+export function applyFonts(fonts) {
+  _fontOverride = fonts || null;
+  _reapplyFontOverride();
+}
+
+function _reapplyFontOverride() {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById(FONT_STYLE_ID);
+  const f = _fontOverride;
+  if (!f) { el?.remove(); return; }
+  const custom = f.custom || [];
+  injectCustomFontFaces(custom);
+  ensureFontsLoaded(f);
+  const body    = resolveFontStack(f.body,    custom);
+  const editor  = resolveFontStack(f.editor,  custom);
+  const heading = resolveFontStack(f.heading, custom);
+  if (!el) { el = document.createElement('style'); el.id = FONT_STYLE_ID; document.head.appendChild(el); }
+  el.textContent = `:root {
+    --font-body:    ${body};
+    --font-editor:  ${editor};
+    --font-heading: ${heading};
+  }`;
 }
 
 // ── Accent override ───────────────────────────────────────────────────────────

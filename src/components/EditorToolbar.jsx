@@ -48,7 +48,7 @@ const INSERT_ITEMS = [
   { label: 'Divider line',  glyph: '—',  kind: 'hr' },
   { label: 'Em dash',       glyph: '—',  kind: 'text',  value: '—' },
   { label: 'Ellipsis',      glyph: '…',  kind: 'text',  value: '…' },
-  { label: "Today's date",  glyph: '📅', kind: 'text',  value: () => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) },
+  { label: "Today's date",  glyph: <DSIcons.Calendar size={13} />, kind: 'text',  value: () => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) },
 ];
 
 // ── EditorToolbar ─────────────────────────────────────────────────────────────
@@ -123,8 +123,9 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
     document.execCommand('insertText', false, text);
   };
 
-  // Shared frosted glass background
-  const bg = `linear-gradient(to bottom right, ${accentHex}66, rgba(0,0,0,0.45))`;
+  // Shared frosted glass background — the second stop follows the theme
+  // (dark on dark themes, light on light themes) so the pill isn't always dark.
+  const bg = `linear-gradient(to bottom right, ${accentHex}66, var(--toolbar-stop, rgba(0,0,0,0.45)))`;
 
   // ── Shared control set ────────────────────────────────────────────────────
   const controls = (
@@ -133,7 +134,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       <SizeSelector defaultValue="3"     onChange={handleSizeChange} />
 
       {/* Divider */}
-      <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(255,255,255,0.2)', flexShrink: 0 }} />
+      <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--toolbar-divider)', flexShrink: 0 }} />
 
       <FormatButton format="bold"      label="B" title="Bold (Ctrl+B)"      style={{ fontWeight: 'bold' }}          isActive={active.bold}      onClick={() => toggle('bold')} />
       <FormatButton format="italic"    label="I" title="Italic (Ctrl+I)"    style={{ fontStyle: 'italic' }}         isActive={active.italic}    onClick={() => toggle('italic')} />
@@ -147,12 +148,12 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
           onClick={() => setInsertOpen(o => !o)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px',
-            borderRadius: 6, border: `2px solid rgba(255,255,255,0.6)`,
-            background: insertOpen ? 'rgba(255,255,255,0.12)' : 'transparent',
-            color: '#fff', fontSize: 13, cursor: 'pointer',
+            borderRadius: 6, border: `1px solid var(--toolbar-divider)`,
+            background: insertOpen ? 'var(--toolbar-item-hover)' : 'transparent',
+            color: 'var(--toolbar-item)', fontSize: 13, cursor: 'pointer',
             transition: 'background 0.15s', flexShrink: 0,
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--toolbar-item-hover)'}
           onMouseLeave={e => { if (!insertOpen) e.currentTarget.style.background = 'transparent'; }}
         >
           Insert <DSIcons.ChevronDown size={13} style={{ opacity: 0.7, transform: insertOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
@@ -236,7 +237,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
         backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
         background: bg,
         boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
-        border: '1px solid rgba(255,255,255,0.12)',
+        border: '1px solid var(--toolbar-border)',
       }}>
         <style>{`.toolbar-scroll::-webkit-scrollbar{display:none}`}</style>
         <div className="toolbar-scroll" style={{
@@ -267,7 +268,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       background: bg,
       boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
       border: '1px solid rgba(255,255,255,0.12)',
-      outline: '1px solid rgba(255,255,255,0.2)',
+      outline: '1px solid var(--border-sm)',
       transition: 'all 0.3s',
     }}>
       {controls}

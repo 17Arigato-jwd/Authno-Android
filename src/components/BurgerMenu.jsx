@@ -230,8 +230,11 @@ export default function BurgerMenu({
     </div>
   );
 
-  // ── Background — gradient from accent to near-black ───────────────────────
-  const bg = `linear-gradient(to bottom right, ${accentHex}F2, rgba(0,0,0,0.95))`;
+  // ── Background — themed panel with a faint accent wash ────────────────────
+  // Previously hard-coded accent→near-black, which ignored the theme entirely
+  // and put var(--text-1) (dark on light themes) on a forced-dark panel =
+  // unreadable. Now it follows the active theme's modal surface.
+  const bg = `linear-gradient(to bottom right, var(--accent-a08), transparent), var(--modal-bg)`;
 
   return android
     ? createPortal(

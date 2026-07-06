@@ -2,9 +2,13 @@
  * Fonts.js — Google Fonts loader + App Metadata + Attribution
  *
  * Call injectDesignSystemFonts() once in your App entry point.
- * Update APP_META on every release.
+ * APP_META is sourced from the build (src/version.js) — never hand-edited.
  * Add / remove entries from ATTRIBUTION as dependencies change.
  */
+
+import {
+  APP_VERSION, APP_NAME, APP_AUTHOR, APP_SUPPORT_EMAIL, APP_REPOSITORY, APP_BUILD_DATE,
+} from '../version';
 
 // ── Font loader ───────────────────────────────────────────────────────────────
 
@@ -21,20 +25,39 @@ export function injectDesignSystemFonts() {
   // so the <i class="hn hn-{name}"> icon font is available globally.
 }
 
-// ── App Metadata — bump on every release ─────────────────────────────────────
+// ── App Metadata — sourced from the build, never hand-edited ──────────────────
+// Version / name / author / repo / build date come from src/version.js (see the
+// import at the top of this file), which scripts/sync-version.js regenerates
+// from package.json on every start/build. The running platform is detected at
+// runtime, so About shows "Windows", "Linux" or "Android", never a stale value.
+
+function detectPlatform() {
+  if (typeof window === 'undefined') return 'Desktop';
+  try {
+    if (window.electron) {
+      const p = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '');
+      if (/win/i.test(p))   return 'Windows';
+      if (/linux/i.test(p) && !/android/i.test(p)) return 'Linux';
+      if (/mac/i.test(p))   return 'macOS';
+      return 'Desktop';
+    }
+    if (window.Capacitor?.getPlatform?.() === 'android' || /Android/i.test(navigator.userAgent)) return 'Android';
+  } catch { /* ignore */ }
+  return 'Web';
+}
 
 export const APP_META = {
-  name:         'Authno',
-  version:      '1.0.0',
-  buildDate:    '2026-04-29',
-  platform:     'Android',
-  author:       'Your Name / Studio',
-  repository:   'https://github.com/your-org/authno-android',
-  supportEmail: 'support@authno.app',
+  name:         APP_NAME,
+  version:      APP_VERSION,
+  buildDate:    APP_BUILD_DATE,
+  platform:     detectPlatform(),
+  author:       APP_AUTHOR,
+  repository:   APP_REPOSITORY,
+  supportEmail: APP_SUPPORT_EMAIL,
 };
 
 // ── Attribution — one entry per library / asset requiring credit ──────────────
-
+// Reflects the ACTUAL stack (Electron desktop + Capacitor Android + React).
 export const ATTRIBUTION = [
   {
     name:    'Pixel Icon Library',
@@ -44,18 +67,18 @@ export const ATTRIBUTION = [
     note:    'Retro pixel icons — attribution required. Use <i class="hn hn-{name}"> or npm: @hackernoon/pixel-icon-library',
   },
   {
-    name:    'Silkscreen',
-    author:  'Jason Kottke',
+    name:    'Inter',
+    author:  'Rasmus Andersson',
     licence: 'OFL-1.1',
-    url:     'https://fonts.google.com/specimen/Silkscreen',
-    note:    'Clean retro pixel font used for headings and labels',
+    url:     'https://rsms.me/inter/',
+    note:    'Default interface & editor typeface',
   },
   {
     name:    'JetBrains Mono',
     author:  'JetBrains',
     licence: 'OFL-1.1',
     url:     'https://fonts.google.com/specimen/JetBrains+Mono',
-    note:    'Monospace font used for UI text and code',
+    note:    'Monospace font used for code and technical UI',
   },
   {
     name:    'React',
@@ -64,11 +87,17 @@ export const ATTRIBUTION = [
     url:     'https://react.dev',
   },
   {
-    name:    'React Native / Expo',
-    author:  'Expo, Inc.',
+    name:    'Electron',
+    author:  'OpenJS Foundation',
     licence: 'MIT',
-    url:     'https://expo.dev',
+    url:     'https://www.electronjs.org',
+    note:    'Windows / Linux desktop shell',
   },
-  // Add more entries here as dependencies grow:
-  // { name: 'react-native-reanimated', author: 'Software Mansion', licence: 'MIT', url: '...' },
+  {
+    name:    'Capacitor',
+    author:  'Ionic',
+    licence: 'MIT',
+    url:     'https://capacitorjs.com',
+    note:    'Android native runtime',
+  },
 ];

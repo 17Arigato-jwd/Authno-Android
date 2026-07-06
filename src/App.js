@@ -9,9 +9,12 @@ import Sidebar from "./components/Sidebar";
 import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
-import { isAndroid } from "./utils/platform";
+import { isAndroid, isElectron } from "./utils/platform";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
-import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent } from "./theme";
+import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent, applyFonts } from "./theme";
+import { FontCustomizer } from "./components/FontCustomizer";
+import { DEFAULT_FONTS } from "./utils/fontManager";
+import TitleBar from "./components/TitleBar";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -92,7 +95,7 @@ function Editor({
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           {onBack && (
             <button onClick={onBack}
-              style={{ padding: 8, border: "1px solid rgba(255,255,255,0.3)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s", display: "flex", alignItems: "center", gap: 4, color: "var(--text-1)" }}
+              style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s", display: "flex", alignItems: "center", gap: 4, color: "var(--text-1)" }}
               aria-label="Back to book">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -101,9 +104,9 @@ function Editor({
           )}
           {android && !onBack && (
             <button onClick={onToggleSidebar}
-              style={{ padding: 8, border: "1px solid rgba(255,255,255,0.3)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s" }}
+              style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s" }}
               aria-label="Sessions">
-              <DSIcons.Menu size={20} color="white" />
+              <DSIcons.Menu size={20} color="var(--text-1)" />
             </button>
           )}
           <input
@@ -119,7 +122,7 @@ function Editor({
               else onEditTitle(title);
             }}
             style={{
-              background: "transparent", color: "white", fontSize: 18, fontWeight: 600,
+              background: "transparent", color: "var(--text-1)", fontSize: 18, fontWeight: 600,
               outline: "none", borderBottom: "1px solid transparent",
               maxWidth: android ? "40vw" : "60vw", minWidth: 0,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -132,9 +135,9 @@ function Editor({
           <button
             ref={burgerBtnRef}
             onClick={onToggleMenu}
-            style={{ padding: 8, border: "2px solid white", borderRadius: 6, background: "none", cursor: "pointer", transition: "background 0.15s" }}
+            style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", transition: "background 0.15s", color: "var(--text-1)" }}
           >
-            <BurgerIcon style={{ color: "white" }} />
+            <BurgerIcon style={{ color: "var(--text-1)" }} />
           </button>
         </div>
       </header>
@@ -195,6 +198,7 @@ function Editor({
                 width: "100%", minHeight: 400, padding: 16, borderRadius: 8,
                 boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none", lineHeight: 1.7,
                 background: 'var(--editor-bg)', color: 'var(--text-1)',
+                fontFamily: 'var(--font-editor)',
                 marginTop: android ? "0.25rem" : "5rem",
                 WebkitUserSelect: "text", userSelect: "text",
               }}
@@ -202,8 +206,8 @@ function Editor({
             />
           </>
         ) : (
-          <div style={{ color: "rgba(255,255,255,0.4)", textAlign: "center", marginTop: 80, padding: "0 16px" }}>
-            {android ? "Tap ☰ above to open your sessions." : "Select or create a session to begin."}
+          <div style={{ color: "var(--text-4)", textAlign: "center", marginTop: 80, padding: "0 16px" }}>
+            {android ? "Tap the menu above to open your sessions." : "Select or create a session to begin."}
           </div>
         )}
       </main>
@@ -216,6 +220,10 @@ function AppInner({ navigateRef }) {
   const { showError } = useError();
   const { theme } = useTheme(); // ← active theme object; passed to BackgroundRouter
   const [sessions, setSessions]   = useState([]);
+  // Flips true once the initial localStorage session load has settled, so the
+  // startup-behavior effect fires exactly once with a known session set (even
+  // when that set is empty) — the "startup does nothing" fix.
+  const [bootReady, setBootReady] = useState(false);
 
   useEffect(() => {
     setGetSessionsHandler(() => sessions);
@@ -261,6 +269,7 @@ function AppInner({ navigateRef }) {
   const [brokenFiles, setBrokenFiles] = useState([]);
 
   const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [fontCustomizerOpen, setFontCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [readAloudSession, setReadAloudSession] = useState(null);
   const [billingOpen, setBillingOpen] = useState(false);
@@ -276,6 +285,23 @@ function AppInner({ navigateRef }) {
   // ThemeBase.applyAccent). Without this, every var()-reading component showed
   // the theme's default accent while prop-reading ones showed the custom one.
   useEffect(() => { applyAccent(customization.accentHex); }, [customization.accentHex]);
+
+  // Desktop shell: flag Electron so the custom title bar shows and the app-root
+  // height accounts for it (see index.css .is-electron / TitleBar.jsx).
+  useEffect(() => {
+    if (!isElectron()) return;
+    document.documentElement.classList.add('is-electron');
+    document.documentElement.style.setProperty('--titlebar-h', '36px');
+    return () => {
+      document.documentElement.classList.remove('is-electron');
+      document.documentElement.style.setProperty('--titlebar-h', '0px');
+    };
+  }, []);
+
+  // Apply the user's chosen fonts (body / editor / headings + uploaded fonts).
+  // Like applyAccent, this writes a CSS-var override that outranks the theme's
+  // default fonts and is re-asserted after every theme switch.
+  useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts]);
 
   // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
   useEffect(() => {
@@ -343,20 +369,37 @@ function AppInner({ navigateRef }) {
       const saved2 = localStorage.getItem("offlineWriterSessions");
       if (saved2) { try { const parsed = JSON.parse(saved2); if (Array.isArray(parsed)) checkFileIntegrity(parsed).then(broken => { if (broken.length > 0) setBrokenFiles(broken); }); } catch { /* ignore */ } }
     }
+    // The synchronous session load is done — let the startup-behavior effect run.
+    setBootReady(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Startup behavior ─────────────────────────────────────────────────────
+  // Runs once, after the initial session load settles (bootReady) — NOT gated
+  // on there being sessions, so 'blank'/'home'/'none' work on a fresh install
+  // too. Each mode also drives the view, so the chosen book actually opens
+  // (previously 'last'/'blank' set the id but left you on the home screen).
   const startupApplied = useRef(false);
   useEffect(() => {
-    if (startupApplied.current) return;
-    if (!sessions.length) return;
+    if (startupApplied.current || !bootReady) return;
     startupApplied.current = true;
     const behavior = settings?.startupBehavior ?? "last";
+
+    const openBook = (id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); };
+
     if (behavior === "last") {
       const savedId = localStorage.getItem("offlineWriterCurrentId");
-      if (savedId && sessions.some((s) => s.id === savedId)) setCurrentId(savedId);
-      else if (sessions.length > 0) setCurrentId(sessions[0].id);
+      if (savedId && sessions.some((s) => s.id === savedId)) openBook(savedId);
+      else if (sessions.length > 0) openBook(sessions[0].id);
+      else { setCurrentId(null); setView("home"); }
     } else if (behavior === "blank") {
+      // Reuse an existing pristine (empty, untitled) book instead of stacking a
+      // fresh Untitled Book on every launch — the "blank keeps piling up" fix.
+      const isPristine = (s) =>
+        s.type === "book" && (s.title === "Untitled Book" || !s.title) &&
+        !(s.content && s.content.replace(/<[^>]*>/g, "").trim()) &&
+        (s.chapters || []).every((c) => !(c.content && c.content.replace(/<[^>]*>/g, "").trim()));
+      const existing = sessions.find(isPristine);
+      if (existing) { openBook(existing.id); return; }
       const now = new Date().toISOString();
       const blank = {
         id: Date.now().toString(), title: "Untitled Book", content: "", type: "book",
@@ -365,14 +408,12 @@ function AppInner({ navigateRef }) {
         authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "",
       };
       setSessions((prev) => [blank, ...prev]);
-      setCurrentId(blank.id);
-    } else if (behavior === "none") {
-      setCurrentId(null);
-    } else if (behavior === "home") {
+      openBook(blank.id);
+    } else { // 'home' (and legacy 'none') — land on the home screen
       setCurrentId(null);
       setView("home");
     }
-  }, [sessions, settings]);
+  }, [bootReady, sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist sessions. Cover images live in the .authbook files on disk; keeping
   // their base64 in the localStorage mirror (N8) bloated it and could exceed the
@@ -691,6 +732,8 @@ function AppInner({ navigateRef }) {
   };
 
   return (
+    <>
+    <TitleBar />
     <div className="app-root flex relative" style={{ color: "var(--text-1)" }}>
       {/* Light/dark is owned entirely by the active theme (applyTheme toggles
           .light-mode from theme.meta.isDark). The old per-render `settings.lightMode`
@@ -816,6 +859,7 @@ function AppInner({ navigateRef }) {
         isOpen={settingsOpen} onClose={() => setSettingsOpen(false)}
         settings={settings} onSave={handleSaveSettings}
         onOpenCustomizer={() => setCustomizerOpen(true)}
+        onOpenFontCustomizer={() => setFontCustomizerOpen(true)}
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
         sessions={sessions} onSessionChange={handleSessionChange}
       />
@@ -825,10 +869,17 @@ function AppInner({ navigateRef }) {
         customization={customization} onSave={handleSaveCustomization}
       />
 
-      <div style={{ position: "fixed", bottom: 16, right: 16, display: "flex", alignItems: "center", gap: 12, color: "rgba(255,255,255,0.4)", fontSize: 14, userSelect: "none", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      <FontCustomizer
+        isOpen={fontCustomizerOpen} onClose={() => setFontCustomizerOpen(false)}
+        fonts={customization.fonts ?? DEFAULT_FONTS} accentHex={customization.accentHex}
+        onSave={(nextFonts) => handleSaveCustomization({ ...customization, fonts: nextFonts })}
+      />
+
+      <div style={{ position: "fixed", bottom: 16, right: 16, display: "flex", alignItems: "center", gap: 12, color: "var(--text-4)", fontSize: 14, userSelect: "none", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
         {lastSaved && <span style={{ opacity: 0.8 }}>Saved ✓ ({lastSaved})</span>}
       </div>
     </div>
+    </>
   );
 }
 

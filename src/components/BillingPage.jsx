@@ -11,10 +11,23 @@
  * mock banner — the rest of the UI can stay.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { unlockProMock, resetToFree } from '../utils/entitlements';
 import { useEntitlement } from '../utils/useEntitlement';
 import { DSIcons } from '../DesignSystem';
+
+// Desktop = a centered dialog with a two-column layout; mobile/portrait = a
+// full-screen sheet with a single column. This is the "not optimised for PC" fix.
+function useWideLayout() {
+  const compute = () => typeof window !== 'undefined' && window.innerWidth >= 880 && window.innerWidth > window.innerHeight;
+  const [wide, setWide] = useState(compute);
+  useEffect(() => {
+    const f = () => setWide(compute());
+    window.addEventListener('resize', f);
+    return () => window.removeEventListener('resize', f);
+  }, []);
+  return wide;
+}
 
 const PRO_FEATURES = [
   'Unlimited books & chapters',
@@ -32,6 +45,7 @@ const PLANS = [
 
 export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
   const { isPro } = useEntitlement();
+  const wide = useWideLayout();
   const [plan, setPlan] = useState('yearly');
   const [method, setMethod] = useState('upi');       // 'upi' | 'card'
   const [status, setStatus] = useState('idle');       // idle | processing | success
@@ -55,7 +69,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 
   if (isPro && status !== 'success') {
     return (
-      <Screen accentHex={accentHex} onClose={onClose} title="Authno Pro">
+      <Screen accentHex={accentHex} onClose={onClose} title="Authno Pro" wide={wide}>
         <div style={{ textAlign: 'center', padding: '32px 16px' }}>
           <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 16px', background: `${accentHex}18`, border: `1px solid ${accentHex}55`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <StarIcon color={accentHex} size={30} />
@@ -71,11 +85,111 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
     );
   }
 
+  const featureColumn = (
+    <div style={{ flex: wide ? '0 0 300px' : 'auto', width: wide ? 300 : '100%' }}>
+      <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-1)', margin: '0 0 14px' }}>Everything in Pro</h2>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {PRO_FEATURES.map((f) => (
+          <li key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0', color: 'var(--text-2)', fontSize: 14 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accentHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 3 }}><polyline points="20 6 9 17 4 12" /></svg>
+            {f}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  const paymentColumn = (
+    <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+      {/* Plans */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        {PLANS.map((p) => {
+          const active = plan === p.id;
+          return (
+            <button key={p.id} onClick={() => setPlan(p.id)}
+              style={{
+                flex: 1, padding: '12px 8px', borderRadius: 14, cursor: 'pointer', textAlign: 'center',
+                background: active ? `${accentHex}18` : 'var(--surface)',
+                border: `1.5px solid ${active ? accentHex : 'var(--border)'}`,
+                transition: 'all 0.12s',
+              }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>{p.label}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginTop: 3 }}>{p.price}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-4)' }}>{p.per}</div>
+              {p.note ? <div style={{ fontSize: 10.5, color: accentHex, fontWeight: 700, marginTop: 4 }}>{p.note}</div> : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Payment method toggle */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <MethodTab active={method === 'upi'} onClick={() => setMethod('upi')} label="UPI" accentHex={accentHex} />
+        <MethodTab active={method === 'card'} onClick={() => setMethod('card')} label="Card" accentHex={accentHex} />
+      </div>
+
+      {method === 'upi' ? (
+        <div style={{ marginBottom: 20 }}>
+          <Label>UPI ID</Label>
+          <input
+            value={upiId} onChange={(e) => setUpiId(e.target.value)}
+            placeholder="yourname@bank" autoCapitalize="none" autoCorrect="off"
+            style={inputStyle}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            {['@oksbi', '@okhdfcbank', '@okaxis', '@ybl', '@paytm'].map(s => (
+              <button key={s} onClick={() => setUpiId((v) => (v.split('@')[0] || 'name') + s)}
+                style={{ fontSize: 11.5, padding: '5px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-3)', cursor: 'pointer' }}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 10 }}>You’ll receive a collect request in your UPI app (simulated).</p>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 20, display: 'grid', gap: 10 }}>
+          <div>
+            <Label>Card number</Label>
+            <input value={card.number} onChange={(e) => setCard({ ...card, number: formatCard(e.target.value) })} placeholder="1234 5678 9012 3456" inputMode="numeric" style={inputStyle} />
+          </div>
+          <div>
+            <Label>Name on card</Label>
+            <input value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} placeholder="Full name" style={inputStyle} />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Label>Expiry</Label>
+              <input value={card.expiry} onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })} placeholder="MM/YY" inputMode="numeric" style={inputStyle} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Label>CVV</Label>
+              <input value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="•••" inputMode="numeric" style={inputStyle} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={handlePay} disabled={!canPay || status === 'processing'}
+        style={{
+          width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
+          background: canPay ? accentHex : 'var(--surface-md)',
+          color: canPay ? '#fff' : 'var(--text-5)',
+          fontSize: 15, fontWeight: 800, cursor: canPay && status === 'idle' ? 'pointer' : 'default',
+          boxShadow: canPay ? `0 6px 18px ${accentHex}55` : 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+        {status === 'processing' ? (<><Spinner /> Processing…</>) : `Pay ${PLANS.find(p => p.id === plan)?.price} with ${method === 'upi' ? 'UPI' : 'Card'}`}
+      </button>
+      <p style={{ fontSize: 11, color: 'var(--text-5)', textAlign: 'center', marginTop: 12 }}>Simulated secure checkout · no real charge</p>
+    </div>
+  );
+
   return (
-    <Screen accentHex={accentHex} onClose={onClose} title="Upgrade to Pro">
+    <Screen accentHex={accentHex} onClose={onClose} title="Upgrade to Pro" wide={wide}>
       {/* Mock banner — makes clear no real charge occurs */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', borderRadius: 10, background: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)', marginBottom: 18 }}>
-        <span style={{ fontSize: 16 }}>🧪</span>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', borderRadius: 10, background: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)', marginBottom: 20 }}>
+        <DSIcons.Flask size={16} color="var(--color-warning)" />
         <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Demo checkout — no real payment is processed. Submitting unlocks Pro locally for testing.</span>
       </div>
 
@@ -88,99 +202,10 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
           <p style={{ color: 'var(--text-3)', fontSize: 14 }}>Pro features are now unlocked.</p>
         </div>
       ) : (
-        <>
-          {/* Feature list */}
-          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 22px' }}>
-            {PRO_FEATURES.map((f) => (
-              <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', color: 'var(--text-2)', fontSize: 14 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accentHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                {f}
-              </li>
-            ))}
-          </ul>
-
-          {/* Plans */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {PLANS.map((p) => {
-              const active = plan === p.id;
-              return (
-                <button key={p.id} onClick={() => setPlan(p.id)}
-                  style={{
-                    flex: 1, padding: '12px 8px', borderRadius: 14, cursor: 'pointer', textAlign: 'center',
-                    background: active ? `${accentHex}18` : 'var(--surface)',
-                    border: `1.5px solid ${active ? accentHex : 'var(--border)'}`,
-                    transition: 'all 0.12s',
-                  }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>{p.label}</div>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginTop: 3 }}>{p.price}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-4)' }}>{p.per}</div>
-                  {p.note ? <div style={{ fontSize: 10.5, color: accentHex, fontWeight: 700, marginTop: 4 }}>{p.note}</div> : null}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Payment method toggle */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <MethodTab active={method === 'upi'} onClick={() => setMethod('upi')} label="UPI" accentHex={accentHex} />
-            <MethodTab active={method === 'card'} onClick={() => setMethod('card')} label="Card" accentHex={accentHex} />
-          </div>
-
-          {method === 'upi' ? (
-            <div style={{ marginBottom: 20 }}>
-              <Label>UPI ID</Label>
-              <input
-                value={upiId} onChange={(e) => setUpiId(e.target.value)}
-                placeholder="yourname@bank" autoCapitalize="none" autoCorrect="off"
-                style={inputStyle}
-              />
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                {['@oksbi', '@okhdfcbank', '@okaxis', '@ybl', '@paytm'].map(s => (
-                  <button key={s} onClick={() => setUpiId((v) => (v.split('@')[0] || 'name') + s)}
-                    style={{ fontSize: 11.5, padding: '5px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-3)', cursor: 'pointer' }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-              <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 10 }}>You’ll receive a collect request in your UPI app (simulated).</p>
-            </div>
-          ) : (
-            <div style={{ marginBottom: 20, display: 'grid', gap: 10 }}>
-              <div>
-                <Label>Card number</Label>
-                <input value={card.number} onChange={(e) => setCard({ ...card, number: formatCard(e.target.value) })} placeholder="1234 5678 9012 3456" inputMode="numeric" style={inputStyle} />
-              </div>
-              <div>
-                <Label>Name on card</Label>
-                <input value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} placeholder="Full name" style={inputStyle} />
-              </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <Label>Expiry</Label>
-                  <input value={card.expiry} onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })} placeholder="MM/YY" inputMode="numeric" style={inputStyle} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <Label>CVV</Label>
-                  <input value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="•••" inputMode="numeric" style={inputStyle} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={handlePay} disabled={!canPay || status === 'processing'}
-            style={{
-              width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
-              background: canPay ? accentHex : 'var(--surface-md)',
-              color: canPay ? '#fff' : 'var(--text-5)',
-              fontSize: 15, fontWeight: 800, cursor: canPay && status === 'idle' ? 'pointer' : 'default',
-              boxShadow: canPay ? `0 6px 18px ${accentHex}55` : 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
-            {status === 'processing' ? (<><Spinner /> Processing…</>) : `Pay ${PLANS.find(p => p.id === plan)?.price} with ${method === 'upi' ? 'UPI' : 'Card'}`}
-          </button>
-          <p style={{ fontSize: 11, color: 'var(--text-5)', textAlign: 'center', marginTop: 12 }}>Simulated secure checkout · no real charge</p>
-        </>
+        <div style={{ display: 'flex', flexDirection: wide ? 'row' : 'column', gap: wide ? 36 : 24, alignItems: 'flex-start' }}>
+          {featureColumn}
+          {paymentColumn}
+        </div>
       )}
     </Screen>
   );
@@ -188,17 +213,39 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 
 // ── Small building blocks ─────────────────────────────────────────────────────
 
-function Screen({ children, accentHex, onClose, title }) {
+function Screen({ children, accentHex, onClose, title, wide }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'var(--app-bg)', overflowY: 'auto' }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '18px 18px max(24px, env(safe-area-inset-bottom))', minHeight: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-1)' }}>{title}</h1>
-          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: 4 }}>
-            <DSIcons.X size={22} color="currentColor" />
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 2600,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--modal-overlay-bg, rgba(0,0,0,0.75))', backdropFilter: 'blur(6px)',
+        padding: wide ? '24px' : '0',
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        display: 'flex', flexDirection: 'column',
+        width: wide ? 'min(940px, 96vw)' : '100vw',
+        height: wide ? 'auto' : '100dvh',
+        maxHeight: wide ? '90vh' : '100dvh',
+        background: 'var(--modal-bg)',
+        border: wide ? '1px solid var(--border)' : 'none',
+        borderRadius: wide ? 20 : 0,
+        overflow: 'hidden',
+        boxShadow: wide ? `0 32px 80px rgba(0,0,0,0.5), 0 0 80px ${accentHex}14` : 'none',
+      }}>
+        {/* Sticky header — the close button no longer scrolls away */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--modal-bg)', flexShrink: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text-1)' }}>{title}</h1>
+          <button onClick={onClose} aria-label="Close" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }}>
+            <DSIcons.X size={16} color="currentColor" />
           </button>
         </div>
-        {children}
+        {/* Scroll body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: wide ? '24px 28px max(24px, env(safe-area-inset-bottom))' : '18px 18px max(24px, env(safe-area-inset-bottom))' }}>
+          {children}
+        </div>
       </div>
     </div>
   );
