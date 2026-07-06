@@ -13,7 +13,6 @@ import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
 import ExtensionTab from "./ExtensionTab";
-import { useExtensions } from "../utils/ExtensionContext";
 import { hapticDelete } from "../utils/haptics";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
@@ -26,6 +25,7 @@ import {
   COLORS,
   TYPOGRAPHY,
   DSIcons,
+  toast,
 } from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,14 +33,12 @@ export default function Sidebar({
   sessions,
   setSessions,
   onNewBook,
-  onNewStoryboard,
   search,
   setSearch,
   onSelect,
   currentId,
   onDelete,
   accentHex,
-  lightMode,
   setView,
   session,         // current book session (forwarded to ExtensionTab)
   // mobile
@@ -51,8 +49,8 @@ export default function Sidebar({
   const [editMode,     setEditMode]     = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeTab,    setActiveTab]    = useState("sessions");
-  const { hasExtensions } = useExtensions();
   const sidebarRef       = useRef(null);
+  const listRef          = useRef(null);   // the actual scrolling sessions list
   const contextRef       = useRef(null);
   const dragState        = useRef({});
   const longPressTimer   = useRef(null);
@@ -119,6 +117,12 @@ export default function Sidebar({
   };
 
   // ── Delete with confirmation modal ───────────────────────────────────────
+  // 4H: previously a raw document.createElement + innerHTML dialog injected
+  // outside React — unthemed, unclosable via Escape/backdrop, and duplicated
+  // styling. Now a normal React modal driven by state (rendered below).
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [skipCheck, setSkipCheck] = useState(false);
+
   const handleDelete = (directId) => {
     const sessionId = directId ?? contextMenu?.sessionId;
     if (!sessionId) return;
@@ -127,46 +131,47 @@ export default function Sidebar({
       setContextMenu(null);
       return;
     }
-    const modal = document.createElement("div");
-    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:9999";
-    const isDark = !lightMode;
-    modal.innerHTML = `
-      <div style="background:${isDark ? "#0f0f10" : "#fff"};color:${isDark ? "#fff" : "#1a1a1e"};border:1px solid rgba(${isDark ? "255,255,255" : "0,0,0"},0.2);border-radius:16px;padding:24px;width:360px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.6)">
-        <h2 style="font-size:17px;font-weight:700;margin-bottom:10px">Delete from Workspace?</h2>
-        <p style="font-size:13px;opacity:0.7;line-height:1.6;margin-bottom:18px">
-          This removes the session from your workspace.<br/>
-          ${android ? "Your writing data will be deleted." : "The actual <b>.authbook</b> file will remain on your computer."}
-        </p>
-        <label style="display:flex;align-items:center;gap:8px;margin-bottom:18px;cursor:pointer;font-size:13px;opacity:0.7">
-          <input type="checkbox" id="skipCheck" style="width:15px;height:15px;accent-color:${accentHex}" />
-          Don't show this again
-        </label>
-        <div style="display:flex;justify-content:flex-end;gap:10px">
-          <button id="cancelBtn" style="padding:7px 18px;border-radius:8px;border:1px solid rgba(${isDark ? "255,255,255" : "0,0,0"},0.3);background:transparent;cursor:pointer;font-size:13px;color:inherit">Cancel</button>
-          <button id="confirmBtn" style="padding:7px 18px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700">Delete</button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-    modal.querySelector("#cancelBtn").onclick = () => modal.remove();
-    modal.querySelector("#confirmBtn").onclick = () => {
-      if (modal.querySelector("#skipCheck").checked)
-        localStorage.setItem("skipDeleteWarning", "true");
-      onDelete?.(sessionId);
-      setContextMenu(null);
-      modal.remove();
-    };
+    setSkipCheck(false);
+    setDeleteTarget(sessionId);
+    setContextMenu(null);
   };
+
+  const confirmDelete = () => {
+    if (skipCheck) { try { localStorage.setItem("skipDeleteWarning", "true"); } catch { /* ignore */ } }
+    onDelete?.(deleteTarget);
+    setDeleteTarget(null);
+  };
+
+  // Escape closes the delete modal (previously impossible).
+  useEffect(() => {
+    if (!deleteTarget) return;
+    const onKey = (e) => { if (e.key === 'Escape') setDeleteTarget(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteTarget]);
 
   // ── Drag-drop (desktop only) ──────────────────────────────────────────────
   const onDragStart = (e, i) => { dragState.current.from = i; e.dataTransfer.effectAllowed = "move"; };
   const onDragOver  = (e, i) => {
     e.preventDefault();
     const from = dragState.current.from;
-    if (from === i) return;
-    const updated = [...sessions];
-    const [moved] = updated.splice(from, 1);
-    updated.splice(i, 0, moved);
-    setSessions(updated);
+    if (from === i || from == null) return;
+    // 2B: `sessions` here is the SEARCH-FILTERED list. Reordering it and calling
+    // setSessions(reorderedFiltered) previously overwrote the full state with the
+    // subset, permanently deleting every book that didn't match the search.
+    // Instead, translate the visible move into an id-based move over the full list.
+    const movedId  = sessions[from]?.id;
+    const targetId = sessions[i]?.id;
+    if (!movedId || !targetId) return;
+    setSessions((prev) => {
+      const full = [...prev];
+      const fromFull = full.findIndex((s) => s.id === movedId);
+      const toFull   = full.findIndex((s) => s.id === targetId);
+      if (fromFull === -1 || toFull === -1) return prev;
+      const [moved] = full.splice(fromFull, 1);
+      full.splice(toFull, 0, moved);
+      return full;
+    });
     dragState.current.from = i;
   };
 
@@ -174,7 +179,9 @@ export default function Sidebar({
     if (!editMode || android) return;
     let iv = null;
     const drag = (e) => {
-      const el = sidebarRef.current;
+      // The scroll container is the sessions LIST, not the aside — scrolling
+      // sidebarRef here did nothing, so drag-to-edge autoscroll was dead.
+      const el = listRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
       if (e.clientY < r.top + 80)       { if (!iv) iv = setInterval(() => { el.scrollTop -= 12; }, 16); }
@@ -239,7 +246,7 @@ export default function Sidebar({
       if (android) onDrawerClose?.();
     } catch (err) {
       console.error("Error opening book:", err);
-      alert("Could not open that file.");
+      toast("Could not open that file", { variant: "danger", duration: 4000 });
     }
   };
 
@@ -277,8 +284,8 @@ export default function Sidebar({
       ref={sidebarRef}
       style={{
         ...asideStyle,
-        background: "#0b0b0c",
-        color: "#fff",
+        background: "var(--sidebar-bg)",
+        color: "var(--text-1)",
         display: "flex",
         flexDirection: "column",
         position: android ? asideStyle.position : "relative",
@@ -367,16 +374,8 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* New Storyboard */}
-        <MinimalButton
-          variant="smooth"
-          color={accentHex}
-          size="sm"
-          onClick={onNewStoryboard}
-          style={{ flex: 1, justifyContent: "center" }}
-        >
-          + Storyboard
-        </MinimalButton>
+        {/* "+ Storyboard" removed: the storyboard editor is deferred, and the
+            button created sessions that had no screen to open into (N14). */}
       </div>
 
       {/* ── Done Editing button (desktop drag-sort mode) ─────────────────── */}
@@ -395,18 +394,14 @@ export default function Sidebar({
 
       {/* ── SESSIONS LIST ────────────────────────────────────────────────── */}
       {activeTab === "sessions" && (
-        <div style={{ padding: 12, flex: 1, overflowY: "auto" }}>
+        <div ref={listRef} style={{ padding: 12, flex: 1, overflowY: "auto" }}>
           <div style={{
             borderRadius: 10, padding: 8,
-            background: lightMode
-              ? "linear-gradient(135deg, #f0f0f2 0%, #e8e8ec 100%)"
-              : "linear-gradient(135deg, #1f1f1f 0%, #050505 100%)",
-            border: lightMode
-              ? "1px solid rgba(0,0,0,0.07)"
-              : "1px solid rgba(255,255,255,0.04)",
+            background: "var(--surface)",
+            border: "1px solid var(--border-sm)",
           }}>
             <div style={{
-              fontSize: 10, color: "rgba(255,255,255,0.5)", padding: "0 8px 8px",
+              fontSize: 10, color: "var(--text-4)", padding: "0 8px 8px",
               fontFamily: TYPOGRAPHY.mono, letterSpacing: "0.06em", textTransform: "uppercase",
             }}>
               Sessions
@@ -482,7 +477,7 @@ export default function Sidebar({
       )}
 
       {/* ── EXTENSIONS PANEL ─────────────────────────────────────────────── */}
-      {activeTab === "extensions" && hasExtensions && (
+      {activeTab === "extensions" && android && (
         <ExtensionTab
           accentHex={accentHex}
           session={session}
@@ -490,9 +485,12 @@ export default function Sidebar({
         />
       )}
 
-      {/* ── BOTTOM TAB BAR — DesignSystem <Tabs> ─────────────────────────── */}
-      {hasExtensions && (
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, background: "#0b0b0c" }}>
+      {/* ── BOTTOM TAB BAR — DesignSystem <Tabs> ───────────────────────────
+          Android-only: extensions are not available on desktop yet (A4), and
+          the tab now shows even with zero extensions so the empty state and
+          "Install from file" button are reachable. */}
+      {android && (
+        <div style={{ borderTop: "1px solid var(--border-sm)", flexShrink: 0, background: "var(--sidebar-bg)" }}>
           <Tabs
             items={TAB_ITEMS}
             active={activeTab}
@@ -572,6 +570,45 @@ export default function Sidebar({
           50%      { transform: rotate(0.8deg); }
         }
       `}</style>
+
+      {/* ── DELETE CONFIRMATION (React, themed — replaces the old raw-DOM dialog, 4H) ── */}
+      {deleteTarget && createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'var(--scrim-strong)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--modal-bg)', color: 'var(--text-1)',
+              border: '1px solid var(--border)', borderRadius: 16,
+              padding: 24, width: 360, maxWidth: '90vw',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 10px' }}>Delete from Workspace?</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6, margin: '0 0 18px' }}>
+              This removes the session from your workspace.<br />
+              {android ? 'Your writing data will be deleted.' : <>The actual <b>.authbook</b> file will remain on your computer.</>}
+            </p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, cursor: 'pointer', fontSize: 13, color: 'var(--text-3)' }}>
+              <input type="checkbox" checked={skipCheck} onChange={(e) => setSkipCheck(e.target.checked)} style={{ width: 15, height: 15, accentColor: accentHex }} />
+              Don't show this again
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setDeleteTarget(null)}
+                style={{ padding: '7px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, color: 'var(--text-2)' }}>
+                Cancel
+              </button>
+              <button onClick={confirmDelete}
+                style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </aside>
   );
 }

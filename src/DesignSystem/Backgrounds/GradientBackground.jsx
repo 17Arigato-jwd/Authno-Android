@@ -150,6 +150,10 @@ export function GradientBackground({
   useEffect(() => { injectKeyframes(); }, []);
 
   useEffect(() => {
+    // B4: don't burn battery generating and animating blobs while the layer is
+    // invisible — previously the 1s simulation kept running behind a 0-opacity
+    // div whenever a theme disabled the gradient.
+    if (!visible) { setBlobs([]); return undefined; }
     setBlobs(Array.from({ length: minBlobs }, generateBlob));
     const interval = setInterval(() => {
       if (document.hidden) return;
@@ -170,7 +174,7 @@ export function GradientBackground({
     }, 1000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette.accent, minBlobs, maxBlobs]);
+  }, [palette.accent, minBlobs, maxBlobs, visible]);
 
   return (
     <div

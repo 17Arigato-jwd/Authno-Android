@@ -1,5 +1,5 @@
 // HomeScreen.jsx
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 
 import { DSIcons } from '../DesignSystem';
@@ -24,19 +24,7 @@ function resolveTileIcon(iconName, size = 28) {
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
 // Reads the .light-mode class from the app-root div — no prop needed from App.js.
-function useLightMode() {
-  const [light, setLight] = useState(
-    () => document.querySelector('.light-mode') !== null
-  );
-  useEffect(() => {
-    const obs = new MutationObserver(
-      () => setLight(document.querySelector('.light-mode') !== null)
-    );
-    obs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    return () => obs.disconnect();
-  }, []);
-  return light;
-}
+/* useLightMode() removed (N3) — theming now flows through CSS variables. */
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const BurgerIcon = ({ className, style }) => (
@@ -66,65 +54,54 @@ function formatFileSize(bytes) {
 
 // ─── Theme helpers ────────────────────────────────────────────────────────────
 // Returns mode-appropriate style values so every hardcoded color is one place.
-function useTheme(accentHex, light) {
+function useTheme(accentHex) {
+  // N3: values now come from the theme engine's CSS variables instead of a
+  // binary light/dark ternary, so all five themes (and installed .thmbk
+  // themes) render this screen with their own palette.
   return {
     // Outer glass panels (actions card, tab card)
     glassCard: {
-      background: light ? 'rgba(255,255,255,0.62)' : 'rgba(0,0,0,0.45)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
-      border: light
-        ? '1px solid rgba(0,0,0,0.09)'
-        : '1px solid rgba(255,255,255,0.08)',
+      background: 'var(--glass-bg)',
+      backdropFilter: 'var(--glass-blur)',
+      WebkitBackdropFilter: 'var(--glass-blur)',
+      border: 'var(--glass-border)',
       borderRadius: '20px',
     },
     // Tab divider line
-    tabDivider: light ? 'rgba(0,0,0,0.09)' : 'rgba(255,255,255,0.07)',
+    tabDivider: 'var(--border-sm)',
     // Active tab label
-    tabActiveColor: light ? 'var(--text-1)' : '#fff',
+    tabActiveColor: 'var(--text-1)',
     // Book card — frosted accent glass
     bookCard: (hovered) => ({
       display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px',
-      background: light
-        ? hovered ? `${accentHex}22` : `${accentHex}12`
-        : hovered ? `${accentHex}28` : `${accentHex}18`,
+      background: hovered ? `${accentHex}28` : `${accentHex}18`,
       backdropFilter: 'blur(16px)',
       WebkitBackdropFilter: 'blur(16px)',
-      border: light
-        ? `1px solid ${hovered ? accentHex + '55' : accentHex + '30'}`
-        : `1px solid ${hovered ? accentHex + '55' : accentHex + '28'}`,
+      border: `1px solid ${hovered ? accentHex + '55' : accentHex + '30'}`,
       borderRadius: '16px', cursor: 'pointer',
       transition: 'background 0.15s ease, border-color 0.15s ease',
     }),
     // Thumbnail box inside book card
     bookThumb: {
       width: '52px', height: '52px', flexShrink: 0, borderRadius: '12px',
-      background: light ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.35)',
-      border: light
-        ? `1px solid ${accentHex}25`
-        : '1px solid rgba(255,255,255,0.08)',
+      background: 'var(--scrim)',
+      border: '1px solid var(--border-sm)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden',
     },
     // Action tile icon box
     actionTileBox: (hovered, comingSoon) => ({
       width: '72px', height: '72px', borderRadius: '18px',
-      background: hovered && !comingSoon
-        ? `${accentHex}22`
-        : light ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)',
+      background: hovered && !comingSoon ? `${accentHex}22` : 'var(--scrim)',
       backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-      border: `1.5px solid ${
-        hovered && !comingSoon
-          ? accentHex + '55'
-          : light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'
-      }`,
+      border: `1.5px solid ${hovered && !comingSoon ? accentHex + '55' : 'var(--border)'}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'all 0.15s ease', fontSize: '28px',
     }),
     // Spinner
-    spinnerDisc: light ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)',
-    spinnerTrack: light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)',
-    spinnerPending: light ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.3)',
+    spinnerDisc: 'var(--scrim-strong)',
+    spinnerTrack: 'var(--border)',
+    spinnerPending: 'var(--text-4)',
   };
 }
 
@@ -316,12 +293,13 @@ export default function HomeScreen({
   onToggleSidebar, onToggleMenu, burgerBtnRef,
   current, goalWords, onStreakUpdate, streakEnabled,
   onRefresh,
+  onReadAloud = () => {},
+  onOpenExtensions = () => {},
 }) {
   const { showError } = useError();
   const [activeTab, setActiveTab] = useState('recent');
 
-  const light = useLightMode();
-  const theme = useTheme(accentHex, light);
+  const theme = useTheme(accentHex);
 
   const { scrollRef, pullY, refreshing, onTouchStart, onTouchMove, onTouchEnd } =
     usePullToRefresh(onRefresh);
@@ -357,9 +335,10 @@ export default function HomeScreen({
       label: tile.label,
       onClick: () => navigate(tile._ext, tile.page),
     })),
-    { icon: '🔊', label: 'Read Aloud (Coming Soon)', comingSoon: true },
-    { icon: '?',  label: 'Coming Soon',              comingSoon: true },
-    { icon: '?',  label: 'Coming Soon',              comingSoon: true },
+    // U2: the three placeholder "Coming Soon" tiles are now real actions.
+    { icon: <span style={{ fontSize: 26, lineHeight: 1 }}>🔊</span>, label: 'Read Aloud', onClick: onReadAloud },
+    { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleOpenExisting },
+    { icon: <span style={{ fontSize: 26, lineHeight: 1 }}>🧩</span>, label: 'Extensions', onClick: onOpenExtensions },
   ];
 
   const listNudge = refreshing

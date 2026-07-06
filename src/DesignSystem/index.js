@@ -127,7 +127,7 @@ export { Divider, Spacer, Row, SectionLabel } from './Layout';
 export { ProgressBar, CircularProgress, Tabs } from './Progress';
 
 // ── Notifications ─────────────────────────────────────────────────────────────
-export { useToast, ToastContainer, _emitToast } from './Toast';
+export { useToast, ToastContainer, toast, _emitToast } from './Toast';
 
 // ── Data Display ──────────────────────────────────────────────────────────────
 export { ListItem, EmptyState, AboutSection } from './DataDisplay';

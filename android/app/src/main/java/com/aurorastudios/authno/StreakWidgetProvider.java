@@ -29,6 +29,7 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     static final String PREFS_NAME         = "authno_widget_prefs";
     static final String KEY_BOOKS_JSON     = "authno_books";
     static final String KEY_ACCENT_COLOR   = "authno_accent_color";
+    static final String KEY_IS_DARK        = "authno_is_dark";
     static final String WIDGET_BOOK_PREFIX = "widget_book_";
 
     // ── Lifecycle callbacks ───────────────────────────────────────────────────
@@ -62,6 +63,7 @@ public class StreakWidgetProvider extends AppWidgetProvider {
 
         String bookId    = prefs.getString(WIDGET_BOOK_PREFIX + widgetId, null);
         String accentHex = prefs.getString(KEY_ACCENT_COLOR, "#5a00d9");
+        boolean isDark   = prefs.getBoolean(KEY_IS_DARK, true);
 
         // Try the native-written file first (written by Filesystem plugin from JS),
         // fall back to SharedPreferences for backwards compatibility.
@@ -96,7 +98,7 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widget_root, pi);
 
         if (book != null) {
-            StreakWidgetRenderer.populate(ctx, views, book, accentHex);
+            StreakWidgetRenderer.populate(ctx, views, book, accentHex, isDark);
         } else {
             // Widget not configured yet (or the linked book was deleted)
             views.setTextViewText(R.id.widget_title, "Tap to open AuthNo");

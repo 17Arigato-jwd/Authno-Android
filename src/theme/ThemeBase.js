@@ -201,21 +201,74 @@ export function applyTheme(theme, selector = ':root') {
     --ds-success:           ${theme.statusColors.success};
     --ds-warning:           ${theme.statusColors.warning};
     --ds-info:              ${theme.statusColors.info};
+
+    --glass-bg:             ${theme.glass?.background ?? theme.backgrounds.modal};
+    --glass-border:         ${theme.glass?.border ?? `1px solid ${theme.borders.standard}`};
+    --glass-blur:           ${theme.glass?.backdropFilter ?? 'blur(18px)'};
+    --scrim:                ${theme.meta.isDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.60)'};
+    --scrim-strong:         ${theme.meta.isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.85)'};
   `.trim();
 
   let el = document.getElementById(STYLE_ID);
   if (!el) { el = document.createElement('style'); el.id = STYLE_ID; document.head.appendChild(el); }
   el.textContent = `${selector} {\n${vars}\n}`;
 
-  // Light-mode class for Tailwind
-  const root = document.querySelector('.app-root') ?? document.body;
-  root.classList.toggle('light-mode', !theme.meta.isDark);
+  // Light-mode class. Toggle on <html> — it always exists, unlike `.app-root`,
+  // which is absent during ThemeProvider's pre-render init. The old code fell
+  // back to <body> at init and `.app-root` later, leaving stale classes behind
+  // when themes changed (part of B2's split-brain light mode).
+  document.documentElement.classList.toggle('light-mode', !theme.meta.isDark);
+  const root = document.querySelector('.app-root');
+  if (root) root.classList.toggle('light-mode', !theme.meta.isDark);
+
+  // Themed body background — was hardcoded #060606 in index.css, so Paper and
+  // Sepia showed a black glow on overscroll and behind transparent surfaces.
+  document.body.style.background = theme.backgrounds.app;
 
   // CSS filter
-  root.style.filter = theme.effects?.cssFilter ?? '';
+  (root ?? document.body).style.filter = theme.effects?.cssFilter ?? '';
 
   // Effects overlay
   _applyEffects(theme.effects ?? {});
+
+  // Re-assert the user's custom accent (if any) on top of the theme's default.
+  _reapplyAccentOverride();
+}
+
+// ── Accent override ───────────────────────────────────────────────────────────
+// The customizer's accent colour previously updated component PROPS only —
+// every component reading var(--accent) kept showing the theme's default
+// violet, so accents looked inconsistent across the app. applyAccent() writes
+// a second style tag that outranks the base theme vars.
+let _accentOverrideHex = null;
+const ACCENT_STYLE_ID = 'authno-accent-override';
+
+export function applyAccent(hex) {
+  _accentOverrideHex = hex || null;
+  _reapplyAccentOverride();
+}
+
+function _reapplyAccentOverride() {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById(ACCENT_STYLE_ID);
+  if (!_accentOverrideHex) { el?.remove(); return; }
+  const acc = buildAccentPalette(_accentOverrideHex);
+  if (!el) { el = document.createElement('style'); el.id = ACCENT_STYLE_ID; document.head.appendChild(el); }
+  el.textContent = `:root {
+    --accent:        ${acc.primary};
+    --accent-light:  ${acc.light};
+    --accent-dark:   ${acc.dark};
+    --accent-base:   ${acc.base};
+    --accent-a08:    ${acc.alpha.a08};
+    --accent-a18:    ${acc.alpha.a18};
+    --accent-a33:    ${acc.alpha.a33};
+    --accent-a55:    ${acc.alpha.a55};
+    --ds-accent:     ${acc.primary};
+    --input-focus:   ${acc.primary};
+    --sidebar-active-border: ${acc.primary};
+    --editor-caret:  ${acc.primary};
+    --streak-day-today: ${acc.primary};
+  }`;
 }
 
 function _applyEffects(fx) {
@@ -249,6 +302,10 @@ export function ThemeProvider({ initialTheme, children }) {
   const switchTheme = useCallback((next) => {
     applyTheme(next);
     setTheme(next);
+    // N1: persist the choice. The boot path reads 'authno_theme_id', but nothing
+    // ever wrote it, so every restart fell back to the dark default regardless
+    // of what the user picked. Write it here, the single point of theme change.
+    try { localStorage.setItem('authno_theme_id', next?.meta?.id ?? 'dark-default'); } catch { /* ignore */ }
   }, []);
 
   return (

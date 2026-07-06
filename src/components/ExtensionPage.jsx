@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DSIcons } from '../DesignSystem';
-import { Browser } from '@capacitor/browser';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
 import { isAndroid } from '../utils/platform';
@@ -35,14 +34,59 @@ if (typeof document !== 'undefined' && !document.getElementById('ds-spin')) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
+// ─── In-app browser (N5) ──────────────────────────────────────────────────────
+// The old static `import { Browser } from '@capacitor/browser'` rejected at
+// runtime on device because the plugin was never synced into the Android
+// project. Prefer the native OAuthPlugin (Custom Tabs), then fall back to the
+// Capacitor Browser plugin if it exists, then window.open.
+async function openInAppBrowser(url) {
+  if (isAndroid()) {
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      const oauth = registerPlugin('OAuth');
+      if (oauth?.openAuthUrl) { await oauth.openAuthUrl({ url }); return; }
+    } catch (_) { /* fall through */ }
+  }
+  try {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.open({ url });
+    return;
+  } catch (_) { /* fall through */ }
+  window.open(url, '_blank', 'noopener');
+}
+
+async function closeInAppBrowser() {
+  if (isAndroid()) {
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      const oauth = registerPlugin('OAuth');
+      if (oauth?.closeAuthBrowser) { await oauth.closeAuthBrowser().catch(() => {}); return; }
+    } catch (_) { /* fall through */ }
+  }
+  try {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.close();
+  } catch (_) { /* Custom Tabs close themselves; nothing to do */ }
+}
+
 function sessionVars(session) {
   if (!session) return {};
+  // N4: _editingChap is the numeric chap_idx being edited, NOT a chapter
+  // object — the old `session._editingChap?.title` was always undefined, so
+  // the flagship "publish this chapter" tokens sent empty strings. Resolve the
+  // chapter from the chapters array (fall back to top-level content for books
+  // opened outside the editor).
+  const chapIdx = typeof session._editingChap === 'number' ? session._editingChap : null;
+  const chap = chapIdx != null
+    ? (session.chapters || []).find(c => c.chap_idx === chapIdx)
+    : null;
   return {
     bookId:         session.id ?? '',
     bookTitle:      session.title ?? '',
     externalId:     session.externalId ?? '',
-    chapterTitle:   session._editingChap?.title ?? '',
-    chapterContent: session._editingChap?.content ?? '',
+    chapterTitle:   chap?.title ?? '',
+    chapterContent: chap?.content ?? session.content ?? '',
   };
 }
 
@@ -214,6 +258,21 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     extension: ${JSON.stringify(extension)},
   };
 
+  // N7 (additive): generic host surface for ANY ui-file extension. The
+  // CloudBackup-specific methods above are kept verbatim for compatibility;
+  // new extensions should prefer this API.
+  window.AuthnoHostAPI = {
+    extension: window.CloudBackupAPI.extension,
+    storage: window.CloudBackupAPI.storage,
+    navigate:     function(pageId, session) { return call('navigate', [pageId, session]); },
+    openBrowser:  function(url)  { return call('openBrowser', [url]); },
+    closeBrowser: function()     { return call('closeBrowser', []); },
+    getSession:   function()     { return call('host.getSession', []); },
+    // U9: associate the current book with a remote/external id — persisted on
+    // the session and exposed back through the {externalId} template token.
+    setBookExternalId: function(bookId, externalId) { return call('host.setBookExternalId', [bookId, externalId]); },
+  };
+
   // Expose Capacitor native plugins needed by extension code.
   // gdrive.js calls window.Capacitor.Plugins.GoogleDrive.requestDriveToken()
   // which is only available in the parent frame — bridge it here.
@@ -316,6 +375,17 @@ ${fileCode}
           if (!api?.resolveConflict) throw new Error('resolveConflict not available');
           result = await api.resolveConflict(...args);
         }
+        else if (method === 'host.getSession') {
+          // Strip heavy fields; the iframe only needs identity + text.
+          result = session ? { id: session.id, title: session.title, externalId: session.externalId ?? '', chapters: (session.chapters || []).map(c => ({ chap_idx: c.chap_idx, title: c.title, order: c.order })) } : null;
+        }
+        else if (method === 'host.setBookExternalId') {
+          // U9: App owns session state — hand it the association via an event.
+          window.dispatchEvent(new CustomEvent('authno-set-external-id', {
+            detail: { bookId: args[0] ?? session?.id, externalId: args[1] },
+          }));
+          result = null;
+        }
         else if (method === 'navigate') {
           // args[0] = pageId, args[1] = passedSession
           // Navigate to another page within the same extension
@@ -325,11 +395,11 @@ ${fileCode}
           result = null;
         }
         else if (method === 'openBrowser') {
-          await Browser.open({ url: args[0] });
+          await openInAppBrowser(args[0]);
           result = null;
         }
         else if (method === 'closeBrowser') {
-          await Browser.close().catch(() => {});
+          await closeInAppBrowser();
           result = null;
         }
         else if (method === 'exportSessionAs') {
@@ -419,7 +489,6 @@ ${fileCode}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', color: 'var(--text-4)' }}>
         <DSIcons.Refresh size={28} style={{ animation: 'dsSpinIcon 1s linear infinite' }} />
         <span style={{ fontSize: '13px' }}>Loading extension…</span>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     );
   }
@@ -554,8 +623,7 @@ function WebviewPage({ url, accentHex }) {
         }}>
           <DSIcons.Refresh size={28} style={{ animation: 'dsSpinIcon 1s linear infinite' }} />
           <span style={{ fontSize: '13px' }}>Loading…</span>
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        </div>
+          </div>
       )}
       {failed
         ? <StatusBox icon="🌐" title="Could not load page" subtitle={`The extension page at ${url} could not be displayed.`} />
@@ -713,7 +781,6 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
         {status === 'loading'
           ? <><DSIcons.Refresh size={16} style={{ animation: 'dsSpinIcon 1s linear infinite' }} /> Processing…</>
           : page.submitLabel ?? 'Submit'}
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </button>
     </div>
   );

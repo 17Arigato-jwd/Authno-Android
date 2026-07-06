@@ -7,13 +7,14 @@
  *   - Slightly-hidden "Open Extensions Folder" button in footer
  */
 
-import { DSIcons } from "../DesignSystem";
+import { DSIcons, toast } from "../DesignSystem";
 import React, { useEffect, useRef, useState } from 'react';
 
 import { createPortal } from 'react-dom';
 import { useExtensions } from '../utils/ExtensionContext';
 import { isAndroid } from '../utils/platform';
 import { hapticDelete } from '../utils/haptics';
+import { openBilling } from '../utils/billingBus';
 
 // ─── Emoji / string → Lucide icon resolver ────────────────────────────────────
 
@@ -51,7 +52,9 @@ function getContribIcon(contrib, size = 12) {
   const label = (contrib.label ?? '').toLowerCase();
 
   if (icon) {
-    const str = String(icon).trim();
+    // A6: strip variation selectors + zero-width joiners so emoji variants
+    // ('⚙️' vs '⚙') resolve to the same icon instead of falling through.
+    const str = String(icon).trim().replace(/[\uFE00-\uFE0F\u200D]/g, '');
     if (EMOJI_MAP[str]) { const I = EMOJI_MAP[str]; return <I size={size} />; }
     if (LABEL_MAP[str.toLowerCase()]) { const I = LABEL_MAP[str.toLowerCase()]; return <I size={size} />; }
   }
@@ -112,7 +115,7 @@ const CHIPS_VISIBLE_DEFAULT = 3;
 
 
 function ExtensionCard({ ext, accentHex, session, onClose }) {
-  const { navigate, refresh, clearConfig } = useExtensions();
+  const { navigate, refresh, clearConfig, uninstall } = useExtensions();
   const [expanded, setExpanded] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -163,28 +166,17 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
   };
 
   const handleDelete = async () => {
-    const extDir = ext._dirName || ext.id;
+    // A3: single uninstall path via the context — it deactivates the running
+    // extension (cleans hooks/imports) then removes it from disk or the dev
+    // store. The old duplicated rmdir here skipped deactivation entirely and
+    // wrote to the wrong store on web.
     try {
-      if (isAndroid()) {
-        const { Filesystem, Directory } = await import('@capacitor/filesystem');
-        await Filesystem.rmdir({
-          path: `AuthNo/extensions/${extDir}`,
-          directory: Directory.Data,
-          recursive: true,
-        });
-      } else {
-        const raw = localStorage.getItem('__authno_dev_extensions');
-        const parsed = raw ? JSON.parse(raw) : [];
-        const next = Array.isArray(parsed) ? parsed.filter(m => m?.id !== ext.id) : [];
-        localStorage.setItem('__authno_dev_extensions', JSON.stringify(next));
-      }
-
+      await uninstall?.(ext.id);
       clearConfig?.(ext.id);
       setDeleteConfirm(false);
       setContextMenu(null);
-      await refresh?.();
     } catch (err) {
-      alert(`Could not remove extension "${ext.name || ext.id}": ${err?.message || err}`);
+      toast(`Could not remove "${ext.name || ext.id}": ${err?.message || err}`, { variant: 'danger', duration: 5000 });
     }
   };
 
@@ -295,15 +287,36 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
         {/* Description */}
         {ext.description && (
           <div style={{
-            fontSize: '12px', color: 'rgba(255,255,255,0.5)',
+            fontSize: '12px', color: 'var(--text-3)',
             lineHeight: '1.5',
           }}>
             {ext.description}
           </div>
         )}
 
+        {/* U10: premium extension locked on the free tier */}
+        {ext._locked && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 11px', borderRadius: 10,
+            background: 'var(--surface)', border: '1px dashed var(--border)',
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)', flex: 1 }}>Requires Authno Pro to activate.</span>
+            <button
+              data-ext-action="true"
+              onClick={(e) => { e.stopPropagation(); openBilling(); }}
+              style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: accentHex, color: '#fff', cursor: 'pointer' }}
+            >
+              Upgrade
+            </button>
+          </div>
+        )}
+
         {/* Contribution chips — collapsible */}
-        {allContribs.length > 0 && (
+        {!ext._locked && allContribs.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {visibleContribs.map((c, i) => (
@@ -518,9 +531,55 @@ async function openExtensionsFolder() {
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export default function ExtensionTab({ accentHex, session, onClose }) {
-  const { extensions, hasExtensions, loading, refresh } = useExtensions();
+  const { extensions, loading, refresh, installExtbk } = useExtensions();
+  const [installing, setInstalling] = useState(false);
 
-  if (loading || !hasExtensions) return null;
+  // Manual "Install from file" — previously the ONLY install path was tapping
+  // a .extbk in a system file manager; the tab itself offered nothing, and
+  // with zero extensions it rendered null (a blank panel).
+  const handleInstallFromFile = async () => {
+    if (installing) return;
+    setInstalling(true);
+    try {
+      if (isAndroid()) {
+        const { registerPlugin } = await import('@capacitor/core');
+        const plugin = registerPlugin('AuthnoFilePicker');
+        const res = await plugin.pickFile?.({ mimeTypes: ['*/*'], extension: 'extbk' });
+        if (res?.base64) await installExtbk(res.base64);
+      } else {
+        await new Promise((resolve, reject) => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.extbk,application/octet-stream';
+          input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return resolve();
+            try {
+              const buf = new Uint8Array(await file.arrayBuffer());
+              let bin = ''; const CH = 0x8000;
+              for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+              await installExtbk(btoa(bin));
+              resolve();
+            } catch (e) { reject(e); }
+          };
+          input.click();
+        });
+      }
+    } catch (e) {
+      // installExtbkBytes already emitted an error event for the InstallSheet.
+      console.error('[ExtensionTab] install from file failed', e);
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-4)', fontSize: 12 }}>
+        Loading extensions…
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -530,6 +589,21 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
         padding: '10px 10px 4px',
         display: 'flex', flexDirection: 'column', gap: '8px',
       }}>
+        {extensions.length === 0 && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            textAlign: 'center', gap: 10, padding: '36px 18px', color: 'var(--text-4)',
+          }}>
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--surface)', border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <DSIcons.Extension size={22} color="currentColor" />
+            </div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-2)' }}>No extensions yet</div>
+            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+              Extensions (.extbk files) add pages, actions and integrations to Authno.
+              Install one below, or open a .extbk from your file manager.
+            </div>
+          </div>
+        )}
         {extensions.map(ext => (
           <ExtensionCard
             key={ext.id}
@@ -539,6 +613,22 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             onClose={onClose}
           />
         ))}
+
+        {/* Install from file */}
+        <button
+          onClick={handleInstallFromFile}
+          disabled={installing}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            padding: '10px 0', borderRadius: 10, marginTop: extensions.length ? 2 : 0,
+            background: 'var(--surface)', border: '1px dashed var(--border)',
+            color: 'var(--text-2)', fontSize: 12.5, fontWeight: 600,
+            cursor: installing ? 'default' : 'pointer', opacity: installing ? 0.6 : 1,
+          }}
+        >
+          <DSIcons.Download size={14} color="currentColor" />
+          {installing ? 'Choosing file…' : 'Install from file (.extbk)'}
+        </button>
       </div>
 
       {/* Footer: refresh + slightly-hidden open-folder button */}

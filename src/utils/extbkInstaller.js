@@ -21,6 +21,7 @@
 
 import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
+import { emitInstall, newInstallId } from './installEvents';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 const ASSETS_PLUGIN  = 'ExtbkAssets';
@@ -96,50 +97,81 @@ function validateManifest(raw) {
  * @param {string} base64
  * @returns {Promise<object>} validated manifest
  */
-export async function installExtbkBytes(base64) {
-  const bytes = base64ToBytes(base64);
+export async function installExtbkBytes(base64, { installId, silent = false } = {}) {
+  const id   = installId ?? newInstallId();
+  const emit = (evt) => { if (!silent) emitInstall({ id, kind: 'extension', ...evt }); };
 
-  // Quick magic check before full validation
-  for (let i = 0; i < FILE_MAGIC.length; i++) {
-    if (bytes[i] !== FILE_MAGIC[i]) {
-      throw new Error(
-        'Not a valid .extbk file — wrong magic bytes. ' +
-        'Make sure you built this with extbk build (VCHS-ECS format), not as a ZIP.'
-      );
-    }
-  }
-
-  // Structural validation (CRC32 per section, required sections)
-  const { ok, errors } = validateExtbk(bytes);
-  if (!ok) throw new Error(`Invalid .extbk: ${errors.join('; ')}`);
-
-  // Decode all sections (applies RS correction if CRC fails)
-  const { manifest, entry, assets } = await unpackExtbk(bytes);
-  validateManifest(manifest);
-
-  const { Filesystem, Directory } = await fs();
-
-  // Ensure extensions root exists
   try {
-    await Filesystem.mkdir({ path: EXTENSIONS_DIR, directory: Directory.Data, recursive: true });
-  } catch (_) {}
+    emit({ stage: 'validating' });
+    const bytes = base64ToBytes(base64);
 
-  // Write manifest.json
-  await writeExtensionFile(
-    Filesystem, Directory, manifest.id,
-    'manifest.json', JSON.stringify(manifest, null, 2)
-  );
+    // Quick magic check before full validation
+    for (let i = 0; i < FILE_MAGIC.length; i++) {
+      if (bytes[i] !== FILE_MAGIC[i]) {
+        throw new Error(
+          'Not a valid .extbk file — wrong magic bytes. ' +
+          'Make sure you built this with extbk build (VCHS-ECS format), not as a ZIP.'
+        );
+      }
+    }
 
-  // Write index.js
-  await writeExtensionFile(Filesystem, Directory, manifest.id, 'index.js', entry);
+    // Structural validation (CRC32 per section, required sections)
+    const { ok, errors } = validateExtbk(bytes);
+    if (!ok) throw new Error(`Invalid .extbk: ${errors.join('; ')}`);
 
-  // Write asset files
-  for (const { path, data } of assets) {
-    await writeExtensionFile(Filesystem, Directory, manifest.id, path, data);
+    emit({ stage: 'decoding' });
+    // Decode all sections (applies RS correction if CRC fails)
+    const { manifest, entry, assets } = await unpackExtbk(bytes);
+    validateManifest(manifest);
+
+    // Update detection: if this id is already installed, surface old → new
+    // version so the sheet can say "Updating X v1.2 → v1.3" (C1).
+    const previous = await readInstalledManifest(manifest.id);
+    const fromVersion = previous?.version && previous.version !== manifest.version
+      ? previous.version : (previous ? previous.version : undefined);
+
+    const totalFiles = 2 + assets.length;
+    emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion,
+           fileCount: totalFiles, filesWritten: 0, progress: 0 });
+
+    const { Filesystem, Directory } = await fs();
+    try {
+      await Filesystem.mkdir({ path: EXTENSIONS_DIR, directory: Directory.Data, recursive: true });
+    } catch (_) {}
+
+    let written = 0;
+    const step = () => { written += 1; emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion, fileCount: totalFiles, filesWritten: written, progress: written / totalFiles }); };
+
+    await writeExtensionFile(Filesystem, Directory, manifest.id, 'manifest.json', JSON.stringify(manifest, null, 2));
+    step();
+    await writeExtensionFile(Filesystem, Directory, manifest.id, 'index.js', entry);
+    step();
+    for (const { path, data } of assets) {
+      await writeExtensionFile(Filesystem, Directory, manifest.id, path, data);
+      step();
+    }
+
+    console.log(`[extbkInstaller] ${fromVersion ? 'Updated' : 'Installed'}: ${manifest.id} v${manifest.version}`);
+    emit({ stage: 'activating', name: manifest.name, version: manifest.version, fromVersion });
+    return { ...manifest, _installId: id, _fromVersion: fromVersion };
+  } catch (err) {
+    emit({ stage: 'error', error: err?.message ?? String(err) });
+    throw err;
   }
+}
 
-  console.log(`[extbkInstaller] Installed: ${manifest.id} v${manifest.version}`);
-  return manifest;
+/** Read the manifest of an already-installed extension (null if absent). */
+export async function readInstalledManifest(extId) {
+  try {
+    const { Filesystem, Directory } = await fs();
+    const res = await Filesystem.readFile({
+      path: `${EXTENSIONS_DIR}/${extId}/manifest.json`,
+      directory: Directory.Data, encoding: 'utf8',
+    });
+    return JSON.parse(typeof res.data === 'string' ? res.data : '');
+  } catch {
+    return null;
+  }
 }
 
 /**

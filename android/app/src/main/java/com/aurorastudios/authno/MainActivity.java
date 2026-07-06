@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Base64;
 import android.webkit.WebResourceRequest;
+import org.json.JSONObject;
 import android.webkit.WebResourceResponse;
 
 import com.getcapacitor.BridgeActivity;
@@ -64,6 +65,25 @@ public class MainActivity extends BridgeActivity {
                         String relativePath = "AuthNo" + path; // path starts with /extensions/
                         File target = new File(internalFilesDir, relativePath);
 
+                        // 3B (security): canonicalise and confirm the resolved
+                        // file is still under the extensions root. Without this,
+                        // a request like /extensions/../../databases/x escaped
+                        // the sandbox and could read any app-private file over
+                        // the WebView's own origin.
+                        try {
+                            String extRoot = new File(internalFilesDir, "AuthNo/extensions").getCanonicalPath() + File.separator;
+                            String resolved = target.getCanonicalPath();
+                            if (!resolved.startsWith(extRoot)) {
+                                return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden",
+                                        new HashMap<>(),
+                                        new ByteArrayInputStream("Path traversal blocked".getBytes()));
+                            }
+                        } catch (Exception e) {
+                            return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden",
+                                    new HashMap<>(),
+                                    new ByteArrayInputStream("Path resolution failed".getBytes()));
+                        }
+
                         if (target.exists() && target.isFile()) {
                             try {
                                 String mime = guessMime(target.getName());
@@ -95,6 +115,7 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().post(() -> {
             handleAuthBookIntent(getIntent());
             handleExtbkIntent(getIntent());
+            handleThmbkIntent(getIntent());
             handleWidgetDeepLink(getIntent());
             handleOAuthRedirect(getIntent());  // NEW: catch cold-start OAuth returns
         });
@@ -107,6 +128,7 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().post(() -> {
             handleAuthBookIntent(intent);
             handleExtbkIntent(intent);
+            handleThmbkIntent(intent);
             handleWidgetDeepLink(intent);
             handleOAuthRedirect(intent);       // NEW: catch warm-start OAuth returns
         });
@@ -130,11 +152,12 @@ public class MainActivity extends BridgeActivity {
         String scheme = uri.getScheme();
         if (!"com.aurorastudios.authno".equals(scheme)) return;
 
-        // Forward to JS — @capacitor/app's appUrlOpen listener picks this up
-        String uriStr = uri.toString().replace("'", "\\'");
+        // Forward to JS. 3E: JSONObject.quote() produces a fully escaped JS
+        // string literal — the old single-quote-only escaping could be broken
+        // out of by a backslash or newline in the value.
         String js =
             "window.dispatchEvent(new CustomEvent('__capacitor_app_url_open', {" +
-            "  detail: { url: '" + uriStr + "' }" +
+            "  detail: { url: " + JSONObject.quote(uri.toString()) + " }" +
             "}));";
         getBridge().getWebView().evaluateJavascript(js, null);
     }
@@ -151,6 +174,8 @@ public class MainActivity extends BridgeActivity {
         String mime = intent.getType();
         if (uriLower.endsWith(".extbk") || uriLower.contains(".extbk?")
                 || "application/x-extbk".equals(mime)) return;
+        if (uriLower.endsWith(".thmbk") || uriLower.contains(".thmbk?")
+                || "application/x-thmbk".equals(mime)) return; // themes go to handleThmbkIntent
 
         try {
             InputStream is = getContentResolver().openInputStream(uri);
@@ -163,15 +188,22 @@ public class MainActivity extends BridgeActivity {
             is.close();
 
             String base64  = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
-            String uriStr  = uri.toString().replace("'", "\\'");
+            String uriStr  = uri.toString();
 
             FilePickerPlugin.pendingBase64 = base64;
             FilePickerPlugin.pendingUri    = uriStr;
 
-            String js =
-                "window.dispatchEvent(new CustomEvent('open-authbook-android-bytes', {" +
-                "  detail: { base64: '" + base64 + "', uri: '" + uriStr + "' }" +
-                "}))";
+            // Large books: don't shove multi-MB base64 through evaluateJavascript
+            // (string building + bridge limits). JS pulls it via the pending-intent
+            // plugin call instead; only signal the event.
+            String js;
+            if (base64.length() > 2_000_000) {
+                js = "window.dispatchEvent(new CustomEvent('open-authbook-android-pending'))";
+            } else {
+                js = "window.dispatchEvent(new CustomEvent('open-authbook-android-bytes', {" +
+                     "  detail: { base64: " + JSONObject.quote(base64) + ", uri: " + JSONObject.quote(uriStr) + " }" +
+                     "}))";
+            }
             getBridge().getWebView().evaluateJavascript(js, null);
 
         } catch (Exception e) {
@@ -207,10 +239,54 @@ public class MainActivity extends BridgeActivity {
 
             String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
             FilePickerPlugin.pendingExtbkBase64 = base64;
+            FilePickerPlugin.pendingExtbkKind   = "extension";
 
             String js =
                 "window.dispatchEvent(new CustomEvent('install-extbk-bytes', {" +
-                "  detail: { base64: '" + base64 + "' }" +
+                "  detail: { base64: " + JSONObject.quote(base64) + " }" +
+                "}))";
+            getBridge().getWebView().evaluateJavascript(js, null);
+
+        } catch (Exception e) {
+            dispatchExtbkError(e.getMessage() != null ? e.getMessage() : "Unknown error");
+        }
+    }
+
+
+    // ── .thmbk theme install intent (U4) ─────────────────────────────────────
+    // Same container as .extbk; JS installs it via themeLoader.installThmbkBytes
+    // and the InstallSheet renders staged progress.
+
+    private void handleThmbkIntent(Intent intent) {
+        if (intent == null) return;
+        if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
+
+        android.net.Uri uri = intent.getData();
+        if (uri == null) return;
+
+        String uriStr = uri.toString().toLowerCase();
+        if (!uriStr.endsWith(".thmbk") && !uriStr.contains(".thmbk?")) {
+            String mime = intent.getType();
+            if (mime == null || !mime.equals("application/x-thmbk")) return;
+        }
+
+        try {
+            java.io.InputStream is = getContentResolver().openInputStream(uri);
+            if (is == null) { dispatchExtbkError("Could not open theme file stream"); return; }
+
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+            is.close();
+
+            String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+            FilePickerPlugin.pendingExtbkBase64 = base64;
+            FilePickerPlugin.pendingExtbkKind   = "theme";
+
+            String js =
+                "window.dispatchEvent(new CustomEvent('install-thmbk-bytes', {" +
+                "  detail: { base64: " + JSONObject.quote(base64) + " }" +
                 "}))";
             getBridge().getWebView().evaluateJavascript(js, null);
 
@@ -220,10 +296,9 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void dispatchExtbkError(String message) {
-        String safe = message.replace("'", "\\'");
         String js =
             "window.dispatchEvent(new CustomEvent('install-extbk-error', {" +
-            "  detail: { message: '" + safe + "' }" +
+            "  detail: { message: " + JSONObject.quote(message) + " }" +
             "}))";
         getBridge().getWebView().evaluateJavascript(js, null);
     }
@@ -237,10 +312,9 @@ public class MainActivity extends BridgeActivity {
 
         intent.removeExtra("widgetBookId");
 
-        String safeId = bookId.replace("'", "\\'");
         String js =
             "window.dispatchEvent(new CustomEvent('open-book-from-widget', {" +
-            "  detail: { bookId: '" + safeId + "' }" +
+            "  detail: { bookId: " + JSONObject.quote(bookId) + " }" +
             "}))";
         getBridge().getWebView().evaluateJavascript(js, null);
     }

@@ -21,11 +21,13 @@ import { LIGHT_DEFAULT } from './ThemeLightDefault';
 import { DARK_OLED }     from './ThemeDarkOLED';
 import { SEPIA }         from './ThemeSepia';
 import { PAPER }         from './ThemePaper';
+import { getAllThemes as _getAll } from './registry';
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 export {
   createTheme,
   applyTheme,
+  applyAccent,
   ThemeProvider,
   useTheme,
   buildAccentPalette,
@@ -41,28 +43,21 @@ export {
 // ── Presets ───────────────────────────────────────────────────────────────────
 export { DARK_DEFAULT, LIGHT_DEFAULT, DARK_OLED, SEPIA, PAPER };
 
-// ── Registry — ordered list for the theme picker dropdown ─────────────────────
+// ── Registry — built-ins + installed .thmbk themes (reactive) ─────────────────
+// ALL_THEMES/themeById now come from the registry so downloadable themes show
+// up in the picker and resolve at boot. subscribeThemes lets the picker live-
+// update when a .thmbk is installed or removed.
+export {
+  BUILTIN_THEMES,
+  getAllThemes,
+  getInstalledThemes,
+  setInstalledThemes,
+  subscribeThemes,
+  themeById,
+} from './registry';
 
-/**
- * ALL_THEMES — array of every built-in preset, in display order.
- * The AppearancePanel theme picker maps over this.
- */
-export const ALL_THEMES = [
-  DARK_DEFAULT,
-  LIGHT_DEFAULT,
-  DARK_OLED,
-  SEPIA,
-  PAPER,
-];
-
-/**
- * themeById(id) — look up a preset by its meta.id string.
- * Returns DARK_DEFAULT if no match (safe fallback).
- *
- * Usage:
- *   const saved = localStorage.getItem('authno_theme_id');
- *   applyTheme(themeById(saved));
- */
-export function themeById(id) {
-  return ALL_THEMES.find(t => t.meta.id === id) ?? DARK_DEFAULT;
-}
+// Back-compat: some call sites import ALL_THEMES as a static array. Expose a
+// getter-backed snapshot of the current set.
+export const ALL_THEMES = new Proxy([], {
+  get(_t, prop) { const arr = _getAll(); return typeof arr[prop] === 'function' ? arr[prop].bind(arr) : arr[prop]; },
+});

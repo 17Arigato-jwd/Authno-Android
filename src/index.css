@@ -8,7 +8,7 @@
 }
 
 body {
-  background-color: #060606;
+  background-color: var(--app-bg);
   margin: 0;
   padding: 0;
 }
@@ -82,56 +82,15 @@ textarea {
   --input-bg:   rgba(0,0,0,0.4);
 }
 
-.light-mode {
-  --app-bg:     #f0f0f2;
-  --sidebar-bg: #ffffff;
-  --editor-bg:  #f8f8fa;
-  --modal-bg:   #ffffff;
-  --nav-bg:     #eeeef0;
-  --text-1:     #1a1a1e;
-  --text-2:     #2d2e33;
-  --text-3:     #4a4b52;
-  --text-4:     #6b6c73;
-  --text-5:     #9a9ba2;
-  --border:     rgba(0,0,0,0.12);
-  --border-sm:  rgba(0,0,0,0.07);
-  --surface:    rgba(0,0,0,0.03);
-  --surface-md: rgba(0,0,0,0.05);
-  --input-bg:   rgba(0,0,0,0.04);
-}
-
-/* ─── Light Mode: Tailwind class overrides ────────────────────────────────── */
-
-/* Backgrounds */
-.light-mode .bg-\[\#060606\]  { background-color: var(--app-bg) !important; }
-.light-mode .bg-\[\#0b0b0c\]  { background-color: var(--sidebar-bg) !important; }
-.light-mode .bg-\[\#0f0f10\]  { background-color: var(--editor-bg) !important; }
-.light-mode .bg-black\/60     { background-color: rgba(0,0,0,0.3) !important; }
-
-/* Text */
-.light-mode .text-white,
-.light-mode.text-white        { color: var(--text-1) !important; }
-.light-mode .text-white\/70   { color: rgba(26,26,30,0.7) !important; }
-.light-mode .text-white\/60   { color: rgba(26,26,30,0.6) !important; }
-.light-mode .text-white\/40   { color: rgba(26,26,30,0.4) !important; }
-.light-mode .text-white\/20   { color: rgba(26,26,30,0.2) !important; }
-
-/* Borders */
-.light-mode .border-white\/10 { border-color: var(--border) !important; }
-.light-mode .border-white\/20 { border-color: rgba(0,0,0,0.15) !important; }
-.light-mode .border-white\/30 { border-color: rgba(0,0,0,0.2) !important; }
-
-/* Inputs */
-.light-mode input             { color: var(--text-1) !important; }
-.light-mode .placeholder-white\/40::placeholder,
-.light-mode input::placeholder { color: rgba(26,26,30,0.35) !important; }
-.light-mode input.bg-transparent { background: transparent !important; }
-
-/* Hover states */
-.light-mode .hover\:bg-white\/5:hover   { background-color: var(--surface-md) !important; }
-.light-mode .hover\:bg-white\/10:hover  { background-color: rgba(0,0,0,0.06) !important; }
-.light-mode .hover\:border-white\/30:hover { border-color: rgba(0,0,0,0.2) !important; }
-.light-mode .hover\:border-white\/40:hover { border-color: rgba(0,0,0,0.25) !important; }
+/*
+  v1.1.16 (B1/B2): the legacy `.light-mode { --vars }` block and the whole
+  `.light-mode .text-white { ... !important }` Tailwind-override layer were
+  removed. Light/dark is now owned entirely by the theme engine —
+  applyTheme() injects every variable for the active theme and toggles the
+  .light-mode class from theme.meta.isDark. The override layer only ever
+  restyled an enumerated subset of classes, which is why light mode looked
+  half-broken; components now read var(--…) directly instead.
+*/
 
 /* ─── Android / Mobile additions ──────────────────────────────────────────── */
 

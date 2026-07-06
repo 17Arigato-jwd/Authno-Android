@@ -59,7 +59,12 @@ async function decodeBytes(bytes, filePath) {
       const book    = await unpackSession(bytes);
       const session = bookToSession(book);
       if (book.warnings?.length) console.warn('[authbook]', book.warnings);
-      return { ...session, filePath };
+      // Surface recovery events to the UI: the app toasts when a file needed
+      // repair so silent-looking recoveries are visible to the user.
+      const recovery = (book.status && book.status !== 'fast_path')
+        ? { status: book.status, warnings: book.warnings ?? [], rsRecovered: book.rsRecovered ?? [] }
+        : null;
+      return { ...session, filePath, ...(recovery ? { _recovery: recovery } : {}) };
     }
     if (fmt === 'legacy-json') {
       const raw     = JSON.parse(new TextDecoder().decode(bytes));
@@ -228,7 +233,12 @@ export async function saveBook(session) {
       return { success: true, filePath: result.uri };
     }
 
-    return { success: true };
+    // Plain web (dev/sandbox): the old code returned { success: true } WITHOUT
+    // saving anything — a silent fake success. Trigger a real browser download
+    // of the .authbook bytes instead so the user actually has their file.
+    const webBytes = await encodeSession(session);
+    await _triggerDownload(`${safeName(session)}.authbook`, webBytes, 'application/octet-stream');
+    return { success: true, downloaded: true };
   } catch (e) {
     logError('saveBook', e, { sessionTitle: session?.title, filePath: session?.filePath });
     throw e;
@@ -254,7 +264,10 @@ export async function saveAsBook(session) {
       return { success: true, filePath: result.uri };
     }
 
-    return { success: true };
+    // Plain web: real download instead of the old silent fake success.
+    const webBytes = await encodeSession(session);
+    await _triggerDownload(`${safeName(session)}.authbook`, webBytes, 'application/octet-stream');
+    return { success: true, downloaded: true };
   } catch (e) {
     logError('saveAsBook', e, { sessionTitle: session?.title });
     throw e;
@@ -379,20 +392,18 @@ async function _triggerDownload(filename, content, mimeType) {
     const { Filesystem, Directory } = await getFS();
     const { Share } = await import('@capacitor/share');
 
-    // Encode content to base64 (Filesystem.writeFile expects a base64 string)
-    let b64;
-    if (typeof content === 'string') {
-      // TextEncoder → UTF-8 bytes → base64
-      const bytes = new TextEncoder().encode(content);
+    // Encode content to base64 (Filesystem.writeFile expects a base64 string).
+    // Chunked conversion: the old byte-by-byte `binary += String.fromCharCode(b)`
+    // was O(n²) and locked the UI for multi-MB epubs.
+    const toB64 = (bytes) => {
       let binary = '';
-      bytes.forEach(b => { binary += String.fromCharCode(b); });
-      b64 = btoa(binary);
-    } else {
-      // Uint8Array (epub binary)
-      let binary = '';
-      content.forEach(b => { binary += String.fromCharCode(b); });
-      b64 = btoa(binary);
-    }
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      return btoa(binary);
+    };
+    const b64 = toB64(typeof content === 'string' ? new TextEncoder().encode(content) : content);
 
     await Filesystem.writeFile({ path: filename, data: b64, directory: Directory.Cache });
     const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });
@@ -477,17 +488,17 @@ export async function exportAsHtml(session, options = {}) {
 
   const metaPage = `<section class="meta-page">
     <h2 class="meta-heading">${title}</h2>
-    ${session.description ? `<p class="meta-desc">${session.description}</p>` : ''}
+    ${session.description ? `<p class="meta-desc">${esc(session.description)}</p>` : ''}
     ${metaRows.length ? `<table class="meta-table">
-      ${metaRows.map(([k, v]) => `<tr><td class="meta-key">${k}</td><td class="meta-val">${v}</td></tr>`).join('\n      ')}
+      ${metaRows.map(([k, v]) => `<tr><td class="meta-key">${esc(k)}</td><td class="meta-val">${esc(v)}</td></tr>`).join('\n      ')}
     </table>` : ''}
   </section>`;
 
   // ── Chapter pages ─────────────────────────────────────────────────────────
   const chapHtml = chapters.map(ch => `
     <section class="chapter">
-      <h2>${ch.title}</h2>
-      <div class="content">${ch.content || ''}</div>
+      <h2>${esc(ch.title)}</h2>
+      <div class="content">${toXhtml(ch.content)}</div>
     </section>`).join('\n');
 
   const html = `<!DOCTYPE html>
@@ -551,12 +562,131 @@ export async function exportAsHtml(session, options = {}) {
  * Export as a valid ePub 3 file.
  * Builds the zip structure in-memory without any external library.
  */
+
+// ─── XML/XHTML helpers (2G) ───────────────────────────────────────────────────
+// Everything interpolated into exported XML/XHTML must be escaped — a title
+// containing '&' or '<' previously produced an unparseable EPUB/HTML file.
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Editor HTML → minimally valid XHTML: escape bare ampersands and self-close
+// void elements (<br>, <hr>, <img>) which XML parsers reject.
+function toXhtml(html) {
+  return String(html ?? '')
+    .replace(/&(?![a-zA-Z]+;|#\d+;|#x[0-9a-fA-F]+;)/g, '&amp;')
+    .replace(/<(br|hr|img|input|meta|link)((?:[^>"']|"[^"]*"|'[^']*')*?)\s*\/?>/gi, '<$1$2/>');
+}
+
+/**
+ * Export as a paginated PDF (U1). Uses pdf-lib — a proper title page plus
+ * wrapped body text with chapter headings and page numbers. Replaces the old
+ * "Coming soon" placeholder.
+ */
+export async function exportAsPdf(session, options = {}) {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
+
+  const doc = await PDFDocument.create();
+  const font     = await doc.embedFont(StandardFonts.TimesRoman);
+  const fontBold = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const fontItal = await doc.embedFont(StandardFonts.TimesRomanItalic);
+
+  const PAGE_W = 595.28, PAGE_H = 841.89; // A4 in points
+  const MARGIN = 64;
+  const CONTENT_W = PAGE_W - MARGIN * 2;
+  const BODY_SIZE = 11, LINE_H = 16.5;
+
+  let page = doc.addPage([PAGE_W, PAGE_H]);
+  let y = PAGE_H - MARGIN;
+  let pageNum = 1;
+
+  const ink = rgb(0.1, 0.1, 0.12);
+  const muted = rgb(0.42, 0.42, 0.46);
+
+  const footer = () => {
+    page.drawText(String(pageNum), { x: PAGE_W / 2 - 4, y: MARGIN / 2, size: 9, font, color: muted });
+  };
+  const newPage = () => { footer(); page = doc.addPage([PAGE_W, PAGE_H]); y = PAGE_H - MARGIN; pageNum += 1; };
+
+  // Word-wrap a string to CONTENT_W at a given size/font.
+  const wrap = (text, size, f) => {
+    const out = [];
+    for (const rawLine of String(text).split('\n')) {
+      if (rawLine === '') { out.push(''); continue; }
+      let line = '';
+      for (const word of rawLine.split(/\s+/)) {
+        const trial = line ? `${line} ${word}` : word;
+        if (f.widthOfTextAtSize(trial, size) > CONTENT_W && line) { out.push(line); line = word; }
+        else line = trial;
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  };
+
+  const drawLines = (lines, size, f, gap) => {
+    for (const ln of lines) {
+      if (y < MARGIN + LINE_H) newPage();
+      if (ln !== '') page.drawText(ln, { x: MARGIN, y, size, font: f, color: ink });
+      y -= gap;
+    }
+  };
+
+  // ── Title page ──
+  const title = session.title || 'Untitled';
+  const author = (session.authors || []).map(a => a.name).filter(Boolean).join(', ');
+  y = PAGE_H * 0.62;
+  for (const ln of wrap(title, 30, fontBold)) {
+    const w = fontBold.widthOfTextAtSize(ln, 30);
+    page.drawText(ln, { x: (PAGE_W - w) / 2, y, size: 30, font: fontBold, color: ink });
+    y -= 38;
+  }
+  if (author) {
+    y -= 12;
+    const w = fontItal.widthOfTextAtSize(author, 14);
+    page.drawText(author, { x: (PAGE_W - w) / 2, y, size: 14, font: fontItal, color: muted });
+  }
+  if (session.description) {
+    y -= 40;
+    for (const ln of wrap(session.description, 11, fontItal)) {
+      const w = fontItal.widthOfTextAtSize(ln, 11);
+      if (y < MARGIN) break;
+      page.drawText(ln, { x: (PAGE_W - w) / 2, y, size: 11, font: fontItal, color: muted });
+      y -= 15;
+    }
+  }
+  newPage();
+
+  // ── Chapters ──
+  chapters.forEach((ch, i) => {
+    if (i > 0) { y -= LINE_H; if (y < MARGIN + 60) newPage(); }
+    // Heading
+    if (y < MARGIN + 40) newPage();
+    for (const ln of wrap(ch.title || `Chapter ${i + 1}`, 17, fontBold)) {
+      if (y < MARGIN + LINE_H) newPage();
+      page.drawText(ln, { x: MARGIN, y, size: 17, font: fontBold, color: ink });
+      y -= 24;
+    }
+    y -= 6;
+    drawLines(wrap(_stripHtml(ch.content), BODY_SIZE, font), BODY_SIZE, font, LINE_H);
+  });
+  footer();
+
+  const bytes = await doc.save();
+  const filename = `${_safeName(session)}.pdf`;
+  if (options.returnBytes) return { filename, base64: bytesToBase64(bytes), mimeType: 'application/pdf' };
+  await _triggerDownload(filename, bytes, 'application/pdf');
+}
+
 export async function exportAsEpub(session, options = {}) {
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const bookId    = session.id || String(Date.now());
-  const title     = session.title    || 'Untitled';
-  const language  = session.language || 'en';
-  const author    = (session.authors || []).map(a => a.name).filter(Boolean).join(', ') || 'Unknown';
+
+  const title     = esc(session.title    || 'Untitled');
+  const language  = esc(session.language || 'en');
+  const author    = esc((session.authors || []).map(a => a.name).filter(Boolean).join(', ') || 'Unknown');
   const hasCover  = !!session.coverBase64;
   const coverMime = session.coverMime || 'image/jpeg';
   const coverExt  = coverMime.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
@@ -608,7 +738,7 @@ export async function exportAsEpub(session, options = {}) {
   </div>
 </body>
 </html>`;
-    manifestItems.push(`<item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml" properties="svg"/>`);
+    manifestItems.push(`<item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>`);
     manifestItems.push(`<item id="cover-img"  href="cover.${coverExt}" media-type="${coverMime}" properties="cover-image"/>`);
     spineItems.push(`<itemref idref="cover-page"/>`);
   } else {
@@ -662,8 +792,8 @@ export async function exportAsEpub(session, options = {}) {
 </head>
 <body>
   <h2>${title}</h2>
-  ${session.description ? `<p class="desc">${session.description}</p>` : ''}
-  ${metaRows.length ? `<table>${metaRows.map(([k, v]) => `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`).join('')}</table>` : ''}
+  ${session.description ? `<p class="desc">${esc(session.description)}</p>` : ''}
+  ${metaRows.length ? `<table>${metaRows.map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td class="v">${esc(v)}</td></tr>`).join('')}</table>` : ''}
 </body>
 </html>`;
   manifestItems.push(`<item id="metadata-page" href="metadata.xhtml" media-type="application/xhtml+xml"/>`);
@@ -676,12 +806,12 @@ export async function exportAsEpub(session, options = {}) {
     files[`OEBPS/${href}`] = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${language}">
-<head><title>${ch.title}</title>
+<head><title>${esc(ch.title)}</title>
 <style>body{font-family:Georgia,serif;line-height:1.8;margin:2em;}</style>
 </head>
 <body>
-  <h1>${ch.title}</h1>
-  ${ch.content || ''}
+  <h1>${esc(ch.title)}</h1>
+  ${toXhtml(ch.content)}
 </body>
 </html>`;
     manifestItems.push(`<item id="${id}" href="${href}" media-type="application/xhtml+xml"/>`);
@@ -711,7 +841,7 @@ export async function exportAsEpub(session, options = {}) {
   const navLi = [
     `<li><a href="cover.xhtml">Cover</a></li>`,
     `<li><a href="metadata.xhtml">About this Book</a></li>`,
-    ...chapters.map(ch => `<li><a href="chap${ch.chap_idx}.xhtml">${ch.title}</a></li>`),
+    ...chapters.map(ch => `<li><a href="chap${ch.chap_idx}.xhtml">${esc(ch.title)}</a></li>`),
   ].join('\n      ');
   files['OEBPS/nav.xhtml'] = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -770,16 +900,22 @@ export async function exportAsEpub(session, options = {}) {
   for (const e of entries) {
     const cd = new Uint8Array([
       0x50, 0x4B, 0x01, 0x02,
-      0x14, 0x00, 0x14, 0x00,
-      0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00,
+      0x14, 0x00, 0x14, 0x00,       // version made by / version needed
+      0x00, 0x00, 0x00, 0x00,       // flags, compression (store)
+      0x00, 0x00, 0x00, 0x00,       // mod time / mod date
       ...u32le(e.crc),
       ...u32le(e.size), ...u32le(e.size),
       ...u16le(e.name.length),
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00,                   // extra field length
+      0x00, 0x00,                   // file comment length
+      0x00, 0x00,                   // disk number start
+      0x00, 0x00,                   // internal attributes
+      0x00, 0x00, 0x00, 0x00,       // external attributes
       ...u32le(e.offset),
     ]);
+    // NOTE (2G): this record was previously 2 bytes short (44 instead of the
+    // mandatory 46), which made every exported EPUB's central directory
+    // malformed — strict readers (Apple Books, epubcheck) rejected the file.
     cdParts.push(cd, e.name);
   }
 

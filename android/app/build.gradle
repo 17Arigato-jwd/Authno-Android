@@ -24,25 +24,39 @@ android {
         release {
             // Keystore is decoded from the KEYSTORE_BASE64 secret by CI before the build.
             // KEYSTORE_PATH env var points to the decoded file; falls back to a local keystore.jks.
-            storeFile     file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
-            storePassword System.getenv("STORE_PASSWORD") ?: ""
-            keyAlias      System.getenv("KEY_ALIAS")      ?: ""
-            keyPassword   System.getenv("KEY_PASSWORD")   ?: ""
+            // 3C: the release keystore is NO LONGER committed to the repo — provide it
+            // via the KEYSTORE_PATH env var (CI) or a local keystore.jks you keep out of
+            // version control (see .gitignore). Rotate the old key if it was ever pushed.
+            def ksPath = System.getenv("KEYSTORE_PATH") ?: "keystore.jks"
+            def ksFile = file(ksPath)
+            if (ksFile.exists()) {
+                storeFile     ksFile
+                storePassword System.getenv("STORE_PASSWORD") ?: ""
+                keyAlias      System.getenv("KEY_ALIAS")      ?: ""
+                keyPassword   System.getenv("KEY_PASSWORD")   ?: ""
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            // Fall back to debug signing when no release keystore is configured
+            // (e.g. a local `assembleRelease` without secrets) so the build still
+            // completes instead of failing on a null storeFile.
+            signingConfig file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks").exists() ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
         debug {
-            // Remove the default '.debug' suffix so the applicationId stays
-            // 'com.aurorastudios.authno' in both build types — this means a
-            // CI-built debug APK and a release APK share the same package name
-            // and Android will accept an update without requiring an uninstall.
-            signingConfig signingConfigs.release
+            // INTENTIONAL: debug builds are signed with the release key and keep
+            // the base applicationId (no '.debug' suffix). This is deliberate so
+            // the Google Drive / cloud-backup OAuth flow works in the testing
+            // environment — Google validates the signing-key SHA-1, which must
+            // match the registered release fingerprint. Only applies when a
+            // release keystore is actually configured.
+            if (file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks").exists()) {
+                signingConfig signingConfigs.release
+            }
             applicationIdSuffix ""
         }
     }

@@ -42,6 +42,7 @@ public class WidgetDataPlugin extends Plugin {
     public void syncBooks(PluginCall call) {
         String booksJson = call.getString("booksJson", "[]");
         String accentHex = call.getString("accentHex", "#5a00d9");
+        Boolean isDark   = call.getBoolean("isDark", Boolean.TRUE);
 
         Context ctx = getContext();
 
@@ -51,6 +52,7 @@ public class WidgetDataPlugin extends Plugin {
                 .edit();
         ed.putString(StreakWidgetProvider.KEY_BOOKS_JSON, booksJson);
         ed.putString(StreakWidgetProvider.KEY_ACCENT_COLOR, accentHex);
+        ed.putBoolean(StreakWidgetProvider.KEY_IS_DARK, isDark != null ? isDark : true);
         ed.apply();
 
         // 2. Also write authno_books.json so the file-first path in

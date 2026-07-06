@@ -29,15 +29,30 @@ import java.util.Map;
  */
 public class StreakWidgetRenderer {
 
-    // ── Design-system colour aliases ─────────────────────────────────────────
-    // Named after their semantic role in the widget, but every value comes
-    // from DSTokens which mirrors tokens.js.
-    private static final int TEXT_PRIMARY   = DSTokens.COLORS.TEXT_PRIMARY;
-    private static final int TEXT_SECONDARY = DSTokens.COLORS.TEXT_SECONDARY;
-    private static final int TEXT_DIM       = DSTokens.COLORS.TEXT_SUBTLE;
-    private static final int TEXT_FAINT     = DSTokens.COLORS.TEXT_DISABLED;
-    private static final int TEXT_HAS_DATA  = DSTokens.COLORS.TEXT_MUTED;
-    private static final int PROGRESS_TRACK = DSTokens.COLORS.SURFACE_3;
+    // ── Theme palette (N15) ───────────────────────────────────────────────────
+    // The widget previously used the dark token set unconditionally, so on a
+    // light app theme it stayed dark. populate() now receives the app theme's
+    // isDark flag and selects the matching palette.
+    static final class Palette {
+        final int textPrimary, textSecondary, textDim, textFaint, textHasData, progressTrack;
+        Palette(int p, int s, int d, int f, int h, int t) {
+            textPrimary = p; textSecondary = s; textDim = d; textFaint = f; textHasData = h; progressTrack = t;
+        }
+    }
+    private static final Palette DARK = new Palette(
+        DSTokens.COLORS.TEXT_PRIMARY,
+        DSTokens.COLORS.TEXT_SECONDARY,
+        DSTokens.COLORS.TEXT_SUBTLE,
+        DSTokens.COLORS.TEXT_DISABLED,
+        DSTokens.COLORS.TEXT_MUTED,
+        DSTokens.COLORS.SURFACE_3);
+    private static final Palette LIGHT = new Palette(
+        Color.parseColor("#111113"),   // text primary on light
+        Color.parseColor("#2b2d31"),
+        Color.parseColor("#6b6f76"),
+        Color.parseColor("#a3a7ad"),
+        Color.parseColor("#4d5156"),
+        Color.parseColor("#d7d9dd")); // progress track on light
 
     private static final String[] DAY_HEADERS = {"M", "T", "W", "T", "F", "S", "S"};
 
@@ -53,6 +68,12 @@ public class StreakWidgetRenderer {
      */
     public static void populate(Context ctx, RemoteViews views,
                                 JSONObject book, String accentHex) {
+        populate(ctx, views, book, accentHex, true);
+    }
+
+    public static void populate(Context ctx, RemoteViews views,
+                                JSONObject book, String accentHex, boolean isDark) {
+        Palette pal = isDark ? DARK : LIGHT;
         int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
 
         try {
@@ -72,24 +93,24 @@ public class StreakWidgetRenderer {
 
             // Title
             views.setTextViewText(R.id.widget_title, title);
-            views.setTextColor(R.id.widget_title, TEXT_SECONDARY);
+            views.setTextColor(R.id.widget_title, pal.textSecondary);
 
             // Streak count
             views.setTextViewText(R.id.widget_streak_count, String.valueOf(streakDays));
-            views.setTextColor(R.id.widget_streak_count, streakDays > 0 ? accent : TEXT_DIM);
+            views.setTextColor(R.id.widget_streak_count, streakDays > 0 ? accent : pal.textDim);
 
             // Streak label
             String label = streakDays == 1 ? "day streak"
                          : streakDays  > 1 ? "days streak"
                          : "no streak yet";
             views.setTextViewText(R.id.widget_streak_label, label);
-            views.setTextColor(R.id.widget_streak_label, TEXT_DIM);
+            views.setTextColor(R.id.widget_streak_label, pal.textDim);
 
             // Today progress label
             String progressLabel = wordsToday + " / " + goalToday + " words today"
                     + (todayMet ? " ✓" : "");
             views.setTextViewText(R.id.widget_progress_label, progressLabel);
-            views.setTextColor(R.id.widget_progress_label, todayMet ? accent : TEXT_DIM);
+            views.setTextColor(R.id.widget_progress_label, todayMet ? accent : pal.textDim);
 
             // Progress bar (0–100)
             int pct = goalToday > 0 ? Math.min(100, wordsToday * 100 / goalToday) : 0;
@@ -97,7 +118,7 @@ public class StreakWidgetRenderer {
 
             // Calendar bitmap
             float density = ctx.getResources().getDisplayMetrics().density;
-            Bitmap calBmp = renderCalendar(log, todayKey, accent, density);
+            Bitmap calBmp = renderCalendar(log, todayKey, accent, density, pal);
             views.setImageViewBitmap(R.id.widget_calendar, calBmp);
 
         } catch (Exception e) {
@@ -110,7 +131,8 @@ public class StreakWidgetRenderer {
     private static Bitmap renderCalendar(Map<String, int[]> log,
                                          String todayKey,
                                          int accent,
-                                         float density) {
+                                         float density,
+                                         Palette pal) {
         final int COLS     = 7;
         final int CELL_W   = (int) (34 * density);
         final int CELL_H   = (int) (28 * density);
@@ -151,7 +173,7 @@ public class StreakWidgetRenderer {
         // Day-of-week headers
         textPaint.setTextSize(headerTextSize);
         textPaint.setTypeface(Typeface.DEFAULT_BOLD);
-        textPaint.setColor(TEXT_FAINT);
+        textPaint.setColor(pal.textFaint);
         for (int col = 0; col < COLS; col++) {
             c.drawText(DAY_HEADERS[col],
                     col * CELL_W + CELL_W / 2f,
@@ -237,7 +259,7 @@ public class StreakWidgetRenderer {
                     float barW = (CELL_W - 8 * density) * Math.min(1f, (float) entry[0] / entry[1]);
                     float barL = left + 4 * density;
                     float barT = bottom - 3 * density;
-                    fillPaint.setColor(PROGRESS_TRACK);
+                    fillPaint.setColor(pal.progressTrack);
                     c.drawRoundRect(new RectF(barL, barT, right - 4 * density, barT + 2 * density),
                             density, density, fillPaint);
                     if (barW > 0) {
@@ -254,13 +276,13 @@ public class StreakWidgetRenderer {
                 textPaint.setColor(accent);
                 textPaint.setTypeface(Typeface.DEFAULT_BOLD);
             } else if (isToday) {
-                textPaint.setColor(TEXT_PRIMARY);
+                textPaint.setColor(pal.textPrimary);
                 textPaint.setTypeface(Typeface.DEFAULT_BOLD);
             } else if (hasData) {
-                textPaint.setColor(TEXT_HAS_DATA);
+                textPaint.setColor(pal.textHasData);
                 textPaint.setTypeface(Typeface.DEFAULT);
             } else {
-                textPaint.setColor(TEXT_DIM);
+                textPaint.setColor(pal.textDim);
                 textPaint.setTypeface(Typeface.DEFAULT);
             }
             c.drawText(String.valueOf(day), cx, cy + dayTextSize * 0.35f, textPaint);

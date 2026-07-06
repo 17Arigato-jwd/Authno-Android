@@ -11,7 +11,7 @@
  * Props unchanged — drop-in replacement.
  */
 
-import React, { useReducer, useEffect, useCallback } from 'react';
+import React, { useReducer, useEffect, useCallback, useState } from 'react';
 
 import FontSelector from './FontSelector';
 import SizeSelector from './SizeSelector';
@@ -42,10 +42,20 @@ function ExtIconResolved({ iconName, size = 14 }) {
   return <DSIcons.Extension size={size} />;
 }
 
+// ── Insert menu items (U3) ────────────────────────────────────────────────────
+const INSERT_ITEMS = [
+  { label: 'Scene break',   glyph: '﹡',  kind: 'html',  value: '<p style="text-align:center">*&nbsp;&nbsp;*&nbsp;&nbsp;*</p><p><br></p>' },
+  { label: 'Divider line',  glyph: '—',  kind: 'hr' },
+  { label: 'Em dash',       glyph: '—',  kind: 'text',  value: '—' },
+  { label: 'Ellipsis',      glyph: '…',  kind: 'text',  value: '…' },
+  { label: "Today's date",  glyph: '📅', kind: 'text',  value: () => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) },
+];
+
 // ── EditorToolbar ─────────────────────────────────────────────────────────────
 
-export default function EditorToolbar({ execCommand, accentHex, session }) {
+export default function EditorToolbar({ execCommand, accentHex, session, editorRef }) {
   const [active, dispatch] = useReducer(reducer, initialState);
+  const [insertOpen, setInsertOpen] = useState(false);
   const extButtons = useEditorToolbarExtensions();
   const { navigate } = useExtensions();
   const android = isAndroid();
@@ -79,13 +89,24 @@ export default function EditorToolbar({ execCommand, accentHex, session }) {
 
   useEffect(() => {
     const down = (e) => {
-      if (!e.ctrlKey) return;
+      if (!e.ctrlKey && !e.metaKey) return;
       const k = e.key.toLowerCase();
+      // Ctrl+S saves from anywhere — that's app-wide by design.
+      if (k === 's') { e.preventDefault(); document.dispatchEvent(new CustomEvent('triggerSave')); return; }
+      // 4C: formatting shortcuts only apply when focus is actually inside the
+      // editor. The old global listener hijacked Ctrl+B in the title input and
+      // the sidebar search box, yanked focus into the editor, and formatted
+      // text the user wasn't touching.
+      const editorEl = editorRef?.current;
+      const inEditor = editorEl && (
+        editorEl.contains(document.activeElement) ||
+        (() => { const sel = window.getSelection(); return sel?.anchorNode ? editorEl.contains(sel.anchorNode) : false; })()
+      );
+      if (!inEditor) return;
       if (k === 'b') { e.preventDefault(); toggle('bold'); }
       else if (k === 'i') { e.preventDefault(); toggle('italic'); }
       else if (k === 'u') { e.preventDefault(); toggle('underline'); }
       else if (k === 'h') { e.preventDefault(); toggleHighlight(); }
-      else if (k === 's') { e.preventDefault(); document.dispatchEvent(new CustomEvent('triggerSave')); }
     };
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
@@ -93,6 +114,14 @@ export default function EditorToolbar({ execCommand, accentHex, session }) {
 
   const handleFontChange = (e) => execCommand('fontName', e.target.value);
   const handleSizeChange = (e) => execCommand('fontSize', e.target.value);
+
+  const doInsert = (item) => {
+    editorRef?.current?.focus();
+    if (item.kind === 'hr') { document.execCommand('insertHorizontalRule'); return; }
+    if (item.kind === 'html') { document.execCommand('insertHTML', false, item.value); return; }
+    const text = typeof item.value === 'function' ? item.value() : item.value;
+    document.execCommand('insertText', false, text);
+  };
 
   // Shared frosted glass background
   const bg = `linear-gradient(to bottom right, ${accentHex}66, rgba(0,0,0,0.45))`;
@@ -111,20 +140,55 @@ export default function EditorToolbar({ execCommand, accentHex, session }) {
       <FormatButton format="underline" label="U" title="Underline (Ctrl+U)" style={{ textDecoration: 'underline' }} isActive={active.underline} onClick={() => toggle('underline')} />
       <FormatButton format="highlight" label="H" title="Highlight (Ctrl+H)"                                         isActive={active.highlight} onClick={toggleHighlight} />
 
-      {/* Insert (placeholder) */}
-      <button
-        title="Insert (coming soon)"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px',
-          borderRadius: 6, border: `2px solid rgba(255,255,255,0.6)`,
-          background: 'transparent', color: '#fff', fontSize: 13, cursor: 'pointer',
-          transition: 'background 0.15s', flexShrink: 0,
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-      >
-        Insert <DSIcons.Upload size={14} style={{ opacity: 0.7 }} />
-      </button>
+      {/* Insert menu (U3) — real actions, replacing the old "coming soon" no-op */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          title="Insert…"
+          onClick={() => setInsertOpen(o => !o)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 6, border: `2px solid rgba(255,255,255,0.6)`,
+            background: insertOpen ? 'rgba(255,255,255,0.12)' : 'transparent',
+            color: '#fff', fontSize: 13, cursor: 'pointer',
+            transition: 'background 0.15s', flexShrink: 0,
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+          onMouseLeave={e => { if (!insertOpen) e.currentTarget.style.background = 'transparent'; }}
+        >
+          Insert <DSIcons.ChevronDown size={13} style={{ opacity: 0.7, transform: insertOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </button>
+
+        {insertOpen && (
+          <>
+            {/* click-away */}
+            <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setInsertOpen(false)} />
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 41,
+              minWidth: 190, padding: 6, borderRadius: 12,
+              background: 'var(--modal-bg)', border: '1px solid var(--border)',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+            }}>
+              {INSERT_ITEMS.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => { doInsert(item); setInsertOpen(false); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+                    padding: '8px 10px', borderRadius: 8, border: 'none',
+                    background: 'transparent', color: 'var(--text-2)',
+                    fontSize: 13, cursor: 'pointer', textAlign: 'left',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ width: 22, textAlign: 'center', color: 'var(--text-3)', fontSize: 13, flexShrink: 0 }}>{item.glyph}</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Extension toolbar buttons */}
       {extButtons.length > 0 && (

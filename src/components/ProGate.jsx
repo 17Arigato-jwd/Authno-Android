@@ -14,6 +14,8 @@
 
 import { useState, useEffect } from 'react';
 import { isPro } from '../utils/entitlements';
+import { useEntitlement } from '../utils/useEntitlement';
+import { openBilling } from '../utils/billingBus';
 import { GradientButton, Badge, COLORS } from '../DesignSystem';
 
 function StarIcon() {
@@ -81,7 +83,7 @@ function UpgradePrompt({ feature, accentHex }) {
         size="md"
         icon={<StarIcon />}
         style={{ background: accentHex, boxShadow: `0 4px 14px ${accentHex}55` }}
-        onClick={() => { /* future: open store / paywall */ }}
+        onClick={() => openBilling()}
       >
         Upgrade to Pro
       </GradientButton>
@@ -90,14 +92,7 @@ function UpgradePrompt({ feature, accentHex }) {
 }
 
 export function ProGate({ children, feature, accentHex = '#6366f1', inline = false }) {
-  const [pro, setPro] = useState(() => isPro());
-
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'authno_tier') setPro(isPro()); };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
-  }, []);
-
+  const { isPro: pro } = useEntitlement();
   if (pro) return children;
   if (inline) return <InlinePrompt accentHex={accentHex} />;
   return <UpgradePrompt feature={feature} accentHex={accentHex} />;

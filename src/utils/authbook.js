@@ -16,6 +16,10 @@
 
 import { deflate, inflate } from 'pako';
 import { getDeviceId, getPlatform } from './deviceId';
+import {
+  rsEncodeChunked as _rsEncChunked,
+  rsDecodeChunked as _rsDecChunked,
+} from './reedSolomon.js';
 
 // ─── Magic bytes ──────────────────────────────────────────────────────────────
 
@@ -23,7 +27,7 @@ const MAGIC_FILE   = new Uint8Array([0x89,0x41,0x54,0x48,0x42,0x4B,0x0D,0x0A]); 
 const MAGIC_TAIL   = new Uint8Array([0x89,0x41,0x54,0x48,0x5F,0x54,0x41,0x49,0x4C,0x0D,0x0A]);
 const MAGIC_ANCHOR = new Uint8Array([0x89,0x41,0x54,0x48,0x5F,0x41,0x4E,0x43,0x48,0x0D,0x0A]);
 
-const FORMAT_VERSION     = 1;
+const FORMAT_VERSION     = 2;   // v2: header+index CRC (reserved u16→index crc16) + index copy in recovery blob
 const DEFAULT_RS_LEVEL   = 20;
 const FILE_HEADER_SIZE   = 20;
 const SECTION_ENTRY_SIZE = 20;
@@ -48,189 +52,31 @@ function crc32(bytes) {
   return (c ^ 0xFFFFFFFF) >>> 0;
 }
 
-// ─── GF(2^8) arithmetic — primitive polynomial 0x11d (same as reedsolo) ──────
-
-const _GF_EXP = new Uint8Array(512);
-const _GF_LOG = new Uint8Array(256);
-(() => {
-  let x = 1;
-  for (let i = 0; i < 255; i++) {
-    _GF_EXP[i] = x; _GF_LOG[x] = i;
-    x = x << 1; if (x > 255) x ^= 0x11d;
-  }
-  for (let i = 255; i < 512; i++) _GF_EXP[i] = _GF_EXP[i - 255];
-})();
-
-function _gfMul(a, b) {
-  if (a === 0 || b === 0) return 0;
-  return _GF_EXP[_GF_LOG[a] + _GF_LOG[b]];
-}
-function _gfPow(x, p) { return _GF_EXP[(_GF_LOG[x] * p) % 255]; }
-function _gfDiv(a, b) {
-  if (b === 0) throw new Error('GF division by zero');
-  if (a === 0) return 0;
-  return _GF_EXP[((_GF_LOG[a] - _GF_LOG[b]) + 255) % 255];
-}
-function _gfPolyMul(p, q) {
-  const r = new Uint8Array(p.length + q.length - 1);
-  for (let i = 0; i < p.length; i++)
-    for (let j = 0; j < q.length; j++)
-      r[i + j] ^= _gfMul(p[i], q[j]);
-  return r;
-}
-function _gfPolyEval(poly, x) {
-  let y = poly[0];
-  for (let i = 1; i < poly.length; i++) y = _gfMul(y, x) ^ poly[i];
-  return y;
-}
-
-// ─── Reed-Solomon encode (returns parity only, not full message) ──────────────
-
-function _rsGenPoly(nsym) {
-  let g = new Uint8Array([1]);
-  for (let i = 0; i < nsym; i++) {
-    const factor = new Uint8Array([1, _gfPow(2, i)]);
-    g = _gfPolyMul(g, factor);
-  }
-  return g;
-}
-
-function _rsEncodeChunk(data, nsym) {
-  // Returns parity bytes only (length nsym)
-  const gen = _rsGenPoly(nsym);
-  const rem = new Uint8Array(nsym);
-  for (let i = 0; i < data.length; i++) {
-    const coef = data[i] ^ rem[0];
-    for (let j = 0; j < nsym - 1; j++)
-      rem[j] = rem[j + 1] ^ _gfMul(gen[j + 1], coef);
-    rem[nsym - 1] = _gfMul(gen[nsym], coef);
-  }
-  return rem;
-}
-
-// ─── Reed-Solomon decode (Berlekamp-Massey + Chien + Forney) ─────────────────
-
-function _rsDecodeChunk(msg, nsym) {
-  // msg = data + parity as Uint8Array (length = chunkSize + nsym = 255)
-  // Returns corrected data (length = chunkSize) or throws
-  const n = msg.length;
-
-  // Syndromes
-  const synd = new Uint8Array(nsym);
-  let haserr = false;
-  for (let i = 0; i < nsym; i++) {
-    synd[i] = _gfPolyEval(msg, _gfPow(2, i));
-    if (synd[i] !== 0) haserr = true;
-  }
-  if (!haserr) return msg.slice(0, n - nsym);
-
-  // Berlekamp-Massey to find error locator polynomial
-  let errLoc = new Uint8Array([1]);
-  let oldLoc = new Uint8Array([1]);
-  for (let i = 0; i < nsym; i++) {
-    oldLoc = new Uint8Array([...oldLoc, 0]); // shift
-    let delta = synd[i];
-    for (let j = 1; j < errLoc.length; j++)
-      delta ^= _gfMul(errLoc[errLoc.length - 1 - j], synd[i - j]);
-    if (delta === 0) continue;
-    if (oldLoc.length > errLoc.length) {
-      const newLoc = new Uint8Array(oldLoc.length);
-      for (let j = 0; j < oldLoc.length; j++) newLoc[j] = _gfMul(oldLoc[j], delta);
-      oldLoc = new Uint8Array(errLoc.length);
-      for (let j = 0; j < errLoc.length; j++) oldLoc[j] = _gfDiv(errLoc[j], delta);
-      errLoc = newLoc;
-    }
-    const scaled = new Uint8Array(oldLoc.length);
-    for (let j = 0; j < oldLoc.length; j++) scaled[j] = _gfMul(oldLoc[j], delta);
-    if (scaled.length > errLoc.length) {
-      const tmp = new Uint8Array(scaled.length);
-      const off = scaled.length - errLoc.length;
-      for (let j = 0; j < errLoc.length; j++) tmp[j + off] = errLoc[j];
-      errLoc = tmp;
-    }
-    const tmp2 = new Uint8Array(Math.max(errLoc.length, scaled.length));
-    const off2 = tmp2.length - errLoc.length;
-    for (let j = 0; j < errLoc.length; j++) tmp2[j + off2] ^= errLoc[j];
-    const off3 = tmp2.length - scaled.length;
-    for (let j = 0; j < scaled.length; j++) tmp2[j + off3] ^= scaled[j];
-    errLoc = tmp2;
-  }
-
-  const nErrors = errLoc.length - 1;
-  if (nErrors * 2 > nsym) throw new Error('Too many errors to correct');
-
-  // Chien search — find error positions
-  const errPos = [];
-  for (let i = 0; i < n; i++) {
-    if (_gfPolyEval(errLoc, _gfPow(2, i)) === 0)
-      errPos.push(n - 1 - i);
-  }
-  if (errPos.length !== nErrors) throw new Error('Could not locate all errors');
-
-  // Forney algorithm — compute error magnitudes
-  const errLocRev = new Uint8Array([...errLoc].reverse());
-  const coef = new Uint8Array([...msg]);
-  const Xloc = errPos.map(p => _gfPow(2, p));
-
-  // Error evaluator polynomial
-  const synd2 = new Uint8Array([...synd].reverse());
-  let omega = _gfPolyMul(synd2, errLocRev);
-  omega = omega.slice(omega.length - nsym, omega.length);
-
-  for (let i = 0; i < errPos.length; i++) {
-    const Xinv = _gfPow(2, 255 - errPos[i]);
-    let errLocDeriv = 1;
-    for (let j = 0; j < Xloc.length; j++) {
-      if (j !== i) errLocDeriv = _gfMul(errLocDeriv, 1 ^ _gfMul(Xinv, Xloc[j]));
-    }
-    const mag = _gfMul(
-      _gfPow(2, errPos[i]),
-      _gfDiv(_gfPolyEval(omega, Xinv), errLocDeriv)
-    );
-    coef[errPos[i]] ^= mag;
-  }
-
-  return coef.slice(0, n - nsym);
-}
-
-// ─── RS encode/decode with chunking (matches reedsolo's block structure) ──────
+// ─── Reed-Solomon (v1.1.16) — delegates to the verified shared codec ─────────
+// The previous inline GF(256)/Berlekamp-Massey/Forney implementation could not
+// recover even a single corrupted byte and, worse, returned WRONG bytes while
+// reporting recovered:true (verified 2026-07). All RS math now lives in
+// ./reedSolomon.js, covered by a round-trip test suite. Parity output is
+// byte-identical to the old encoder, so existing .authbook files keep working
+// and gain real recovery. Decode FAILS CLOSED: a chunk that cannot be verified
+// after correction is returned unchanged with recovered:false, so the caller's
+// CRC/anchor/tail cross-check is the final authority.
 
 function _nsym(level) { return Math.max(2, Math.min(120, Math.ceil(255 * level / 100))); }
 
 export function rsEncode(data, level) {
   if (level === 0 || !data.length) return new Uint8Array(0);
-  const nsym      = _nsym(level);
-  const chunkSize = 255 - nsym;
-  const parts     = [];
-  for (let off = 0; off < data.length; off += chunkSize) {
-    const chunk = data.slice(off, off + chunkSize);
-    parts.push(_rsEncodeChunk(chunk, nsym));
-  }
-  return _concat(parts);
+  return _rsEncChunked(data, _nsym(level));
 }
 
 export function rsDecode(data, parity, level) {
   if (level === 0 || !parity.length) return { data, recovered: false };
-  const nsym      = _nsym(level);
-  const chunkSize = 255 - nsym;
-  const result    = [];
-  let pOff = 0, dOff = 0, ok = true;
-  while (dOff < data.length) {
-    const d  = Math.min(chunkSize, data.length - dOff);
-    const p  = parity.slice(pOff, pOff + nsym);
-    const msg = new Uint8Array(d + nsym);
-    msg.set(data.slice(dOff, dOff + d), 0);
-    msg.set(p, d);
-    try {
-      result.push(_rsDecodeChunk(msg, nsym));
-    } catch {
-      result.push(data.slice(dOff, dOff + d));
-      ok = false;
-    }
-    dOff += d; pOff += nsym;
-  }
-  return { data: _concat(result), recovered: ok };
+  const nsym = _nsym(level);
+  const fixed = _rsDecChunked(data, parity, nsym);
+  if (fixed === null) return { data, recovered: false }; // fail closed
+  return { data: fixed, recovered: true };
 }
+
 
 // ─── Legacy format detection & migration ──────────────────────────────────────
 
@@ -243,9 +89,14 @@ export function detectFormat(bytes) {
   for (let i = 0; i < MAGIC_FILE.length; i++)
     if (bytes[i] !== MAGIC_FILE[i]) break;
     else if (i === MAGIC_FILE.length - 1) return 'vchs';
-  // Check for JSON (starts with '{' or whitespace then '{')
-  const start = bytes.slice(0, 3);
-  if (start[0] === 0x7B || (start[0] === 0x0A && start[1] === 0x20)) return 'legacy-json';
+  // Legacy JSON: skip an optional UTF-8 BOM and ANY leading whitespace
+  // (space, tab, CR, LF), then require '{'. The old check only accepted a
+  // bare '{' or exactly "\n " and misclassified hand-edited files (2E).
+  let i = 0;
+  if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) i = 3; // BOM
+  while (i < Math.min(bytes.length, 64) &&
+         (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0A || bytes[i] === 0x0D)) i++;
+  if (bytes[i] === 0x7B) return 'legacy-json';
   return 'unknown';
 }
 
@@ -333,6 +184,7 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
     language:    book.meta.language    || 'en',
     publisher:   book.meta.publisher   || '',
     isbn:        book.meta.isbn        || '',
+    externalId:  book.meta.externalId  || '',
     coverMime:   book.cover ? (book.meta.coverMime || 'image/jpeg') : '',
     // Cover is stored directly in META so it shares META's RS parity protection
     // and avoids a separate COVR section that previously collided in the parity map.
@@ -416,16 +268,24 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
     u8.set(rspxBody, dataAt); dataAt += rspxBody.length;
   }
 
+  // v2 (N2-hardening): protect the header + section index themselves. Until now
+  // only section *payloads* were CRC'd, so a single flip in an index entry
+  // silently mis-sliced the file with no warning. We store a CRC16 of the index
+  // region in the reserved header field, and keep a full copy of the index bytes
+  // in the recovery blob so a corrupt index can be rebuilt, not just detected.
+  const indexBytes = u8.slice(FILE_HEADER_SIZE, FILE_HEADER_SIZE + sectionCount * SECTION_ENTRY_SIZE);
+  view.setUint16(18, crc32(indexBytes) & 0xffff, true);
+
   // Find the compressed META, STRK, MNFT for header copies
   const metaComp = encoded.find(e => e.tag === 'META').comp;
   const strkComp = encoded.find(e => e.tag === 'STRK').comp;
   const mnftComp = encoded.find(e => e.tag === 'MNFT').comp;
 
-  // Middle anchor + recovery tail
+  // Middle anchor + recovery tail (each carries META/STRK/MNFT + the index copy)
   const anchor = _packCriticalBlob(MAGIC_ANCHOR, ts, rsLevel, FORMAT_VERSION, fileCrc,
-                                    metaComp, strkComp, mnftComp);
+                                    metaComp, strkComp, mnftComp, indexBytes);
   const tail   = _packCriticalBlob(MAGIC_TAIL,   ts, rsLevel, FORMAT_VERSION, fileCrc,
-                                    metaComp, strkComp, mnftComp);
+                                    metaComp, strkComp, mnftComp, indexBytes);
   const tailLen = _u32le(tail.length);
 
   return _concat([u8, anchor, tail, tailLen]);
@@ -458,13 +318,16 @@ export async function unpackSession(bytes) {
   if (version > FORMAT_VERSION)
     throw new Error(`Unsupported format version ${version}`);
 
-  // Read back cover
-  const tailInfo = _readTail(u8);
+  // Recovery copies: the tail (always at EOF) and the mid-file anchor each hold
+  // a full compressed copy of META, STRK and MNFT. We keep whichever parses so
+  // a primary section that fails BOTH crc and RS can still be reconstructed (N2).
+  const tailInfo   = _readTail(u8);
+  const anchorInfo = _scanAnchor(u8);
+  const backupBlob = tailInfo || anchorInfo || null;
   let status = 'fast_path';
 
   if (tailInfo && tailInfo.file_crc32 !== frontFileCrc) {
     warn.push(`Front/back CRC mismatch (front=${_hex(frontFileCrc)} tail=${_hex(tailInfo.file_crc32)}) — scanning for anchor`);
-    const anchorInfo = _scanAnchor(u8);
     const winner = _majorityVote(frontFileCrc, tailInfo.file_crc32, anchorInfo?.file_crc32);
     if (winner !== frontFileCrc) {
       warn.push('Front header was corrupt; tail/anchor data used');
@@ -476,18 +339,40 @@ export async function unpackSession(bytes) {
     warn.push('Recovery tail missing or unreadable — trusting front header');
   }
 
+  // v2: validate the header's index CRC16. Until format v2 the section index
+  // had NO integrity check — a single flipped byte in an index entry silently
+  // mis-sliced every payload after it, with no warning (found via byte-sweep
+  // testing). If the CRC fails, rebuild the index from the copy carried in the
+  // recovery tail/anchor; if no copy is available, we still proceed but flag it.
+  let indexBytes = u8.slice(FILE_HEADER_SIZE, FILE_HEADER_SIZE + sectionCount * SECTION_ENTRY_SIZE);
+  if (version >= 2) {
+    const storedIdxCrc = view.getUint16(18, true);
+    if ((crc32(indexBytes) & 0xffff) !== storedIdxCrc) {
+      const copy = tailInfo?.indexCopy || anchorInfo?.indexCopy || null;
+      if (copy && (crc32(copy) & 0xffff) === storedIdxCrc) {
+        indexBytes = copy;
+        warn.push('Section index was corrupt — rebuilt from recovery copy');
+        if (status === 'fast_path') status = 'anchor_used';
+      } else {
+        warn.push('Section index CRC mismatch and no valid recovery copy — file may be mis-sliced');
+        if (status === 'fast_path') status = 'index_suspect';
+      }
+    }
+  }
+  const idxView = new DataView(indexBytes.buffer, indexBytes.byteOffset, indexBytes.byteLength);
+
   // Parse section index
   const indexEnd = FILE_HEADER_SIZE + sectionCount * SECTION_ENTRY_SIZE;
   const entries = [];
   let cursor = indexEnd;
   for (let i = 0; i < sectionCount; i++) {
-    const base = FILE_HEADER_SIZE + i * SECTION_ENTRY_SIZE;
-    const tag       = dec.decode(u8.slice(base, base + 4));
-    const chapIdx   = view.getUint16(base + 4, true);
-    const comp      = u8[base + 6];
-    const origSize  = view.getUint32(base + 8,  true);
-    const compSize  = view.getUint32(base + 12, true);
-    const secCrc    = view.getUint32(base + 16, true);
+    const base = i * SECTION_ENTRY_SIZE;
+    const tag       = dec.decode(indexBytes.slice(base, base + 4));
+    const chapIdx   = idxView.getUint16(base + 4, true);
+    const comp      = indexBytes[base + 6];
+    const origSize  = idxView.getUint32(base + 8,  true);
+    const compSize  = idxView.getUint32(base + 12, true);
+    const secCrc    = idxView.getUint32(base + 16, true);
     const payload   = u8.slice(cursor, cursor + compSize);
     entries.push({ tag, chapIdx, comp, origSize, compSize, secCrc, payload });
     cursor += compSize;
@@ -513,19 +398,38 @@ export async function unpackSession(bytes) {
     let payload = e.payload;
     const actualCrc = crc32(payload);
     if (actualCrc !== e.secCrc) {
+      let fixed = false;
       const parity = parityMap[`${e.tag}:${e.chapIdx}`];
       if (parity) {
         const { data, recovered } = rsDecode(payload, parity, rsLevel);
         if (recovered && crc32(data) === e.secCrc) {
           payload = data;
+          fixed = true;
           rsRec.push(`${e.tag}[${e.chapIdx}]`);
           if (status === 'fast_path') status = 'rs_recovered';
           warn.push(`RS recovered section ${e.tag}[${e.chapIdx}]`);
-        } else {
-          warn.push(`Could not recover ${e.tag}[${e.chapIdx}]`);
         }
-      } else {
-        warn.push(`CRC fail on ${e.tag}[${e.chapIdx}], no parity available`);
+      }
+      // N2: last resort — reconstruct META/STRK/MNFT (chap_idx 0) from the
+      // intact copy kept in the anchor/tail. These are the sections whose loss
+      // makes a book unreadable, which is exactly why they were triplicated.
+      if (!fixed && e.chapIdx === 0 && backupBlob) {
+        const backupComp = e.tag === 'META' ? backupBlob.metaComp
+                         : e.tag === 'STRK' ? backupBlob.strkComp
+                         : e.tag === 'MNFT' ? backupBlob.mnftComp
+                         : null;
+        if (backupComp && crc32(backupComp) === e.secCrc) {
+          payload = backupComp;
+          fixed = true;
+          rsRec.push(`${e.tag}[${e.chapIdx}]→backup`);
+          if (status === 'fast_path' || status === 'rs_recovered') status = 'anchor_used';
+          warn.push(`Restored ${e.tag} from recovery ${tailInfo ? 'tail' : 'anchor'} copy`);
+        }
+      }
+      if (!fixed) {
+        warn.push(parity
+          ? `Could not recover ${e.tag}[${e.chapIdx}]`
+          : `CRC fail on ${e.tag}[${e.chapIdx}], no parity available`);
       }
     }
     let raw;
@@ -599,6 +503,7 @@ export function bookToSession(book) {
     language:    book.meta.language    || 'en',
     publisher:   book.meta.publisher   || '',
     isbn:        book.meta.isbn        || '',
+    externalId:  book.meta.externalId  || '',
     // Cover image
     coverBase64: book.cover            ?? null,
     coverMime:   book.coverMime        || book.meta.coverMime   || '',
@@ -631,6 +536,7 @@ export function sessionToBook(session) {
         language:    session.language    || 'en',
         publisher:   session.publisher   || '',
         isbn:        session.isbn        || '',
+        externalId:  session.externalId  || '',
         coverMime:   session.coverMime   || '',
       },
       chapters,
@@ -653,8 +559,13 @@ export function base64ToBytes(b64) {
 }
 
 export function bytesToBase64(bytes) {
+  // Chunked conversion — the old per-byte `bin += String.fromCharCode(b)` was
+  // O(n²) and ran on EVERY book save (multi-second UI stalls on large books).
   let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
   return btoa(bin);
 }
 
@@ -708,8 +619,7 @@ function _writeEntry(u8, view, at, tag, chapIdx, comp, orig, compSz, secCrc) {
 
 // ─── Critical blob (tail / anchor) ───────────────────────────────────────────
 
-function _packCriticalBlob(magic, ts, rsLvl, ver, fileCrc, metaComp, strkComp, mnftComp) {
-  const enc = new TextEncoder();
+function _packCriticalBlob(magic, ts, rsLvl, ver, fileCrc, metaComp, strkComp, mnftComp, indexBytes = new Uint8Array(0)) {
   const hdr = new Uint8Array(11);
   const hv  = new DataView(hdr.buffer);
   hv.setUint32(0, ts,      true);
@@ -718,9 +628,10 @@ function _packCriticalBlob(magic, ts, rsLvl, ver, fileCrc, metaComp, strkComp, m
   hv.setUint32(7, fileCrc, true);
 
   const body = _concat([magic, hdr,
-    _u32le(metaComp.length), metaComp,
-    _u32le(strkComp.length), strkComp,
-    _u32le(mnftComp.length), mnftComp,
+    _u32le(metaComp.length),  metaComp,
+    _u32le(strkComp.length),  strkComp,
+    _u32le(mnftComp.length),  mnftComp,
+    _u32le(indexBytes.length), indexBytes,   // v2: section-index copy
   ]);
   return _concat([body, _u32le(crc32(body))]);
 }
@@ -758,12 +669,34 @@ function _parseCriticalBlob(data, magic) {
   const storedCrc = view.getUint32(bodyEnd, true);
   if (crc32(data.slice(0, bodyEnd)) !== storedCrc) return null;
   const fileCrc = view.getUint32(magic.length + 7, true);
-  return { file_crc32: fileCrc };
+
+  // v1.1.16 (N2): actually extract the backed-up META/STRK/MNFT payloads so
+  // they can be used to reconstruct a primary section that failed both CRC and
+  // RS. Previously only file_crc32 was read and the copies were dead weight.
+  let p = magic.length + 11;
+  const readBlock = () => {
+    if (p + 4 > bodyEnd) return null;
+    const len = view.getUint32(p, true); p += 4;
+    if (p + len > bodyEnd) return null;
+    const bytes = data.slice(p, p + len); p += len;
+    return bytes;
+  };
+  const metaComp  = readBlock();
+  const strkComp  = readBlock();
+  const mnftComp  = readBlock();
+  const indexCopy = readBlock();  // v2; null for legacy v1 blobs
+
+  return { file_crc32: fileCrc, metaComp, strkComp, mnftComp, indexCopy };
 }
 
 function _majorityVote(front, back, anchor) {
+  // Returns the winning CRC as a NUMBER. The previous version returned
+  // Object.keys(...) (a STRING), so `winner !== frontFileCrc` (a number) was
+  // always true and the recovery status was always mislabeled (N9).
   const votes = [front, back, anchor].filter(v => v !== undefined && v !== null);
-  const counts = {};
-  for (const v of votes) counts[v] = (counts[v] || 0) + 1;
-  return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+  const counts = new Map();
+  for (const v of votes) counts.set(v, (counts.get(v) || 0) + 1);
+  let best = votes[0], bestCount = 0;
+  for (const [v, c] of counts) if (c > bestCount) { best = v; bestCount = c; }
+  return best;
 }

@@ -55,6 +55,10 @@ async function getPlugin() {
  * @param {string} accentHex  e.g. "#5a00d9"
  */
 export async function syncWidget(sessions, accentHex) {
+  // N15: tell the native widget whether the app theme is dark so its text and
+  // surfaces flip with the theme instead of staying dark-only.
+  let themeIsDark = true;
+  try { themeIsDark = !document.documentElement.classList.contains('light-mode'); } catch { /* default dark */ }
   try {
     const plugin = await getPlugin();
     if (!plugin) return; // Not on Android, or Capacitor unavailable
@@ -72,6 +76,7 @@ export async function syncWidget(sessions, accentHex) {
     await plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
+      isDark: themeIsDark,
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort

@@ -44,12 +44,12 @@ export function BackgroundRouter({
   if (type === 'grain') {
     return (
       <GrainGradientBackground
-        colorFrom={fx.colorFrom ?? '#3d1a0a'}
-        colorTo={fx.colorTo ?? '#0d0f2e'}
-        angle={fx.angle ?? 135}
+        baseColor={fx.baseColor ?? '#f5efe0'}
+        colorFrom={fx.colorFrom ?? '#9a6b2a'}
+        colorTo={fx.colorTo ?? '#c4922e'}
         grainOpacity={fx.grainOpacity ?? fx.opacity ?? 0.18}
         grainSize={fx.grainSize ?? 0.65}
-        vignetteStrength={fx.vignetteStrength ?? 0.55}
+        vignetteStrength={fx.vignetteStrength ?? 0.18}
         visible
       />
     );

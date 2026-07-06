@@ -1,25 +1,27 @@
-import { BackgroundRouter, DSIcons, injectDesignSystemFonts } from "./DesignSystem";
+import { BackgroundRouter, DSIcons, injectDesignSystemFonts, ToastContainer, toast } from "./DesignSystem";
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import Logo from "./logo.svg";
+import { APP_VERSION } from "./version";
 
-import { Filesystem, Directory } from '@capacitor/filesystem';
 import { App as CapApp } from '@capacitor/app';
 import EditorToolbar from "./components/EditorToolbar";
 import BurgerMenu from "./components/BurgerMenu";
 import Sidebar from "./components/Sidebar";
-import EditLayout from "./components/EditLayoutSidebar";
 import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid } from "./utils/platform";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
-import { ThemeProvider, DARK_DEFAULT, injectThemeFonts, themeById, buildWidgetTheme, useTheme } from "./theme";
+import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent } from "./theme";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
+import InstallSheet from "./components/InstallSheet";
+import ReadAloudBar from "./components/ReadAloudBar";
+import BillingPage from "./components/BillingPage";
+import { subscribeBilling } from "./utils/billingBus";
 import { Onboarding, hasSeenOnboarding, UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
@@ -33,6 +35,21 @@ import ExtensionPage from "./components/ExtensionPage";
 
 injectDesignSystemFonts();
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── Corruption-proof localStorage read (2C) ──────────────────────────────────
+// A malformed writerSettings / writerCustomization value used to throw during
+// the very first render, leaving the user on a permanent white screen. Parse
+// defensively and merge over defaults so a bad value degrades gracefully.
+function _safeParse(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? { ...fallback, ...parsed } : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const BurgerIcon = ({ className }) => (
   <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -54,8 +71,13 @@ function Editor({
 
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
   useEffect(() => {
-    if (editorRef.current && current?.content !== undefined)
-      editorRef.current.innerHTML = current.content || "";
+    // Only overwrite the DOM when the incoming content actually differs from
+    // what's already rendered. Blindly assigning innerHTML on every dependency
+    // change wiped the caret position and the native undo stack (4B).
+    if (editorRef.current && current?.content !== undefined) {
+      const next = current.content || "";
+      if (editorRef.current.innerHTML !== next) editorRef.current.innerHTML = next;
+    }
   }, [current?.id, current?._editingChap]);
 
   const execCommand = (cmd, val = null) => {
@@ -96,8 +118,12 @@ function Editor({
               if (onEditChapterTitle) onEditChapterTitle(title);
               else onEditTitle(title);
             }}
-            style={{ background: "transparent", color: "white", fontSize: 18, fontWeight: 600, outline: "none", borderBottom: "1px solid transparent", maxWidth: "60%", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            style={{ maxWidth: android ? "40vw" : "60vw" }}
+            style={{
+              background: "transparent", color: "white", fontSize: 18, fontWeight: 600,
+              outline: "none", borderBottom: "1px solid transparent",
+              maxWidth: android ? "40vw" : "60vw", minWidth: 0,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}
             placeholder="Untitled"
           />
         </div>
@@ -157,16 +183,17 @@ function Editor({
           </button>
         </div>
       )}
-      <main style={{ position: "relative", flex: 1, overflowY: "auto" }} style={{ padding: android ? "0.75rem" : "1.5rem" }}>
+      <main style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem" : "1.5rem" }}>
         {current ? (
           <>
-            <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} />
+            <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} editorRef={editorRef} />
             <div
               ref={editorRef}
               contentEditable
               suppressContentEditableWarning
-              style={{ width: "100%", minHeight: 400, padding: 16, borderRadius: 8, boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none", lineHeight: 1.7 }}
               style={{
+                width: "100%", minHeight: 400, padding: 16, borderRadius: 8,
+                boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none", lineHeight: 1.7,
                 background: 'var(--editor-bg)', color: 'var(--text-1)',
                 marginTop: android ? "0.25rem" : "5rem",
                 WebkitUserSelect: "text", userSelect: "text",
@@ -198,7 +225,6 @@ function AppInner({ navigateRef }) {
   const [currentId, setCurrentId] = useState(null);
   const [menuOpen, setMenuOpen]   = useState(false);
   const [lastSaved]               = useState(null);
-  const [inactive]                = useState(false);
   const [view, setView]           = useState("home");
   const [extPageState, setExtPageState] = useState(null);
 
@@ -236,16 +262,20 @@ function AppInner({ navigateRef }) {
 
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState(
-    JSON.parse(localStorage.getItem("writerSettings")) || DEFAULT_SETTINGS
-  );
-  const [customization, setCustomization] = useState(
-    JSON.parse(localStorage.getItem("writerCustomization")) || DEFAULT_CUSTOMIZATION
-  );
+  const [readAloudSession, setReadAloudSession] = useState(null);
+  const [billingOpen, setBillingOpen] = useState(false);
+  useEffect(() => subscribeBilling(() => setBillingOpen(true)), []);
+  const [settings, setSettings] = useState(() => _safeParse("writerSettings", DEFAULT_SETTINGS));
+  const [customization, setCustomization] = useState(() => _safeParse("writerCustomization", DEFAULT_CUSTOMIZATION));
 
   const burgerBtnRef  = useRef(null);
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
+
+  // Keep var(--accent) in sync with the user's chosen accent colour (see
+  // ThemeBase.applyAccent). Without this, every var()-reading component showed
+  // the theme's default accent while prop-reading ones showed the custom one.
+  useEffect(() => { applyAccent(customization.accentHex); }, [customization.accentHex]);
 
   // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
   useEffect(() => {
@@ -277,7 +307,6 @@ function AppInner({ navigateRef }) {
       if (view === 'extension-page') { setView(extPageState?._prevView ?? 'home'); setExtPageState(null); return; }
       if (view === 'editor')         { setView('book-dashboard'); return; }
       if (view === 'book-dashboard') { setView('home');           return; }
-      if (view === 'layout')         { setView('home');           return; }
       CapApp.minimizeApp();
     }).then(h => { listener = h; });
     return () => { listener?.remove(); };
@@ -291,19 +320,28 @@ function AppInner({ navigateRef }) {
     });
     const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
-    if (saved) { setSessions(JSON.parse(saved)); if (savedId) setCurrentId(savedId); }
+    if (saved) { try { const p = JSON.parse(saved); if (Array.isArray(p)) { setSessions(p); if (savedId) setCurrentId(savedId); } } catch { /* corrupt store — start clean */ } }
     if (window.electron) {
       const openBooks = localStorage.getItem("openBooks");
       if (openBooks) {
-        try { const books = JSON.parse(openBooks); if (Array.isArray(books) && window.electron?.restoreBooks) window.electron.restoreBooks(books); }
+        try {
+          const books = JSON.parse(openBooks);
+          // Only ask the main process to restore books that actually live on
+          // disk. Unsaved drafts have no filePath — they're restored from the
+          // localStorage mirror above; sending them to restoreBooks used to
+          // produce a scary "file not found" alert for every unsaved book.
+          if (Array.isArray(books) && window.electron?.restoreBooks) {
+            window.electron.restoreBooks(books.filter((b) => b && b.filePath));
+          }
+        }
         catch (e) { console.error(e); }
       }
     }
     if (android) {
       initStoragePermissions();
       initBookIndex();
-      const saved = localStorage.getItem("offlineWriterSessions");
-      if (saved) { const parsed = JSON.parse(saved); checkFileIntegrity(parsed).then(broken => { if (broken.length > 0) setBrokenFiles(broken); }); }
+      const saved2 = localStorage.getItem("offlineWriterSessions");
+      if (saved2) { try { const parsed = JSON.parse(saved2); if (Array.isArray(parsed)) checkFileIntegrity(parsed).then(broken => { if (broken.length > 0) setBrokenFiles(broken); }); } catch { /* ignore */ } }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -319,7 +357,13 @@ function AppInner({ navigateRef }) {
       if (savedId && sessions.some((s) => s.id === savedId)) setCurrentId(savedId);
       else if (sessions.length > 0) setCurrentId(sessions[0].id);
     } else if (behavior === "blank") {
-      const blank = { id: Date.now().toString(), title: "Untitled Book", content: "", createdAt: Date.now() };
+      const now = new Date().toISOString();
+      const blank = {
+        id: Date.now().toString(), title: "Untitled Book", content: "", type: "book",
+        created: now, updated: now,
+        chapters: [{ chap_idx: 1, title: "Chapter 1", order: 1, content: "", created: now, updated: now }],
+        authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "",
+      };
       setSessions((prev) => [blank, ...prev]);
       setCurrentId(blank.id);
     } else if (behavior === "none") {
@@ -330,23 +374,38 @@ function AppInner({ navigateRef }) {
     }
   }, [sessions, settings]);
 
-  // Persist sessions
+  // Persist sessions. Cover images live in the .authbook files on disk; keeping
+  // their base64 in the localStorage mirror (N8) bloated it and could exceed the
+  // ~5 MB quota, throwing here and silently killing all persistence. Strip heavy
+  // fields from the mirror and fail soft.
   useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem("offlineWriterSessions", JSON.stringify(sessions));
-      if (isAndroid()) {
-        const slim = sessions.filter(s => s.type !== 'storyboard').map(s => ({ id: s.id, title: s.title || 'Untitled Book', streak: s.streak ?? {} }));
-        Filesystem.mkdir({ path: '', directory: Directory.Data, recursive: true }).catch(() => {})
-          .then(() => Filesystem.writeFile({ path: 'authno_books.json', data: JSON.stringify(slim), directory: Directory.Data, encoding: 'utf8' }))
-          .catch(() => {});
-      }
+    if (sessions.length === 0) return;
+    const slimForMirror = sessions.map(({ coverBase64, ...rest }) => rest);
+    try {
+      localStorage.setItem("offlineWriterSessions", JSON.stringify(slimForMirror));
+    } catch (e) {
+      // Quota exceeded even after stripping covers — drop content bodies too.
+      try {
+        const minimal = sessions.map(s => ({ id: s.id, title: s.title, filePath: s.filePath, type: s.type, updated: s.updated }));
+        localStorage.setItem("offlineWriterSessions", JSON.stringify(minimal));
+      } catch { /* give up on the mirror; disk files remain the source of truth */ }
+      console.warn('[AuthNo] session mirror trimmed — localStorage quota reached');
     }
+    // The native authno_books.json is written by WidgetDataPlugin on syncWidget;
+    // no longer double-written here (was a redundant racing writer, N17).
   }, [sessions]);
 
-  useEffect(() => { syncWidget(sessions, customization.accentHex); }, [sessions, customization.accentHex]);
+  // Widget sync, debounced. This previously ran on EVERY sessions change —
+  // i.e. every keystroke — hammering the native bridge and disk (3G).
+  const widgetSyncTimer = useRef(null);
+  useEffect(() => {
+    clearTimeout(widgetSyncTimer.current);
+    widgetSyncTimer.current = setTimeout(() => syncWidget(sessions, customization.accentHex), 1500);
+    return () => clearTimeout(widgetSyncTimer.current);
+  }, [sessions, customization.accentHex]);
   useWidgetDeepLink((bookId) => { handleSelect(bookId); });
   useEffect(() => { if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId); }, [currentId]);
-  useEffect(() => { if (window.electron) localStorage.setItem("openBooks", JSON.stringify(sessions)); }, [sessions]);
+  useEffect(() => { if (window.electron) { try { localStorage.setItem("openBooks", JSON.stringify(sessions.map(({ coverBase64, ...r }) => r))); } catch { /* quota */ } } }, [sessions]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -357,23 +416,71 @@ function AppInner({ navigateRef }) {
           setSessions((prev) => { const fresh = valid.filter((b) => !prev.some((s) => s.filePath === b.filePath)); return [...fresh, ...prev]; });
         });
       }
-      if (e.data.type === "missing-books") e.data.messages.forEach(alert);
+      if (e.data.type === "missing-books" && e.data.messages?.length) {
+        // One calm toast instead of a modal alert() per missing file.
+        toast(`${e.data.messages.length} book file${e.data.messages.length > 1 ? 's' : ''} could not be found on disk`, { variant: 'warning', duration: 5000 });
+        e.data.messages.forEach((m) => console.warn('[AuthNo restore]', m));
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
 
+  // U9: extensions can associate a book with a remote/external id (e.g. a
+  // published-post id). Persisted on the session → saved into the .authbook
+  // META → available to templates as {externalId}.
   useEffect(() => {
-    if (!window.electron?.onOpenAuthBook) return;
-    const listener = (book) => {
-      if (sessions.some((s) => s.filePath === book.filePath)) return;
-      const nb = { id: Date.now().toString(), title: book.title || "Untitled Book", content: book.content || "", preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "...", filePath: book.filePath, type: "book", created: new Date().toISOString(), updated: new Date().toISOString() };
-      setSessions((p) => [nb, ...p]);
-      setCurrentId(nb.id);
+    const onSetExternalId = (e) => {
+      const { bookId, externalId } = e.detail ?? {};
+      if (!bookId) return;
+      setSessions((prev) => prev.map((s) => (s.id === bookId ? { ...s, externalId, updated: new Date().toISOString() } : s)));
     };
-    window.electron.onOpenAuthBook(listener);
-    return () => window.removeEventListener("open-authbook", listener);
-  }, [sessions]);
+    window.addEventListener('authno-set-external-id', onSetExternalId);
+    return () => window.removeEventListener('authno-set-external-id', onSetExternalId);
+  }, []);
+
+  // Electron: file opened via OS double-click, both cold start and while running.
+  // Reads bytes and decodes through the shared path (binary format + RS repair),
+  // matching Android. Registered once; earlier code re-registered per keystroke
+  // and leaked listeners, producing duplicate books.
+  useEffect(() => {
+    if (!window.electron) return;
+    let dispose;
+    const onDesktopBytes = async (e) => {
+      const { base64, uri } = e.detail || {};
+      if (!base64) return;
+      try {
+        const { openBookFromBytes } = await import('./utils/storage');
+        const session = await openBookFromBytes(base64, uri);
+        if (!session) return;
+        if (session._recovery) toast(`"${session.title || 'Book'}" had file damage and was repaired automatically`, { variant: 'warning', duration: 5000 });
+        setSessions((prev) => {
+          if (prev.some((s) => s.id === session.id || (session.filePath && s.filePath === session.filePath))) {
+            return prev.map((s) => (s.id === session.id || s.filePath === session.filePath ? { ...s, ...session } : s));
+          }
+          return [session, ...prev];
+        });
+        setCurrentId(session.id);
+      } catch (err) { toast('Could not open that .authbook file — it may be corrupt', { variant: 'danger', duration: 5000 }); console.error(err); }
+    };
+    const onDesktopErr = () => toast('That book file could not be opened', { variant: 'danger', duration: 4000 });
+    window.addEventListener('open-authbook-desktop-bytes', onDesktopBytes);
+    window.addEventListener('open-authbook-desktop-error', onDesktopErr);
+    if (window.electron.onOpenAuthBook) dispose = window.electron.onOpenAuthBook(() => {});
+
+    // Cold start: pick up a file the app was launched with.
+    if (window.electron.getInitialFile) {
+      window.electron.getInitialFile().then((f) => {
+        if (f?.base64) window.dispatchEvent(new CustomEvent('open-authbook-desktop-bytes', { detail: { base64: f.base64, uri: f.filePath } }));
+      }).catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('open-authbook-desktop-bytes', onDesktopBytes);
+      window.removeEventListener('open-authbook-desktop-error', onDesktopErr);
+      if (typeof dispose === 'function') dispose();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const bytesHandler = async (e) => {
@@ -382,13 +489,16 @@ function AppInner({ navigateRef }) {
       try {
         const session = await openBookFromBytes(base64, uri);
         if (!session) return;
+        if (session._recovery) {
+          toast(`"${session.title || 'Book'}" had file damage and was repaired automatically`, { variant: 'warning', duration: 5000 });
+        }
         setSessions((prev) => {
           const idx = prev.findIndex((s) => s.id === session.id || (session.filePath && s.filePath === session.filePath));
           setCurrentId(session.id);
           if (idx === -1) return [session, ...prev];
           const next = [...prev]; next[idx] = { ...next[idx], ...session }; return next;
         });
-      } catch (err) { alert("⚠️ Could not open that .authbook file — it may be corrupt.\n" + err.message); }
+      } catch (err) { toast('Could not open that .authbook file — it may be corrupt beyond repair', { variant: 'danger', duration: 5500 }); console.error(err); }
     };
     const legacyHandler = (e) => {
       const book = e.detail;
@@ -399,7 +509,7 @@ function AppInner({ navigateRef }) {
         setCurrentId(nb.id); return [nb, ...prev];
       });
     };
-    const errHandler = () => alert("⚠️ Could not open that .authbook file — it may be corrupt.");
+    const errHandler = () => toast("Could not open that .authbook file — it may be corrupt", { variant: 'danger', duration: 5000 });
     window.addEventListener("open-authbook-android-bytes", bytesHandler);
     window.addEventListener("open-authbook-android",       legacyHandler);
     window.addEventListener("open-authbook-android-error", errHandler);
@@ -420,17 +530,26 @@ function AppInner({ navigateRef }) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Android autosave with dirty tracking. The old loop saved EVERY open book —
+  // and fired every extension's onSave hook for every book — on each 2-second
+  // debounce, even if only one keystroke happened in one chapter. That meant
+  // constant SAF writes, wasted battery, and extensions spammed with change
+  // events. Track a per-session fingerprint and only touch what changed.
+  const savedFingerprints = useRef(new Map());
   useEffect(() => {
     if (!android || sessions.length === 0) return;
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       for (const s of sessions) {
+        const fp = `${s.updated ?? ''}|${s.title ?? ''}|${(s.chapters || []).length}`;
+        if (savedFingerprints.current.get(s.id) === fp) continue; // unchanged
         if (hookCount('onSave') > 0) await fireHook('onSave', { session: s, trigger: 'change' });
-        if (!s.filePath?.startsWith('content://')) continue;
+        if (!s.filePath?.startsWith('content://')) { savedFingerprints.current.set(s.id, fp); continue; }
         try {
           const result = await saveBook(s);
           if (result?.staleUri) { setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))); continue; }
           if (result?.filePath && result.filePath !== s.filePath) setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x)));
+          savedFingerprints.current.set(s.id, fp);
           if (hookCount('onSave') > 0) { const saved = result?.filePath ? { ...s, filePath: result.filePath } : s; await fireHook('onSave', { session: saved, trigger: 'autosave' }); }
         } catch (err) { console.error('[AuthNo AutoSave]', err); }
       }
@@ -471,10 +590,10 @@ function AppInner({ navigateRef }) {
     if (android) setDrawerOpen(false);
   };
   const newStoryboard = () => {
-    const id = Date.now().toString(), now = new Date().toISOString();
-    setSessions((s) => [{ id, title: "Untitled Storyboard", preview: "Visual outline...", content: "", type: "storyboard", created: now, updated: now }, ...s]);
-    setCurrentId(id);
-    if (android) setDrawerOpen(false);
+    // Storyboards are intentionally deferred: there is no storyboard editor yet,
+    // so creating one previously produced an un-openable session. Route the
+    // button to a normal new book until the storyboard workflow ships.
+    newBook();
   };
   const handleSelect = (id, sessionObj) => {
     if (sessionObj) setSessions((prev) => prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]);
@@ -560,6 +679,7 @@ function AppInner({ navigateRef }) {
   const handleExportTxt  = useCallback(async () => { if (!current) return; const { exportAsTxt }  = await import('./utils/storage'); try { await exportAsTxt(current);  } catch (e) { showError('exportTxt',  e); } }, [current, showError]);
   const handleExportHtml = useCallback(async () => { if (!current) return; const { exportAsHtml } = await import('./utils/storage'); try { await exportAsHtml(current); } catch (e) { showError('exportHtml', e); } }, [current, showError]);
   const handleExportEpub = useCallback(async () => { if (!current) return; const { exportAsEpub } = await import('./utils/storage'); try { await exportAsEpub(current); } catch (e) { showError('exportEpub', e); } }, [current, showError]);
+  const handleExportPdf  = useCallback(async () => { if (!current) return; const { exportAsPdf }  = await import('./utils/storage'); try { await exportAsPdf(current); } catch (e) { showError('exportPdf', e); } }, [current, showError]);
 
   const handleToggleMenu = () => {
     if (burgerBtnRef.current) {
@@ -571,8 +691,22 @@ function AppInner({ navigateRef }) {
   };
 
   return (
-    <div className={`app-root flex text-white relative${settings.lightMode ? ' light-mode' : ''}`}>
-
+    <div className="app-root flex relative" style={{ color: "var(--text-1)" }}>
+      {/* Light/dark is owned entirely by the active theme (applyTheme toggles
+          .light-mode from theme.meta.isDark). The old per-render `settings.lightMode`
+          class here fought the theme engine and produced half-applied light mode (B2). */}
+      <ToastContainer position="bottom-center" />
+      <InstallSheet accentHex={customization.accentHex} />
+      {billingOpen && (
+        <BillingPage accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
+      )}
+      {readAloudSession && (
+        <ReadAloudBar
+          session={readAloudSession}
+          accentHex={customization.accentHex}
+          onClose={() => setReadAloudSession(null)}
+        />
+      )}
       {showOnboarding && <Onboarding accentHex={customization.accentHex} onDone={() => setShowOnboarding(false)} />}
       {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
 
@@ -612,7 +746,7 @@ function AppInner({ navigateRef }) {
         sessions={filtered} onNewBook={newBook} onNewStoryboard={newStoryboard}
         search={search} setSessions={setSessions} setSearch={setSearch}
         onSelect={handleSelect} currentId={currentId} setView={setView}
-        accentHex={customization.accentHex} lightMode={settings.lightMode}
+        accentHex={customization.accentHex}
         isDrawerOpen={drawerOpen} onDrawerClose={() => setDrawerOpen(false)}
         session={current}
         onDelete={(id) => {
@@ -624,9 +758,7 @@ function AppInner({ navigateRef }) {
       />
 
       {view === "extension-page" && extPageState ? (
-        <ExtensionPage extension={extPageState.extension} pageId={extPageState.pageId} session={extPageState.session ?? current} accentHex={customization.accentHex} onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }} />
-      ) : view === "layout" ? (
-        <EditLayout sessions={sessions} setSessions={setSessions} />
+        <ExtensionPage extension={extPageState.extension} pageId={extPageState.pageId} session={extPageState.session ?? editorCurrent ?? current} accentHex={customization.accentHex} onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }} />
       ) : view === "home" ? (
         <HomeScreen
           sessions={sessions} accentHex={customization.accentHex}
@@ -639,6 +771,8 @@ function AppInner({ navigateRef }) {
             try { const { listSavedBooks } = await import('./utils/storage'); const books = await listSavedBooks(); if (books.length) setSessions(prev => { const ids = new Set(prev.map(s => s.id)); return [...prev, ...books.filter(b => !ids.has(b.id))]; }); }
             catch (e) { showError('refresh', e); }
           }}
+          onReadAloud={() => { if (current) setReadAloudSession(current); else toast('Open a book first to read it aloud', { variant: 'info' }); }}
+          onOpenExtensions={() => { setDrawerOpen(true); }}
         />
       ) : view === "book-dashboard" ? (
         <BookDashboard
@@ -646,7 +780,8 @@ function AppInner({ navigateRef }) {
           onBack={() => setView("home")} onEditChapter={handleEditChapter}
           onNewChapter={handleNewChapter} onUpdateSession={handleUpdateSession}
           onDeleteChapter={handleDeleteChapter} onMoveChapter={handleMoveChapter}
-          onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub}
+          onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
+          onReadAloud={() => current && setReadAloudSession(current)}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
@@ -690,14 +825,8 @@ function AppInner({ navigateRef }) {
         customization={customization} onSave={handleSaveCustomization}
       />
 
-      <div style={{ position: "fixed", bottom: 16, right: 16, display: "flex", alignItems: "center", gap: 12, color: "rgba(255,255,255,0.4)", fontSize: 14, userSelect: "none" }}
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+      <div style={{ position: "fixed", bottom: 16, right: 16, display: "flex", alignItems: "center", gap: 12, color: "rgba(255,255,255,0.4)", fontSize: 14, userSelect: "none", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
         {lastSaved && <span style={{ opacity: 0.8 }}>Saved ✓ ({lastSaved})</span>}
-        <button onClick={() => window.location.reload()}
-          className={`p-2 rounded-full border border-white/20 hover:border-white/40 transition ${inactive ? "opacity-70" : "opacity-30"}`}
-          title="Reload">
-          <DSIcons.Refresh size={16} />
-        </button>
       </div>
     </div>
   );
@@ -707,6 +836,11 @@ function AppInner({ navigateRef }) {
 const _savedThemeId = (() => { try { return localStorage.getItem('authno_theme_id') ?? 'dark-default'; } catch { return 'dark-default'; } })();
 const _initialTheme = themeById(_savedThemeId);
 injectThemeFonts(_initialTheme);
+
+// N12: stamp the real running version so ErrorLogger bug reports stop claiming
+// a hardcoded stale build. src/version.js is regenerated from package.json by
+// scripts/sync-version.js on every `npm start` / `npm run build` (prestart/prebuild).
+try { localStorage.setItem('authno_version', APP_VERSION); } catch { /* ignore */ }
 
 export default function App() {
   const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");

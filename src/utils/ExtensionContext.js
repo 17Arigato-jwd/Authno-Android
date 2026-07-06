@@ -23,6 +23,9 @@ import {
   uninstallExtension,
   seedPreinstalledExtensions,
 } from './extbkInstaller';
+import { installThmbkBytes, refreshInstalledThemes } from './themeLoader';
+import { emitInstall, newInstallId } from './installEvents';
+import { isPro, subscribeEntitlement } from './entitlements';
 import { registerHook } from './sessionHooks';
 import {
   activateExtension,
@@ -60,10 +63,17 @@ export function ExtensionProvider({ children, onNavigate }) {
 
       // Deactivate all running extensions before re-activating
       await deactivateAll();
-      setExtensions(found);
 
-      // Activate each discovered extension
-      for (const manifest of found) {
+      // U10: premium-tier extensions require Pro. Locked extensions stay
+      // visible in the list (with an upgrade prompt) but are never activated,
+      // so their code and hooks don't run on the free tier.
+      const pro = isPro();
+      const annotated = found.map(m => ({ ...m, _locked: m.tier === 'premium' && !pro }));
+      setExtensions(annotated);
+
+      // Activate each unlocked extension
+      for (const manifest of annotated) {
+        if (manifest._locked) continue;
         try {
           await activateExtension(manifest, onNavigate);
         } catch (err) {
@@ -77,13 +87,19 @@ export function ExtensionProvider({ children, onNavigate }) {
     }
   }, [onNavigate]);
 
+  // Re-scan when the entitlement changes so a fresh Pro unlock immediately
+  // activates previously locked premium extensions.
+  useEffect(() => subscribeEntitlement(() => { refresh(); }), [refresh]);
+
   // Deactivate everything when provider unmounts (dev HMR / page unload)
   useEffect(() => () => { deactivateAll(); }, []);
 
-  // On mount: seed pre-installed .extbk files from Android assets, then scan
+  // On mount: seed pre-installed .extbk files from Android assets, then scan.
+  // Also discover installed .thmbk themes so the picker includes them.
   useEffect(() => {
     (async () => {
       try { await seedPreinstalledExtensions(); } catch (_) {}
+      try { await refreshInstalledThemes(); } catch (_) {}
       await refresh();
     })();
   }, [refresh]);
@@ -91,31 +107,41 @@ export function ExtensionProvider({ children, onNavigate }) {
   // Listen for .extbk install events dispatched by MainActivity
   useEffect(() => {
     const onInstallBytes = async (e) => {
-      const { base64 } = e.detail ?? {};
+      const { base64, installId } = e.detail ?? {};
       if (!base64) return;
       try {
-        await installExtbkBytes(base64);
+        const manifest = await installExtbkBytes(base64, { installId });
         await refresh();
+        emitInstall({ id: manifest._installId ?? installId ?? newInstallId(), kind: 'extension', stage: 'done', name: manifest.name, version: manifest.version, fromVersion: manifest._fromVersion });
       } catch (err) {
         console.error('[ExtensionContext] install-extbk-bytes failed:', err);
+        // installExtbkBytes already emitted an 'error' event for the sheet.
       }
     };
     const onInstallError = (e) => {
       console.error('[ExtensionContext] install-extbk-error from native:', e.detail);
+      emitInstall({ id: newInstallId(), kind: 'extension', stage: 'error', error: typeof e.detail === 'string' ? e.detail : 'Install failed' });
+    };
+    // .thmbk theme installs share the same native intent surface.
+    const onInstallTheme = async (e) => {
+      const { base64, installId } = e.detail ?? {};
+      if (!base64) return;
+      try { await installThmbkBytes(base64, { installId }); }
+      catch (err) { console.error('[ExtensionContext] install-thmbk-bytes failed:', err); }
     };
     window.addEventListener('install-extbk-bytes', onInstallBytes);
     window.addEventListener('install-extbk-error', onInstallError);
+    window.addEventListener('install-thmbk-bytes', onInstallTheme);
 
-    // Cold-start .extbk recovery
+    // Cold-start .extbk / .thmbk recovery
     (async () => {
       try {
         const { registerPlugin } = await import('@capacitor/core');
         const plugin = registerPlugin('AuthnoFilePicker');
         const result = await plugin.getPendingExtbkIntent();
         if (result?.hasPending && result.base64) {
-          window.dispatchEvent(new CustomEvent('install-extbk-bytes', {
-            detail: { base64: result.base64 },
-          }));
+          const evName = result.kind === 'theme' ? 'install-thmbk-bytes' : 'install-extbk-bytes';
+          window.dispatchEvent(new CustomEvent(evName, { detail: { base64: result.base64 } }));
         }
       } catch (_) {}
     })();
@@ -123,6 +149,7 @@ export function ExtensionProvider({ children, onNavigate }) {
     return () => {
       window.removeEventListener('install-extbk-bytes', onInstallBytes);
       window.removeEventListener('install-extbk-error', onInstallError);
+      window.removeEventListener('install-thmbk-bytes', onInstallTheme);
     };
   }, [refresh]);
 
@@ -133,6 +160,7 @@ export function ExtensionProvider({ children, onNavigate }) {
   const installExtbk = useCallback(async (base64) => {
     const manifest = await installExtbkBytes(base64);
     await refresh();
+    emitInstall({ id: manifest._installId ?? newInstallId(), kind: 'extension', stage: 'done', name: manifest.name, version: manifest.version, fromVersion: manifest._fromVersion });
     return manifest;
   }, [refresh]);
 

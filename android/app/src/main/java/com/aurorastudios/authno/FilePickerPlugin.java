@@ -60,6 +60,8 @@ public class FilePickerPlugin extends Plugin {
     static volatile String pendingUri    = null;
     /** Cold-start pending .extbk install — cleared once retrieved */
     static volatile String pendingExtbkBase64 = null;
+    /** "extension" or "theme" — which install pipeline the pending bytes belong to. */
+    static volatile String pendingExtbkKind   = "extension";
 
     // ── Pending cold-start intent ──────────────────────────────────────────
 
@@ -98,16 +100,58 @@ public class FilePickerPlugin extends Plugin {
      */
     @PluginMethod
     public void getPendingExtbkIntent(PluginCall call) {
-        String b64 = pendingExtbkBase64;
+        String b64  = pendingExtbkBase64;
+        String kind = pendingExtbkKind;
         pendingExtbkBase64 = null;
+        pendingExtbkKind   = "extension";
         JSObject ret = new JSObject();
         if (b64 != null) {
             ret.put("hasPending", true);
             ret.put("base64", b64);
+            ret.put("kind", kind);   // "extension" | "theme"
         } else {
             ret.put("hasPending", false);
         }
         call.resolve(ret);
+    }
+
+    // ── Generic pick-and-read (used for manual .extbk / .thmbk installs) ────
+    // Opens the system picker, reads the chosen file fully, and returns its
+    // base64. The optional "extension" arg is advisory only (SAF can't filter
+    // by extension reliably); JS validates the magic bytes anyway.
+
+    @PluginMethod
+    public void pickFile(PluginCall call) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(call, intent, "handlePickFile");
+    }
+
+    @ActivityCallback
+    private void handlePickFile(PluginCall call, ActivityResult result) {
+        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+            Uri uri = result.getData().getData();
+            if (uri != null) {
+                try (java.io.InputStream is = getContext().getContentResolver().openInputStream(uri)) {
+                    if (is != null) {
+                        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                        byte[] chunk = new byte[8192];
+                        int n;
+                        while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+                        JSObject ret = new JSObject();
+                        ret.put("uri", uri.toString());
+                        ret.put("base64", android.util.Base64.encodeToString(buf.toByteArray(), android.util.Base64.NO_WRAP));
+                        call.resolve(ret);
+                        return;
+                    }
+                } catch (Exception e) {
+                    call.reject("Could not read picked file: " + e.getMessage());
+                    return;
+                }
+            }
+        }
+        call.resolve(); // cancelled — JS checks for missing base64
     }
 
     // ── Create Document (Save As) ──────────────────────────────────────────

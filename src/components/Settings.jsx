@@ -17,12 +17,14 @@ import {
   buildPalette,
 } from '../DesignSystem';
 
-import { useTheme, ALL_THEMES, injectThemeFonts } from '../theme';
+import { useTheme, ALL_THEMES, getAllThemes, subscribeThemes, injectThemeFonts } from '../theme';
 import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
+import { useEntitlement } from '../utils/useEntitlement';
+import { openBilling } from '../utils/billingBus';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -259,6 +261,34 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
 }
 
 function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, switchTheme }) {
+  // U4: subscribe to the registry so installed .thmbk themes appear live.
+  const [themes, setThemes] = useState(() => ALL_THEMES.slice());
+  useEffect(() => {
+    setThemes(getAllThemes());
+    return subscribeThemes((all) => setThemes(all.slice()));
+  }, []);
+
+  const handleInstallTheme = useCallback(async () => {
+    try {
+      const { pickAndInstallThemeFile } = await import('../utils/themePicker');
+      await pickAndInstallThemeFile();
+    } catch (e) {
+      console.error('[Settings] theme install failed', e);
+    }
+  }, []);
+
+  const handleRemoveTheme = useCallback(async (themeId) => {
+    try {
+      const { uninstallTheme } = await import('../utils/themeLoader');
+      await uninstallTheme(themeId);
+      // If the removed theme was active, fall back to dark default.
+      if ((settings.themeId ?? 'dark-default') === themeId) {
+        const fallback = getAllThemes().find(t => t.meta.id === 'dark-default');
+        if (fallback) { switchTheme(fallback); onChange({ themeId: 'dark-default' }); }
+      }
+    } catch (e) { console.error('[Settings] theme remove failed', e); }
+  }, [settings.themeId, switchTheme, onChange]);
+
   return (
     <div>
       <SectionTitle>Appearance</SectionTitle>
@@ -266,16 +296,17 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
 
       {/* Theme picker */}
       <Label>Theme</Label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
-        {ALL_THEMES.map(t => {
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+        {themes.map(t => {
           const active = (settings.themeId ?? 'dark-default') === t.meta.id;
+          const installed = !!t.meta.installed;
           return (
             <button
               key={t.meta.id}
-              onClick={() => { injectThemeFonts(t); switchTheme(t); onChange({ themeId: t.meta.id, lightMode: !t.meta.isDark }); }}
+              onClick={() => { injectThemeFonts(t); switchTheme(t); onChange({ themeId: t.meta.id }); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '12px 14px', borderRadius: '10px', border: 'none',
+                padding: '12px 14px', borderRadius: '10px',
                 cursor: 'pointer', textAlign: 'left',
                 background: active ? `${accentHex}18` : 'var(--surface)',
                 border: `1px solid ${active ? accentHex + '55' : 'var(--border)'}`,
@@ -289,9 +320,21 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
                 ))}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: active ? accentHex : 'var(--text-2)', marginBottom: '2px' }}>{t.meta.name}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-5)', lineHeight: 1.4 }}>{t.meta.description}</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: active ? accentHex : 'var(--text-2)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {t.meta.name}
+                  {installed && <span style={{ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 5, background: `${accentHex}22`, color: accentHex }}>INSTALLED</span>}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-5)', lineHeight: 1.4 }}>{t.meta.description || (installed ? `by ${t.meta.author || 'unknown'}` : '')}</div>
               </div>
+              {installed && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); handleRemoveTheme(t.meta.id); }}
+                  title="Remove theme"
+                  style={{ flexShrink: 0, color: 'var(--text-4)', padding: 4, cursor: 'pointer' }}
+                >
+                  <DSIcons.Trash size={15} color="currentColor" />
+                </span>
+              )}
               {active && (
                 <div style={{ width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -301,6 +344,19 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
           );
         })}
       </div>
+
+      {/* Install downloadable theme (.thmbk) */}
+      <button
+        onClick={handleInstallTheme}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          width: '100%', padding: '11px 0', borderRadius: 10, marginBottom: 24,
+          background: 'var(--surface)', border: '1px dashed var(--border)',
+          color: 'var(--text-2)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+        }}
+      >
+        <DSIcons.Download size={16} color="currentColor" /> Install a theme (.thmbk)
+      </button>
 
       <SettingsDivider />
 
@@ -327,17 +383,8 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, swit
       </div>
 
       <SettingsDivider />
-
-      {/* Light Mode toggle */}
-      <div style={{ marginBottom: 20 }}>
-        <SettingRow icon={DSIcons.Lightning} title="Light Mode" description="Switch to a light colour scheme" accentHex={accentHex}>
-          <Toggle
-            on={settings.lightMode ?? false}
-            onChange={(v) => onChange({ lightMode: v })}
-            accentHex={accentHex}
-          />
-        </SettingRow>
-      </div>
+      {/* Light Mode toggle removed (B2): light/dark is now chosen by picking a
+          light or dark theme above. A separate toggle fought the theme engine. */}
 
       <SettingsDivider />
 
@@ -529,16 +576,50 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
 
 
 function AboutPanel({ accentHex }) {
+  const { isPro } = useEntitlement();
   return (
     <div>
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
+
+      {/* Authno Pro (U10) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+        borderRadius: 14, marginBottom: 20,
+        background: isPro ? `${accentHex}14` : 'var(--surface)',
+        border: `1px solid ${isPro ? accentHex + '55' : 'var(--border)'}`,
+      }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill={isPro ? accentHex : 'var(--text-4)'} style={{ flexShrink: 0 }}>
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        </svg>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)' }}>
+            {isPro ? 'Authno Pro — active' : 'Authno Pro'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 2 }}>
+            {isPro ? 'Thanks for supporting independent development.' : 'Unlock premium extensions, themes and more.'}
+          </div>
+        </div>
+        <button
+          onClick={() => openBilling()}
+          style={{
+            flexShrink: 0, padding: '8px 14px', borderRadius: 10, border: 'none',
+            background: isPro ? 'var(--surface-md)' : accentHex,
+            color: isPro ? 'var(--text-2)' : '#fff',
+            fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          {isPro ? 'Manage' : 'Upgrade'}
+        </button>
+      </div>
+
       <AboutSection accentHex={accentHex} />
     </div>
   );
 }
 
 function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout }) {
+  const { switchTheme } = useTheme();
   const [confirm, setConfirm]           = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [showErrorLog, setShowErrorLog] = useState(false);
@@ -577,7 +658,16 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout
       id: 'resetSettings', icon: DSIcons.Refresh, label: 'Reset Settings to Default', color: '#faa61a',
       description: 'Resets appearance, startup, and profile to defaults',
       modal: { title: 'Reset All Settings?', message: 'Your profile, appearance, and startup preferences will be restored to their defaults. Sessions will not be affected.', type: 'warning',
-        onConfirm: () => { onChange({ displayName: '', avatarDataUrl: null, accentHex: '#3b82f6', enableGradient: false, lightMode: false, startupBehavior: 'home', restoreOpenBooks: true }); setConfirm(null); },
+        onConfirm: () => {
+          // Complete reset — previously an incomplete hand-picked subset that
+          // left themeId, backgroundEffect and dailyWordGoal untouched.
+          onChange({ ...DEFAULT_SETTINGS });
+          try {
+            const dark = getAllThemes().find(t => t.meta.id === 'dark-default');
+            if (dark) { injectThemeFonts(dark); switchTheme(dark); }
+          } catch { /* theme reset best-effort */ }
+          setConfirm(null);
+        },
       },
     },
   ];

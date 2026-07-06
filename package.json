@@ -1,7 +1,7 @@
 {
-  "name": "Authno",
-  "version": "1.1.15-beta.6",
-  "description": "AuthNo — offline story editor",
+  "name": "authno",
+  "version": "1.1.16",
+  "description": "AuthNo \u2014 offline story editor",
   "author": {
     "name": "VCHS Studios",
     "email": "blader.ultramate@gmail.com"
@@ -29,7 +29,11 @@
     "react-scripts": "^5.0.1",
     "web-vitals": "^2.1.4",
     "pako": "^2.1.0",
-    "@capacitor/browser": "^6.0.0"
+    "@capacitor/browser": "^6.0.0",
+    "pdf-lib": "^1.17.1",
+    "@capacitor/keyboard": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -44,7 +48,9 @@
     "dist:all": "electron-builder --win --linux",
     "cap:add": "npx cap add android",
     "cap:sync": "npx cap sync android",
-    "dist:android": "npm run build && npx cap sync android"
+    "dist:android": "npm run build && npx cap sync android",
+    "prestart": "node scripts/sync-version.js",
+    "prebuild": "node scripts/sync-version.js"
   },
   "eslintConfig": {
     "extends": [
@@ -77,9 +83,10 @@
   "build": {
     "appId": "com.aurorastudios.authno",
     "productName": "AuthNo",
-    "copyright": "© 2025 VCHS Studios",
+    "copyright": "\u00a9 2026 AS Code Studios",
     "files": [
       "build/**/*",
+      "public/**/*",
       "main.js",
       "Preload.js",
       "fileManager.js",
@@ -87,7 +94,7 @@
     ],
     "directories": {
       "buildResources": "public",
-      "output": "dist"
+      "output": "dist-electron"
     },
     "extraMetadata": {
       "main": "main.js"
@@ -99,6 +106,20 @@
         "description": "AuthNo Book",
         "icon": "public/authno.ico",
         "mimeType": "application/x-authbook"
+      },
+      {
+        "ext": "extbk",
+        "name": "AuthNo Extension",
+        "description": "AuthNo Extension",
+        "icon": "public/authno.ico",
+        "mimeType": "application/x-extbk"
+      },
+      {
+        "ext": "thmbk",
+        "name": "AuthNo Theme",
+        "description": "AuthNo Theme",
+        "icon": "public/authno.ico",
+        "mimeType": "application/x-thmbk"
       }
     ],
     "win": {
@@ -112,7 +133,7 @@
           ]
         }
       ],
-      "legalTrademarks": "VCHS Studios"
+      "legalTrademarks": "AS Code Studios"
     },
     "nsis": {
       "oneClick": false,
@@ -131,6 +152,15 @@
       ],
       "category": "Utility",
       "icon": "public"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "public",
+        "to": "public",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   }
 }

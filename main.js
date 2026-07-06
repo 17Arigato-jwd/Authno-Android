@@ -7,23 +7,42 @@ let mainWindow;
 let splash;
 let openFilePath = null;
 
+// ── Resolve a .authbook path from launch argv (Windows/Linux cold start) ──
+// The old code never inspected process.argv on first launch, so double-clicking
+// a .authbook while the app was closed opened an empty window (v1 A1). Skip the
+// Electron flags and the app path; take the first real .authbook argument.
+function authbookFromArgv(argv) {
+  return (argv || []).find(
+    (a) => typeof a === "string" && a.toLowerCase().endsWith(".authbook") && fs.existsSync(a)
+  ) || null;
+}
+if (!openFilePath) openFilePath = authbookFromArgv(process.argv.slice(1));
+
 // 🟢 Handle file open (macOS — fired before app is ready)
 app.on("open-file", (event, filePath) => {
   event.preventDefault();
   openFilePath = filePath;
-  if (mainWindow) {
-    sendParsedFile(mainWindow, filePath);
-  }
+  if (mainWindow) sendParsedFile(mainWindow, filePath);
 });
 
-// ── Read + parse a .authbook file and send it to the renderer ──
+// ── Read a .authbook and hand the renderer the RAW BYTES ──
+// The .authbook format is binary (VCHS-ECS), NOT JSON. The old JSON.parse here
+// failed on every real file — desktop open was broken (D2). We read bytes and
+// let the renderer's decode path (which already handles the binary format,
+// legacy JSON, and Reed-Solomon repair) do the parsing, exactly like Android.
+function readAuthbookBase64(filePath) {
+  const buf = fs.readFileSync(filePath);
+  return buf.toString("base64");
+}
 function sendParsedFile(win, filePath) {
   try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const content = JSON.parse(raw);
-    win.webContents.send("open-authbook", { ...content, filePath });
+    win.webContents.send("open-authbook-bytes", {
+      base64: readAuthbookBase64(filePath),
+      filePath,
+    });
   } catch (err) {
     console.error("❌ Failed to read authbook:", err);
+    win.webContents.send("open-authbook-error", { message: String(err && err.message || err) });
   }
 }
 
@@ -31,9 +50,7 @@ function sendParsedFile(win, filePath) {
 ipcMain.handle("get-pending-file", () => {
   if (!openFilePath) return null;
   try {
-    const raw = fs.readFileSync(openFilePath, "utf-8");
-    const content = JSON.parse(raw);
-    const result = { ...content, filePath: openFilePath };
+    const result = { base64: readAuthbookBase64(openFilePath), filePath: openFilePath };
     openFilePath = null; // clear so it isn't delivered twice
     return result;
   } catch (err) {
@@ -49,13 +66,25 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", (event, argv) => {
-    const filePath = argv.find((arg) => arg.endsWith(".authbook"));
+    const filePath = authbookFromArgv(argv);
     if (filePath && mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
       sendParsedFile(mainWindow, filePath);
     }
   });
+
+  function resolveAsset(name) {
+    // In a packaged build, public/ is unpacked next to the app resources; in
+    // dev it's at the project root. Try both so splash + icon always resolve
+    // (D2: previously public/ wasn't packaged and these silently 404'd).
+    const candidates = [
+      path.join(__dirname, "public", name),
+      path.join(process.resourcesPath || "", "public", name),
+      path.join(__dirname, "build", name),
+    ];
+    return candidates.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || candidates[0];
+  }
 
   function createWindow() {
     splash = new BrowserWindow({
@@ -65,16 +94,16 @@ if (!gotTheLock) {
       transparent: false,
       alwaysOnTop: true,
       resizable: false,
-      icon: path.join(__dirname, "public", "authno.ico"),
+      icon: resolveAsset("authno.ico"),
     });
 
-    splash.loadFile(path.join(__dirname, "public", "splash.html"));
+    splash.loadFile(resolveAsset("splash.html"));
 
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
       show: false,
-      icon: path.join(__dirname, "public", "authno.ico"),
+      icon: resolveAsset("authno.ico"),
       backgroundColor: "#000000",
       webPreferences: {
         nodeIntegration: false,

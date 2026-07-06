@@ -164,7 +164,7 @@ export default function BurgerMenu({
     status === "saving" ? COLORS.warning
     : status === "saved"  ? COLORS.success
     : status === "error"  ? COLORS.danger
-    : "#ffffff";
+    : 'var(--text-1)';
 
   const saveLabel =
     status === "saving" ? "Saving…"
@@ -191,7 +191,7 @@ export default function BurgerMenu({
 
       <MinimalButton
         variant="smooth"
-        color="#ffffff"
+        color='var(--text-1)'
         size="md"
         icon={<DSIcons.Archive size={15} />}
         disabled={busy || !current}
@@ -205,7 +205,7 @@ export default function BurgerMenu({
 
       <MinimalButton
         variant="smooth"
-        color="#ffffff"
+        color='var(--text-1)'
         size="md"
         icon={<DSIcons.FolderOpen size={15} />}
         disabled={busy}
@@ -219,7 +219,7 @@ export default function BurgerMenu({
 
       <MinimalButton
         variant="smooth"
-        color="#ffffff"
+        color='var(--text-1)'
         size="md"
         icon={<DSIcons.Settings size={15} />}
         onClick={onOpenSettings}
@@ -248,14 +248,14 @@ export default function BurgerMenu({
               borderRadius: "20px 20px 0 0", padding: "20px 20px",
               paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
               background: bg,
-              border: "1px solid rgba(255,255,255,0.14)",
+              border: "1px solid var(--border)",
               borderBottom: "none",
               animation: "dsBurgerSlideUp 0.22s cubic-bezier(0.32,0.72,0,1)",
             }}
           >
             <style>{`@keyframes dsBurgerSlideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
             {/* Drag handle */}
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.3)", margin: "0 auto 20px" }} />
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 20px" }} />
             {menuContent}
           </div>
         </>,
@@ -269,7 +269,7 @@ export default function BurgerMenu({
             zIndex: 9999, width: 200,
             borderRadius: 14, padding: 12,
             background: bg,
-            border: "1px solid rgba(255,255,255,0.16)",
+            border: "1px solid var(--border)",
             backdropFilter: "blur(14px)",
             boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
             animation: "dsBurgerFadeIn 0.15s ease",

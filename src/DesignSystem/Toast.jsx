@@ -20,6 +20,20 @@ import { COLORS, TYPOGRAPHY, RADIUS } from './tokens';
 const _toastListeners = new Set();
 export function _emitToast(item) { _toastListeners.forEach(fn => fn(item)); }
 
+/**
+ * toast() — module-level imperative fire, for code that runs outside React
+ * (installers, native event handlers). Requires <ToastContainer /> at root.
+ */
+export function toast(message, opts = {}) {
+  _emitToast({
+    id: Date.now() + Math.random(),
+    message,
+    variant: opts.variant ?? 'default',
+    duration: opts.duration ?? 3200,
+    icon: opts.icon ?? null,
+  });
+}
+
 /** useToast — returns an imperative toast() function. Requires <ToastContainer /> at root. */
 export function useToast() {
   return useCallback((message, opts = {}) => {

@@ -21,7 +21,7 @@
  *   streakEnabled    — bool
  */
 
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 
 import { FlameButton } from './Streak';
 import { ChapterRow } from './ChapterRow';
@@ -100,59 +100,85 @@ function formatWords(n) {
  *   days   — length of the longest continuous run of logged dates ever
  *   active — true if that longest run is still ongoing (ends today/yesterday)
  */
+// ─── Cover downscale (2F) ─────────────────────────────────────────────────────
+// Covers are embedded in the .authbook META (sharing its RS parity), so a raw
+// 12 MP photo bloats the file and its parity. Downscale anything over 1200 px
+// to a JPEG before storing.
+function downscaleCover(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1200;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        if (scale === 1 && file.size < 500 * 1024) {
+          // Small enough — keep original bytes/mime.
+          resolve({ base64: String(ev.target.result).split(',')[1], mime: file.type || 'image/jpeg' });
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve({ base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+      };
+      img.onerror = () => reject(new Error('image decode failed'));
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function analyseStreak(streak) {
-  if (!streak?.log) return { days: 0, active: false };
+  if (!streak?.log) return { days: 0, active: false, best: 0 };
 
   // Collect every unique date string that has a truthy entry, sort ascending
   const dates = Object.keys(streak.log)
     .filter(k => streak.log[k])
     .sort(); // lexicographic sort works perfectly for ISO dates
 
-  if (dates.length === 0) return { days: 0, active: false };
+  if (dates.length === 0) return { days: 0, active: false, best: 0 };
 
-  // Walk the sorted dates and find the longest run of consecutive days
+  // Longest ever run (for the "Best Streak" fallback)
   let maxRun = 1, curRun = 1;
-  let maxEnd = dates[0]; // date string where the longest run ends
   for (let i = 1; i < dates.length; i++) {
-    const prev = new Date(dates[i - 1]);
-    const curr = new Date(dates[i]);
-    const diffDays = Math.round((curr - prev) / 86400000);
-    if (diffDays === 1) {
-      curRun++;
-      if (curRun >= maxRun) { maxRun = curRun; maxEnd = dates[i]; }
-    } else {
-      curRun = 1;
-    }
+    const diffDays = Math.round((new Date(dates[i]) - new Date(dates[i - 1])) / 86400000);
+    if (diffDays === 1) { curRun++; if (curRun > maxRun) maxRun = curRun; }
+    else curRun = 1;
   }
 
-  // The streak is active if its last date is today or yesterday
-  const todayStr     = new Date().toISOString().slice(0, 10);
-  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const active = maxEnd === todayStr || maxEnd === yesterdayStr;
+  // N16: the CURRENT streak — count back from today (or yesterday, to allow
+  // "haven't written yet today"). The old logic only surfaced the longest-ever
+  // run, so a live 3-day streak was invisible behind a stale 10-day best.
+  const met = new Set(dates);
+  const dayKey = (d) => d.toISOString().slice(0, 10);
+  const cursor = new Date();
+  if (!met.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let current = 0;
+  while (met.has(dayKey(cursor))) { current++; cursor.setDate(cursor.getDate() - 1); }
 
-  return { days: maxRun, active };
+  return current > 0
+    ? { days: current, active: true, best: maxRun }
+    : { days: maxRun, active: false, best: maxRun };
 }
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
-function useLightMode() {
-  const [light, setLight] = useState(() => document.querySelector('.light-mode') !== null);
-  useEffect(() => {
-    const obs = new MutationObserver(
-      () => setLight(document.querySelector('.light-mode') !== null)
-    );
-    obs.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    return () => obs.disconnect();
-  }, []);
-  return light;
-}
+/*
+  useLightMode() removed (N3): this component previously branched on a binary
+  light/dark flag with hardcoded hexes, so Sepia, Paper and OLED all rendered
+  the wrong colours. Every surface now reads the theme variables directly.
+*/
 
 // ─── ExportPanel (inline sub-panel) ──────────────────────────────────────────
-function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, onExportEpub, light }) {
+function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, onExportEpub, onExportPdf }) {
   const glass = {
-    background: light ? 'rgba(255,255,255,0.8)' : 'rgba(20,20,28,0.95)',
+    background: 'var(--modal-bg)',
     backdropFilter: 'blur(24px)',
     WebkitBackdropFilter: 'blur(24px)',
-    border: `1px solid ${light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
+    border: `1px solid var(--border)`,
     borderRadius: '20px',
   };
 
@@ -160,7 +186,7 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
     { icon: <WordsIcon size={26} />, label: 'Plain Text (.txt)', sub: 'Raw text, no formatting', action: onExportTxt, ready: true },
     { icon: <GlobeIcon size={26} />, label: 'HTML (.html)',       sub: 'Styled web document',     action: onExportHtml, ready: true },
     { icon: <BookIcon  size={26} />, label: 'ePub (.epub)',        sub: 'Standard e-book format',  action: onExportEpub, ready: true },
-    { icon: <BookIcon  size={26} />, label: 'PDF (.pdf)',          sub: 'Coming soon',             action: null,         ready: false },
+    { icon: <BookIcon  size={26} />, label: 'PDF (.pdf)',          sub: 'Paginated print document', action: onExportPdf,  ready: true },
   ];
 
   return (
@@ -184,8 +210,8 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
               style={{
                 display: 'flex', alignItems: 'center', gap: '14px',
                 padding: '14px 16px', borderRadius: '14px', cursor: f.ready ? 'pointer' : 'default',
-                background: light ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)'}`,
+                background: 'var(--surface)',
+                border: `1px solid var(--border-sm)`,
                 textAlign: 'left', opacity: f.ready ? 1 : 0.45,
                 transition: 'background 0.12s',
               }}>
@@ -204,7 +230,7 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
 }
 
 // ─── MetadataPanel (inline sub-panel) ────────────────────────────────────────
-function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
+function MetadataPanel({ session, accentHex, onClose, onSave }) {
   const [form, setForm] = useState({
     title:       session?.title       || '',
     description: session?.description || '',
@@ -224,9 +250,11 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
       genre:       form.genre,
       language:    form.language,
       publisher:   form.publisher,
-      isbn:        form.isbn,
+      isbn:        form.isbn.trim(),
       authors:     form.authors
-        ? form.authors.split(',').map(s => ({ name: s.trim() })).filter(a => a.name)
+        ? form.authors
+            .split(form.authors.includes(';') ? ';' : ',')
+            .map(s => ({ name: s.trim() })).filter(a => a.name)
         : session?.authors || [],
     });
     onClose();
@@ -243,8 +271,8 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
           value={form[key]}
           onChange={e => set(key, e.target.value)}
           style={{
-            background: light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-            border: `1px solid ${light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+            background: 'var(--surface)',
+            border: `1px solid var(--border)`,
             borderRadius: '10px', padding: '10px 12px',
             color: 'var(--text-1)', fontSize: '14px', resize: 'vertical',
             outline: 'none', fontFamily: 'inherit',
@@ -257,8 +285,8 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
           onChange={e => set(key, e.target.value)}
           placeholder={opts.placeholder || ''}
           style={{
-            background: light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-            border: `1px solid ${light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+            background: 'var(--surface)',
+            border: `1px solid var(--border)`,
             borderRadius: '10px', padding: '10px 12px',
             color: 'var(--text-1)', fontSize: '14px',
             outline: 'none',
@@ -277,10 +305,10 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
     }} onClick={onClose}>
       <div style={{
         width: '100%', maxWidth: '480px',
-        background: light ? '#f5f5f0' : '#1a1a22',
+        background: 'var(--modal-bg)',
         borderRadius: '20px', padding: '24px',
         margin: '0 0 40px',
-        border: `1px solid ${light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'}`,
+        border: `1px solid var(--border)`,
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--text-1)' }}>Book Metadata</h2>
@@ -290,18 +318,23 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {field('Title',       'title',       { placeholder: 'Untitled Book' })}
-          {field('Author(s)',   'authors',     { placeholder: 'Comma-separated names' })}
+          {field('Author(s)',   'authors',     { placeholder: 'Separate with commas — or semicolons if a name contains a comma' })}
           {field('Description', 'description', { multiline: true, placeholder: 'A short blurb about the book…' })}
           {field('Genre',       'genre',       { placeholder: 'e.g. Fantasy, Romance, Sci-Fi' })}
           {field('Language',    'language',    { placeholder: 'en' })}
           {field('Publisher',   'publisher',   { placeholder: 'Self-published' })}
-          {field('ISBN',        'isbn',        { placeholder: 'Optional' })}
+          {field('ISBN',        'isbn',        { placeholder: 'Optional (10 or 13 digits)' })}
+          {form.isbn.trim() && !/^(97[89][- ]?)?\d{1,5}[- ]?\d{1,7}[- ]?\d{1,7}[- ]?[\dXx]$/.test(form.isbn.trim()) && (
+            <div style={{ fontSize: 11, color: 'var(--color-warning)', marginTop: -8, marginBottom: 10 }}>
+              This doesn't look like a valid ISBN-10/13 — it will still be saved.
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '13px', borderRadius: '12px', cursor: 'pointer',
             background: 'none',
-            border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.15)'}`,
+            border: `1px solid var(--border)`,
             color: 'var(--text-3)', fontSize: '14px', fontWeight: 600,
           }}>Cancel</button>
           <button onClick={handleSave} style={{
@@ -319,16 +352,13 @@ function MetadataPanel({ session, accentHex, onClose, onSave, light }) {
 function CoverPicker({ onPick }) {
   const inputRef = useRef(null);
 
-  const handleChange = (e) => {
+  const handleChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      // Strip the data URL prefix to store pure base64
-      const b64 = ev.target.result.split(',')[1];
-      onPick(b64, normaliseMime(file));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { base64, mime } = await downscaleCover(file);
+      onPick(base64, mime);
+    } catch (err) { console.error('[cover]', err); }
   };
 
   return (
@@ -356,6 +386,8 @@ export default function BookDashboard({
   onExportTxt,
   onExportHtml,
   onExportEpub,
+  onExportPdf,
+  onReadAloud,
   onToggleMenu,
   burgerBtnRef,
   onToggleSidebar,
@@ -363,7 +395,6 @@ export default function BookDashboard({
   onStreakUpdate,
   streakEnabled,
 }) {
-  const light = useLightMode();
 
   // ── Extension contributions ─────────────────────────────────────────────
   const { navigate } = useExtensions();
@@ -434,17 +465,17 @@ export default function BookDashboard({
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const card = {
-    background: light ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.04)',
+    background: 'var(--sidebar-card-bg)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
     borderRadius: '18px',
-    border: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+    border: `1px solid var(--border)`,
     padding: '20px',
   };
 
   const ghostBtn = {
-    background: light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)',
-    border: `1px solid ${light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)'}`,
+    background: 'var(--surface-md)',
+    border: `1px solid var(--border)`,
     borderRadius: '12px',
     color: 'var(--text-1)',
     cursor: 'pointer',
@@ -458,7 +489,7 @@ export default function BookDashboard({
   };
 
   const statDivider = {
-    borderRight: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+    borderRight: `1px solid var(--border)`,
   };
 
   return (
@@ -468,18 +499,17 @@ export default function BookDashboard({
         <ExportPanel
           session={session}
           accentHex={accentHex}
-          light={light}
           onClose={() => setShowExport(false)}
           onExportTxt={onExportTxt}
           onExportHtml={onExportHtml}
           onExportEpub={onExportEpub}
+          onExportPdf={onExportPdf}
         />
       )}
       {showMetadata && (
         <MetadataPanel
           session={session}
           accentHex={accentHex}
-          light={light}
           onClose={() => setShowMetadata(false)}
           onSave={handleMetadataSave}
         />
@@ -498,9 +528,9 @@ export default function BookDashboard({
         <header style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '12px 16px', position: 'sticky', top: 0, zIndex: 20,
-          background: light ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)',
+          background: 'var(--nav-bg)',
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          borderBottom: `1px solid ${light ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'}`,
+          borderBottom: '1px solid var(--border-sm)',
         }}>
           <button onClick={onBack} style={{
             display: 'flex', alignItems: 'center', gap: '6px',
@@ -532,7 +562,7 @@ export default function BookDashboard({
               boxShadow: hasCover
                 ? `0 12px 40px ${accentHex}55, 0 4px 16px rgba(0,0,0,0.4)`
                 : `0 4px 20px rgba(0,0,0,0.2)`,
-              background: light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)',
+              background: 'var(--surface)',
               border: hasCover ? 'none' : `2px dashed ${accentHex}66`,
               cursor: 'pointer',
               flexShrink: 0,
@@ -552,14 +582,13 @@ export default function BookDashboard({
                   }}>
                     <label style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}>
                       <input type="file" accept="image/*" style={{ display: 'none' }}
-                        onChange={e => {
+                        onChange={async e => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            onUpdateSession({ coverBase64: ev.target.result.split(',')[1], coverMime: normaliseMime(file) });
-                          };
-                          reader.readAsDataURL(file);
+                          try {
+                            const { base64, mime } = await downscaleCover(file);
+                            onUpdateSession({ coverBase64: base64, coverMime: mime });
+                          } catch (err) { console.error('[cover]', err); }
                         }} />
                     </label>
                   </div>
@@ -578,15 +607,15 @@ export default function BookDashboard({
               {session?.title || 'Untitled Book'}
             </h1>
 
-            {/* Streak badge — shows the longest ever continuous streak.
-                Active (ends today/yesterday): flame + accent gradient.
-                Expired: grey, no flame, label changes to "Best Streak". */}
+            {/* Streak badge (N16) — shows the CURRENT streak when one is live
+                (flame + accent gradient), otherwise falls back to the longest
+                ever run as a greyed "Best Streak". */}
             {streakDays > 0 && (
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 background: streakActive
                   ? 'linear-gradient(135deg, #FF6B2B, #FF8C00)'
-                  : (light ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.10)'),
+                  : ('var(--border)'),
                 borderRadius: '20px', padding: '5px 13px',
                 fontSize: '13px', fontWeight: 700,
                 color: streakActive ? '#fff' : 'var(--text-4)',
@@ -594,7 +623,7 @@ export default function BookDashboard({
                 boxShadow: streakActive ? '0 2px 10px rgba(255,107,43,0.4)' : 'none',
                 border: streakActive
                   ? 'none'
-                  : `1px solid ${light ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.12)'}`,
+                  : `1px solid var(--border)`,
               }}>
                 {streakActive && <FlameIcon size={15} />}
                 {streakActive ? 'Streak' : 'Best Streak'} {streakDays} Day{streakDays !== 1 ? 's' : ''}
@@ -642,7 +671,7 @@ export default function BookDashboard({
             {/* Stats */}
             <div style={{
               display: 'flex', borderRadius: '14px', overflow: 'hidden',
-              border: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+              border: `1px solid var(--border)`,
               marginBottom: '16px',
             }}>
               <div style={{ flex: 1, padding: '14px 16px', ...statDivider }}>
@@ -672,6 +701,18 @@ export default function BookDashboard({
             }}>
               <DSIcons.Upload size={17} />
               Export Options
+            </button>
+
+            {/* Read Aloud (U2) */}
+            <button onClick={onReadAloud} style={{
+              width: '100%', padding: '13px', borderRadius: '14px',
+              border: '1px solid var(--border)', background: 'var(--surface)',
+              color: 'var(--text-2)', fontSize: '14px', fontWeight: 600,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '9px', marginBottom: '12px', transition: 'background 0.12s',
+            }}>
+              <span style={{ fontSize: 15, lineHeight: 1 }}>🔊</span>
+              Read Aloud
             </button>
 
             {/* Extension action buttons — rendered only when extensions are installed */}
@@ -734,7 +775,7 @@ export default function BookDashboard({
             {extTabs.length > 0 && (
               <div style={{
                 display: 'flex', gap: '4px', marginBottom: '14px',
-                borderBottom: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.07)'}`,
+                borderBottom: `1px solid var(--border-sm)`,
                 overflowX: 'auto', paddingBottom: '0',
               }}>
                 {/* Built-in Chapters tab */}
@@ -804,8 +845,8 @@ export default function BookDashboard({
               </h2>
               <button onClick={() => setSortOrder(v => v === 'newest' ? 'oldest' : 'newest')} style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
-                background: light ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)',
-                border: `1px solid ${light ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                background: 'var(--surface-md)',
+                border: `1px solid var(--border)`,
                 borderRadius: '8px', padding: '7px 12px',
                 color: 'var(--text-3)', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
               }}>
@@ -817,9 +858,9 @@ export default function BookDashboard({
             {/* Search */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: '10px',
-              background: light ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+              background: 'var(--surface)',
               borderRadius: '12px',
-              border: `1px solid ${light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+              border: `1px solid var(--border)`,
               padding: '0 14px', marginBottom: '8px',
             }}>
               <DSIcons.Search size={15} style={{ color: 'var(--text-5)', flexShrink: 0 }} />
@@ -863,8 +904,7 @@ export default function BookDashboard({
                     canMoveDown={canMoveDown}
                     showSearch={!!chapterSearch}
                     showDelete={chapters.length > 1}
-                    light={light}
-                    onEdit={() => onEditChapter(chap.chap_idx)}
+                              onEdit={() => onEditChapter(chap.chap_idx)}
                     onMoveUp={() => onMoveChapter?.(chap.chap_idx, upDir)}
                     onMoveDown={() => onMoveChapter?.(chap.chap_idx, downDir)}
                     onDeleteRequest={() => setDeleteConfirm(chap.chap_idx)}

@@ -17,7 +17,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
-      - run: npm install
+      - run: npm ci
+      - name: Reed-Solomon round-trip tests (must pass before any format ships)
+        run: npx react-scripts test src/utils/rs.test.js --watchAll=false
+        env: { CI: true }
       - run: npm run build
         env: { CI: false }
       - uses: actions/upload-artifact@v4
@@ -52,7 +55,7 @@ jobs:
 
           EOF
 
-      - run: npm install
+      - run: npm ci
 
       - name: "📊 Progress: Dependencies Installed"
         run: |
@@ -346,10 +349,59 @@ jobs:
           Check the step logs above. Common cause: React build artifact not found.
           EOF
 
+  # ── 3b. Desktop (Electron) — Windows + Linux (D1) ────────────────────────────
+  # These jobs restore the desktop build to CI. Previously only Android was
+  # built here, which is exactly why `npm run dist:win` / `dist:linux` had
+  # silently rotted. Both reuse the shared React artifact.
+  build-desktop-windows:
+    name: Build Desktop (Windows)
+    needs: build-react
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: react-build, path: build/ }
+      - name: Build Windows installer
+        run: npm run dist:win
+        env: { CI: false, GH_TOKEN: "" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: authno-desktop-windows
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.msi
+          if-no-files-found: warn
+
+  build-desktop-linux:
+    name: Build Desktop (Linux)
+    needs: build-react
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: react-build, path: build/ }
+      - name: Build Linux packages
+        run: npm run dist:linux
+        env: { CI: false, GH_TOKEN: "" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: authno-desktop-linux
+          path: |
+            dist-electron/*.AppImage
+            dist-electron/*.deb
+            dist-electron/*.tar.gz
+          if-no-files-found: warn
+
   # ── 4. GitHub Release
   release:
     name: Publish Release
-    needs: [build-android, build-sandbox]
+    needs: [build-android, build-sandbox, build-desktop-windows, build-desktop-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -364,6 +416,10 @@ jobs:
             release-assets/**/*.aab
             release-assets/**/*.tar.gz
             release-assets/**/*.zip
+            release-assets/**/*.exe
+            release-assets/**/*.msi
+            release-assets/**/*.AppImage
+            release-assets/**/*.deb
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

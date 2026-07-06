@@ -102,15 +102,57 @@ export async function discoverExtensions() {
 
 const cfgKey = (id) => `__authno_ext_cfg_${id}`;
 
+// ── Config-at-rest obfuscation (N6) ───────────────────────────────────────────
+// Extension configs can contain API tokens. They were stored as plaintext JSON
+// in localStorage while the docs claimed "securely" — misleading. Values are
+// now XOR-obfuscated with a per-install key before storage. IMPORTANT: this is
+// OBFUSCATION, not encryption — it stops shoulder-surfing and casual log/dump
+// exposure, but code running inside the app can still recover values. True
+// at-rest security needs the Android Keystore (tracked for a native plugin).
+// Reads fall back to plaintext JSON so pre-existing configs keep working.
+function _obfKey() {
+  try {
+    let k = localStorage.getItem('__authno_cfg_k');
+    if (!k) {
+      const buf = new Uint8Array(16);
+      if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(buf);
+      else for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256);
+      k = btoa(String.fromCharCode(...buf));
+      localStorage.setItem('__authno_cfg_k', k);
+    }
+    return Uint8Array.from(atob(k), c => c.charCodeAt(0));
+  } catch { return new Uint8Array([7]); }
+}
+function _obf(str) {
+  const key = _obfKey();
+  const data = new TextEncoder().encode(str);
+  for (let i = 0; i < data.length; i++) data[i] ^= key[i % key.length];
+  let bin = ''; for (let i = 0; i < data.length; i++) bin += String.fromCharCode(data[i]);
+  return 'obf1:' + btoa(bin);
+}
+function _deobf(raw) {
+  if (!raw || !raw.startsWith('obf1:')) return null;
+  try {
+    const key = _obfKey();
+    const data = Uint8Array.from(atob(raw.slice(5)), c => c.charCodeAt(0));
+    for (let i = 0; i < data.length; i++) data[i] ^= key[i % key.length];
+    return new TextDecoder().decode(data);
+  } catch { return null; }
+}
+
 export function getExtensionConfig(extId) {
-  try { return JSON.parse(localStorage.getItem(cfgKey(extId))) ?? {}; }
-  catch { return {}; }
+  try {
+    const raw = localStorage.getItem(cfgKey(extId));
+    if (!raw) return {};
+    const plain = _deobf(raw) ?? raw;   // legacy plaintext fallback
+    return JSON.parse(plain) || {};
+  } catch { return {}; }
 }
 
 export function setExtensionConfig(extId, patch) {
   try {
     const prev = getExtensionConfig(extId);
-    localStorage.setItem(cfgKey(extId), JSON.stringify({ ...prev, ...patch }));
+    localStorage.setItem(cfgKey(extId), _obf(JSON.stringify({ ...prev, ...patch })));
   } catch {}
 }
 
@@ -125,9 +167,23 @@ export async function callExtensionApi(manifest, endpoint, method = 'GET', bodyT
   if (!api?.baseUrl) throw new Error(`Extension "${manifest.id}" has no api.baseUrl`);
 
   const config = getExtensionConfig(manifest.id);
-  const sub = (str) => str.replace(/\{(\w+)\}/g, (_, k) => templateVars[k] ?? config[k] ?? '');
 
-  const url = `${api.baseUrl.replace(/\/$/, '')}${sub(endpoint)}`;
+  // A7: auth/secret-typed config fields must NEVER be interpolated into the
+  // URL — a hostile or careless manifest could otherwise leak a stored token
+  // into query strings, server logs, or another extension's endpoint. Secrets
+  // travel only via the configured auth header. Body templates may still use
+  // non-secret config + session vars.
+  const secretKeys = new Set([api.authField].filter(Boolean));
+  for (const field of manifest.contributes?.pages
+    ? Object.values(manifest.contributes.pages).flatMap(p => p.fields ?? []) : []) {
+    if (field?.type === 'password' && field.key) secretKeys.add(field.key);
+  }
+
+  const subUrl  = (str) => str.replace(/\{(\w+)\}/g, (_, k) =>
+    secretKeys.has(k) ? '' : (templateVars[k] ?? config[k] ?? ''));
+  const subBody = (str) => str.replace(/\{(\w+)\}/g, (_, k) => templateVars[k] ?? config[k] ?? '');
+
+  const url = `${api.baseUrl.replace(/\/$/, '')}${subUrl(endpoint)}`;
   const headers = { 'Content-Type': 'application/json' };
   if (api.authHeader && api.authField) {
     const token = config[api.authField];
@@ -138,7 +194,7 @@ export async function callExtensionApi(manifest, endpoint, method = 'GET', bodyT
   if (bodyTemplate && ['POST','PUT','PATCH'].includes(method)) {
     const resolved = {};
     for (const [k, v] of Object.entries(bodyTemplate)) {
-      resolved[k] = typeof v === 'string' ? sub(v) : v;
+      resolved[k] = typeof v === 'string' ? subBody(v) : v;
     }
     body = JSON.stringify(resolved);
   }

@@ -36,6 +36,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="*/*"
                       android:pathPattern=".*\\.authbook" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\.authbook" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\.authbook" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\.authbook" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\..*\\.authbook" />
             </intent-filter>
 
             <intent-filter android:label="Open with AuthNo">
@@ -43,6 +51,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" android:mimeType="*/*"
                       android:pathPattern=".*\\.authbook" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\.authbook" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\.authbook" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\.authbook" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\..*\\.authbook" />
             </intent-filter>
 
             <!-- .extbk -->
@@ -57,6 +73,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="*/*"
                       android:pathPattern=".*\\.extbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\.extbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\.extbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\.extbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\..*\\.extbk" />
             </intent-filter>
 
             <intent-filter android:label="Install AuthNo Extension">
@@ -64,6 +88,51 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="file" android:mimeType="*/*"
                       android:pathPattern=".*\\.extbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\.extbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\.extbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\.extbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\..*\\.extbk" />
+            </intent-filter>
+
+            <!-- .thmbk (downloadable themes) -->
+            <intent-filter android:label="Install AuthNo Theme">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/x-thmbk" />
+            </intent-filter>
+
+            <intent-filter android:label="Install AuthNo Theme">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\.thmbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\.thmbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\.thmbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\.thmbk" />
+                <data android:scheme="content" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\..*\\.thmbk" />
+            </intent-filter>
+
+            <intent-filter android:label="Install AuthNo Theme">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\.thmbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\.thmbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\.thmbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\.thmbk" />
+                <data android:scheme="file" android:mimeType="*/*"
+                      android:pathPattern=".*\\..*\\..*\\..*\\..*\\.thmbk" />
             </intent-filter>
 
         </activity>

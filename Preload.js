@@ -33,11 +33,27 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // ── File association: .authbook double-clicked in OS ──────────────────────
+  // Delivers RAW BYTES (base64) now — main.js no longer JSON-parses the binary
+  // format. Returns an unsubscribe fn so the renderer can clean up (fixes the
+  // duplicate-listener leak). A separate error channel replaces the alert().
   onOpenAuthBook: (callback) => {
-    ipcRenderer.on('open-authbook', (_event, fileData) => {
-      if (!fileData) { alert('⚠️ Book could not be opened.'); return; }
-      callback(fileData);
-    });
+    const bytesListener = (_event, fileData) => {
+      if (!fileData || !fileData.base64) return;
+      window.dispatchEvent(new CustomEvent('open-authbook-desktop-bytes', {
+        detail: { base64: fileData.base64, uri: fileData.filePath },
+      }));
+    };
+    const errListener = (_event, info) => {
+      window.dispatchEvent(new CustomEvent('open-authbook-desktop-error', { detail: info }));
+    };
+    ipcRenderer.on('open-authbook-bytes', bytesListener);
+    ipcRenderer.on('open-authbook-error', errListener);
+    // callback kept for API compatibility; the app listens on the window events.
+    if (typeof callback === 'function') callback({ _viaEvents: true });
+    return () => {
+      ipcRenderer.removeListener('open-authbook-bytes', bytesListener);
+      ipcRenderer.removeListener('open-authbook-error', errListener);
+    };
   },
 
   // ── Cold-launch file (app opened by double-clicking a file) ───────────────

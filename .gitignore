@@ -70,3 +70,11 @@ authno-release.jks
 *.jks
 *.keystore
 Authno Extensions.md
+# ── Security (3C) ──
+keystore.jks
+android/app/keystore.jks
+google-services.json
+android/app/google-services.json
+# Build output
+android/app/build/
+android/app/src/main/assets/public/

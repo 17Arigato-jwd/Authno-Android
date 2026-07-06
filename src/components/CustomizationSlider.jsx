@@ -37,22 +37,22 @@ function SectionTitle({ children }) {
 }
 
 function SectionSubtitle({ children }) {
-  return <p style={{ fontSize: '13px', color: '#72767d', marginBottom: '28px' }}>{children}</p>;
+  return <p style={{ fontSize: '13px', color: 'var(--text-4)', marginBottom: '28px' }}>{children}</p>;
 }
 
 function Label({ children, right }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-      <span style={{ fontSize: '11px', fontWeight: 700, color: '#b9bbbe', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
         {children}
       </span>
-      {right && <span style={{ fontSize: '12px', color: '#72767d', fontVariantNumeric: 'tabular-nums' }}>{right}</span>}
+      {right && <span style={{ fontSize: '12px', color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>{right}</span>}
     </div>
   );
 }
 
 function Divider() {
-  return <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '24px 0' }} />;
+  return <div style={{ height: '1px', background: 'var(--surface)', margin: '24px 0' }} />;
 }
 
 // ─── Track-styled range slider ────────────────────────────────────────────────
@@ -196,8 +196,8 @@ function BackgroundPanel({ customization, onChange, accentHex }) {
         onChange={v => onChange({ backgroundOpacity: v })}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Hidden</span>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Full</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Hidden</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Full</span>
       </div>
     </div>
   );
@@ -225,14 +225,14 @@ function GradientPanel({ customization, onChange, accentHex }) {
 
       <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
         <div>
-          <div style={{ fontSize: '11px', color: '#72767d', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.6px' }}>From</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-4)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.6px' }}>From</div>
           <ColorPicker
             value={g.colorFrom}
             onChange={v => update({ colorFrom: v })}
           />
         </div>
         <div>
-          <div style={{ fontSize: '11px', color: '#72767d', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.6px' }}>To</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-4)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.6px' }}>To</div>
           <ColorPicker
             value={g.colorTo}
             onChange={v => update({ colorTo: v })}
@@ -252,8 +252,8 @@ function GradientPanel({ customization, onChange, accentHex }) {
         accentHex={accentHex}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', marginBottom: '24px' }}>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Min: {g.blobCountMin}</span>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Max: {g.blobCountMax}</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Min: {g.blobCountMin}</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Max: {g.blobCountMax}</span>
       </div>
 
       {/* ── Blob Size ── */}
@@ -266,8 +266,8 @@ function GradientPanel({ customization, onChange, accentHex }) {
         accentHex={accentHex}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', marginBottom: '24px' }}>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Smallest: {g.blobSizeMin}px</span>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Largest: {g.blobSizeMax}px</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Smallest: {g.blobSizeMin}px</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Largest: {g.blobSizeMax}px</span>
       </div>
 
       {/* ── Speed ── */}
@@ -284,8 +284,8 @@ function GradientPanel({ customization, onChange, accentHex }) {
         onChange={v => update({ speedMultiplier: v })}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Fast (0.25×)</span>
-        <span style={{ fontSize: '11px', color: '#4f545c' }}>Slow (3×)</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Fast (0.25×)</span>
+        <span style={{ fontSize: '11px', color: 'var(--surface-md)' }}>Slow (3×)</span>
       </div>
     </div>
   );
@@ -379,7 +379,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
           {groups.map(group => (
             <div key={group} style={{ marginBottom: '16px' }}>
               <div style={{
-                fontSize: '11px', fontWeight: 700, color: '#72767d',
+                fontSize: '11px', fontWeight: 700, color: 'var(--text-4)',
                 textTransform: 'uppercase', letterSpacing: '0.8px',
                 padding: '4px 10px', marginBottom: '4px',
               }}>
@@ -401,7 +401,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
                       textAlign: 'left', transition: 'all 0.1s',
                     }}
                   >
-                    <item.icon color={active ? accentHex : '#72767d'} />
+                    <item.icon color={active ? accentHex : 'var(--text-4)'} />
                     {item.label}
                     {active && (
                       <div style={{
@@ -415,7 +415,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
             </div>
           ))}
 
-          <div style={{ marginTop: 'auto', padding: '8px 10px', fontSize: '11px', color: '#4f545c' }}>
+          <div style={{ marginTop: 'auto', padding: '8px 10px', fontSize: '11px', color: 'var(--surface-md)' }}>
             Customizer v1.0
           </div>
         </div>
@@ -427,12 +427,12 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
             style={{
               position: 'absolute', top: '16px', right: '16px',
               width: '32px', height: '32px', borderRadius: '50%',
-              background: 'rgba(255,255,255,0.07)', border: 'none',
+              background: 'var(--surface)', border: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', color: '#72767d', transition: 'all 0.15s',
+              cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#72767d'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--text-4)'; }}
           >
             <DSIcons.X size={16} />
           </button>

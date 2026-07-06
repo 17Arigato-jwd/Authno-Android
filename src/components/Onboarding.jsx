@@ -226,6 +226,31 @@ function FeatureLine({ icon: Icon, text, accentHex }) {
   );
 }
 
+
+// ── Theme shim (N3/B1) ────────────────────────────────────────────────────────
+// Onboarding was written with Tailwind white/black utility classes, which are
+// hardcoded colours and ignored every theme. Rather than rewrite 40+ class
+// strings, this component-scoped stylesheet remaps exactly the utilities used
+// here onto the theme variables — correct in all five themes and any .thmbk.
+const ONB_THEME_CSS = `
+.onb .text-white      { color: var(--text-1); }
+.onb .text-white\\/85 { color: var(--text-1); }
+.onb .text-white\\/80 { color: var(--text-2); }
+.onb .text-white\\/75 { color: var(--text-2); }
+.onb .text-white\\/70 { color: var(--text-3); }
+.onb .text-white\\/65 { color: var(--text-3); }
+.onb .text-white\\/60 { color: var(--text-3); }
+.onb .text-white\\/55 { color: var(--text-4); }
+.onb .text-white\\/45 { color: var(--text-4); }
+.onb .text-white\\/40 { color: var(--text-5); }
+.onb .bg-white\\/5    { background-color: var(--surface); }
+.onb .bg-white\\/8    { background-color: var(--surface); }
+.onb .bg-white\\/12   { background-color: var(--surface-md); }
+.onb .bg-black\\/35   { background-color: var(--scrim); }
+.onb .border-white\\/10 { border-color: var(--border-sm); }
+.onb .border-white\\/15 { border-color: var(--border); }
+`;
+
 export function Onboarding({ accentHex = "#5a00d9", onDone }) {
   const [page, setPage] = useState(0);
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -244,12 +269,12 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
     },
     {
       icon: (p) => <DSIcons.List {...p} />,
-      title: "Books, storyboards, and quick export",
+      title: "Books and quick export",
       body:
-        "Create regular books or storyboard drafts, then keep moving without breaking your flow.\n\nUse Save As when you need a copy somewhere else.",
+        "Create books, organise them into chapters, and keep moving without breaking your flow.\n\nUse Save As when you need a copy somewhere else.",
       chips: [
         { icon: (p) => <DSIcons.BookOpen {...p} />, text: "Books for long-form writing" },
-        { icon: (p) => <DSIcons.Edit {...p} />, text: "Storyboards for planning" },
+        { icon: (p) => <DSIcons.Edit {...p} />, text: "Chapters to stay organised" },
         { icon: (p) => <DSIcons.Save {...p} />, text: "Save As for export" },
       ],
     },
@@ -354,14 +379,14 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[20000] overflow-y-auto"
+      className="onb fixed inset-0 z-[20000] overflow-y-auto"
       style={{
-        background:
-          "radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 36%), rgba(0,0,0,0.92)",
+        background: "var(--scrim-strong)",
         backdropFilter: "blur(10px)",
         WebkitOverflowScrolling: "touch",
       }}
     >
+      <style>{ONB_THEME_CSS}</style>
       <FloatingBlobs accentHex={accentHex} />
 
       <div className="min-h-full px-4 py-4 sm:px-6 sm:py-8 flex items-center justify-center">
@@ -591,13 +616,14 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[20001] overflow-y-auto"
+      className="onb fixed inset-0 z-[20001] overflow-y-auto"
       style={{
-        background: "radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 36%), rgba(0,0,0,0.88)",
+        background: "var(--scrim-strong)",
         backdropFilter: "blur(10px)",
         WebkitOverflowScrolling: "touch",
       }}
     >
+      <style>{ONB_THEME_CSS}</style>
       <FloatingBlobs accentHex={accentHex} />
 
       <div className="min-h-full px-4 py-4 sm:px-6 sm:py-8 flex items-center justify-center">

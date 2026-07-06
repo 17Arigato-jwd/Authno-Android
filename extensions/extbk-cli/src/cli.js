@@ -14,6 +14,7 @@ import { cmdBuild }  from './commands/build.js';
 import { cmdCheck }  from './commands/check.js';
 import { cmdInfo }   from './commands/info.js';
 import { cmdUnpack } from './commands/unpack.js';
+import { cmdThmbkBuild } from './commands/thmbk-build.js';
 
 program
   .name('extbk')
@@ -42,5 +43,12 @@ program
   .description('Extract a .extbk archive to a directory')
   .option('--overwrite', 'Overwrite destination if it already exists', false)
   .action(cmdUnpack);
+
+program
+  .command('thmbk-build <src> [outFile]')
+  .description('Pack a theme (dir with manifest.json + theme.json, or a bundled theme.json) into a .thmbk')
+  .option('--rs-pct <n>', 'Reed-Solomon protection level 0-100 (default: 20)', '20')
+  .option('--overwrite',  'Overwrite output file if it already exists', false)
+  .action(cmdThmbkBuild);
 
 program.parse();

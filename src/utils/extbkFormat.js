@@ -119,8 +119,14 @@ async function decompress(comp) {
 
 // ─── RS helpers ───────────────────────────────────────────────────────────────
 
-function nParityBytes(dataLen, rsPct) {
-  return rsPct === 0 ? 0 : Math.ceil(dataLen * rsPct / 100);
+function nParityBytes(rsPct) {
+  // v1.1.16: nParity is the parity count PER RS CHUNK, not per section —
+  // this now matches extbk-cli/src/format.js exactly. The old per-section
+  // formula (ceil(dataLen * pct / 100)) exceeded the GF(256) block limit for
+  // any section over ~160 bytes and made app-built files incompatible with
+  // CLI-built ones. Cap at 127 so every chunk keeps ≥128 data bytes.
+  if (rsPct === 0) return 0;
+  return Math.min(Math.floor(255 * rsPct / 100), 127);
 }
 
 // ─── ASST payload encoding ────────────────────────────────────────────────────
@@ -145,7 +151,7 @@ function decodeAssetContent(raw) {
 async function encodeSection(tag, assetIdx, raw, rsPct) {
   const compressed = await compress(raw);
   const compCrc    = crc32(compressed);
-  const nParity    = nParityBytes(compressed.length, rsPct);
+  const nParity    = nParityBytes(rsPct);
   const parity     = nParity > 0
     ? rsEncodeChunked(compressed, nParity)
     : new Uint8Array(0);
@@ -353,7 +359,7 @@ export async function unpackExtbk(bytes) {
                      payloads[i + 1]?.entry.assetIdx === e.assetIdx
                      ? payloads[i + 1] : null;
     const rspxPay  = rspxSec?.payload ?? null;
-    const nParity  = rspxSec ? nParityBytes(e.compSize, rsPct) : 0;
+    const nParity  = rspxSec ? nParityBytes(rsPct) : 0;
 
     const entryBytes = bytes.slice(
       indexStart + i * INDEX_ENTRY_SIZE,
