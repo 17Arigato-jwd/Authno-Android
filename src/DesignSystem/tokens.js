@@ -6,34 +6,40 @@
  * Active theme CSS vars (var(--app-bg), etc.) override these at runtime.
  */
 
+// v1.1.16 fix: text/surface/border COLORS resolve to the --ds-* CSS variables
+// that applyTheme() injects from the ACTIVE theme, not hardcoded dark hex.
+// Previously every DesignSystem primitive (Buttons, Typography, Inputs, Toast…)
+// read raw hex, so their text stayed white on light themes. 100+ references read
+// these keys, so pointing them at the vars fixes theming everywhere at once.
+// Each var has a dark fallback for pre-hydration / SSR.
 export const COLORS = {
-  // Brand
+  // Brand — theme-independent accent hues (kept literal)
   violet:    '#8b5cf6',
   violetDark:'#5a00d9',
   indigo:    '#6366f1',
   sky:       '#38bdf8',
-  // Semantic
-  success:   '#22c55e',
-  warning:   '#f59e0b',
-  danger:    '#ef4444',
-  info:      '#38bdf8',
+  // Semantic — active theme status colors
+  success:   'var(--ds-success, #22c55e)',
+  warning:   'var(--ds-warning, #f59e0b)',
+  danger:    'var(--ds-danger, #ef4444)',
+  info:      'var(--ds-info, #38bdf8)',
   rose:      '#ec4899',
   ember:     '#f97316',
-  // Surfaces (dark-first)
-  surface0:  '#0b0b0c',
-  surface1:  '#111113',
-  surface2:  '#1a1b1e',
-  surface3:  '#2b2d31',
-  surface4:  '#313338',
-  // Text
-  textPrimary:   '#ffffff',
-  textSecondary: '#dcddde',
-  textMuted:     '#b9bbbe',
-  textSubtle:    '#72767d',
-  textDisabled:  '#4f545c',
-  // Borders
-  border:       'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.16)',
+  // Surfaces — follow the active theme
+  surface0:  'var(--ds-surface0, #0b0b0c)',
+  surface1:  'var(--ds-surface1, #111113)',
+  surface2:  'var(--ds-surface2, #1a1b1e)',
+  surface3:  'var(--ds-surface3, #2b2d31)',
+  surface4:  'var(--ds-surface4, #313338)',
+  // Text — follow the active theme (THIS is the white-on-light fix)
+  textPrimary:   'var(--ds-text-primary, #ffffff)',
+  textSecondary: 'var(--ds-text-secondary, #dcddde)',
+  textMuted:     'var(--ds-text-muted, #b9bbbe)',
+  textSubtle:    'var(--ds-text-subtle, #72767d)',
+  textDisabled:  'var(--ds-text-disabled, #4f545c)',
+  // Borders — follow the active theme
+  border:       'var(--ds-border, rgba(255,255,255,0.08))',
+  borderStrong: 'var(--ds-border-strong, rgba(255,255,255,0.16))',
 };
 
 export const GRADIENTS = {
