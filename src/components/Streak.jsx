@@ -149,14 +149,14 @@ function CalendarCell({ day, cellIndex, daysInMonth, viewYear, viewMonth, log, a
       onMouseLeave={() => setHovered(false)}
       style={{ height: 34, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', ...cellStyle }}
     >
-      <span style={{ fontSize: 12, fontWeight: isToday ? 700 : met ? 600 : 400, color: met ? accentHex : isToday ? '#fff' : hasData ? COLORS.textMuted : COLORS.textSubtle, position: 'relative', zIndex: 1, lineHeight: 1 }}>
+      <span style={{ fontSize: 12, fontWeight: isToday ? 700 : met ? 600 : 400, color: met ? accentHex : isToday ? 'var(--text-1)' : hasData ? COLORS.textMuted : COLORS.textSubtle, position: 'relative', zIndex: 1, lineHeight: 1 }}>
         {day}
       </span>
       {isToday && !met && (
         <div style={{ position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: accentHex }} />
       )}
       {hasData && !met && !isToday && entry.goal > 0 && (
-        <div style={{ position: 'absolute', bottom: 3, left: '20%', right: '20%', height: 2, borderRadius: 1, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', bottom: 3, left: '20%', right: '20%', height: 2, borderRadius: 1, background: 'var(--surface-md)', overflow: 'hidden' }}>
           <div style={{ height: '100%', borderRadius: 1, background: accentHex + '60', width: `${Math.min(100, (entry.words / entry.goal) * 100)}%` }} />
         </div>
       )}
@@ -245,7 +245,7 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
           </span>
         </div>
         <div style={{ fontSize: 12, color: COLORS.textSubtle, marginBottom: 8 }}>{streakLabel}</div>
-        <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: '8px 12px' }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 8, padding: '8px 12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: COLORS.textSubtle, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Today</span>
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
@@ -254,7 +254,7 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
               <span style={{ fontSize: 11, color: COLORS.textDisabled }}>words</span>
             </span>
           </div>
-          <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+          <div style={{ height: 4, background: 'var(--surface-md)', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', borderRadius: 2, background: accentHex, width: `${Math.min(100, (wordsToday / displayGoal) * 100)}%`, transition: 'width 0.4s ease' }} />
           </div>
         </div>
@@ -359,16 +359,16 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
         title={!current ? 'Open a book to track your streak' : `${wordsToday.toLocaleString()} / ${effectiveGoal.toLocaleString()} words written today${todayMet ? ' ✓' : ''}`}
         style={{
           padding: 8,
-          border: `2px solid ${todayMet ? accentHex : 'white'}`,
+          border: `1px solid ${todayMet ? accentHex : 'var(--border)'}`,
           borderRadius: 6, background: todayMet ? `${accentHex}15` : 'transparent',
           boxShadow: todayMet ? `0 0 14px 3px ${accentHex}44` : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: current ? 'pointer' : 'default', transition: 'all 0.3s', position: 'relative',
         }}
       >
-        <Flame size={22} color={todayMet ? accentHex : 'white'} className={shaking ? 'flame-shaking' : ''} style={{ transition: 'color 0.3s', display: 'block' }} />
+        <Flame size={22} color={todayMet ? accentHex : 'var(--text-1)'} className={shaking ? 'flame-shaking' : ''} style={{ transition: 'color 0.3s', display: 'block' }} />
         {currentStreak > 0 && (
-          <div style={{ position: 'absolute', top: -7, right: -7, background: accentHex, color: '#fff', fontSize: 9, fontWeight: 800, lineHeight: 1, borderRadius: 999, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '2px solid #060606' }}>
+          <div style={{ position: 'absolute', top: -7, right: -7, background: accentHex, color: '#fff', fontSize: 9, fontWeight: 800, lineHeight: 1, borderRadius: 999, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '2px solid var(--app-bg)' }}>
             {currentStreak > 99 ? '99+' : currentStreak}
           </div>
         )}

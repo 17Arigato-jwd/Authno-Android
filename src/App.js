@@ -347,7 +347,9 @@ function AppInner({ navigateRef }) {
     const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
     if (saved) { try { const p = JSON.parse(saved); if (Array.isArray(p)) { setSessions(p); if (savedId) setCurrentId(savedId); } } catch { /* corrupt store — start clean */ } }
-    if (window.electron) {
+    // Honour the "Restore previously open books" setting (Settings → Startup).
+    // Previously this ran unconditionally, so turning the toggle off did nothing.
+    if (window.electron && (settings.restoreOpenBooks ?? true)) {
       const openBooks = localStorage.getItem("openBooks");
       if (openBooks) {
         try {
