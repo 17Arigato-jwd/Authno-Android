@@ -15,6 +15,9 @@ import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent, appl
 import { FontCustomizer } from "./components/FontCustomizer";
 import { DEFAULT_FONTS } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
+import ThreadsPanel from "./components/ThreadsPanel";
+import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
+import { getThreadsData, stripAnchorsFromChapters, locateAnchors } from "./utils/threads";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -67,10 +70,68 @@ function Editor({
   onToggleSidebar, burgerBtnRef,
   chapterTitle, onEditChapterTitle,
   onBack, onPrevChapter, onNextChapter, chapterPosition,
+  fullSession, onUpdateSession, onOpenChapter,
 }) {
   const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
+  const mainRef = useRef(null);
   const android = isAndroid();
+
+  // ── Threads (plotlines / character arcs — docs/threads-spec.md) ──────────
+  const [threadsOpen, setThreadsOpen] = useState(false);
+  const [openThreadId, setOpenThreadId] = useState(null);
+  const [focusEntryId, setFocusEntryId] = useState(null);
+  const pendingFlash = useRef(null);
+  const threadsData = getThreadsData(fullSession);
+
+  const handleChangeThreads = useCallback((next) => {
+    onUpdateSession?.({ threads: next });
+  }, [onUpdateSession]);
+
+  // Remove anchor markup everywhere: state (all chapters) + the live editor DOM
+  // (the contentEditable doesn't re-sync innerHTML on content changes, so the
+  // open chapter must be patched in place).
+  const handleStripAnchors = useCallback((anchorIds) => {
+    if (!anchorIds?.length) return;
+    const { chapters, changed } = stripAnchorsFromChapters(fullSession?.chapters || [], anchorIds);
+    if (changed) onUpdateSession?.({ chapters });
+    const editorEl = editorRef.current;
+    if (editorEl) {
+      anchorIds.forEach((id) => {
+        editorEl.querySelectorAll(`[data-authno-anchor="${id}"],[data-authno-pin="${id}"]`).forEach((el) => {
+          if (el.hasAttribute('data-authno-pin')) el.remove();
+          else el.replaceWith(...el.childNodes);
+        });
+      });
+    }
+  }, [fullSession, onUpdateSession]);
+
+  // Panel→prose jump: switch chapter if needed, then sync-scroll + flash.
+  const handleJumpToAnchor = useCallback((anchorId) => {
+    const loc = locateAnchors(fullSession).get(anchorId);
+    if (!loc) return;
+    const editingChap = current?._editingChap ?? 1;
+    if (loc.chapIdx !== editingChap && onOpenChapter) {
+      pendingFlash.current = anchorId;
+      onOpenChapter(loc.chapIdx);
+    } else {
+      flashAnchor(editorRef.current, anchorId);
+    }
+  }, [fullSession, current?._editingChap, onOpenChapter]);
+
+  // Complete a cross-chapter jump once the new chapter's content is mounted.
+  useEffect(() => {
+    if (!pendingFlash.current) return;
+    const id = pendingFlash.current;
+    const t = setTimeout(() => { flashAnchor(editorRef.current, id); pendingFlash.current = null; }, 80);
+    return () => clearTimeout(t);
+  }, [current?._editingChap]);
+
+  const openThreadFromMarker = useCallback((threadId, entryId) => {
+    setThreadsOpen(true);
+    setOpenThreadId(threadId);
+    setFocusEntryId(entryId ?? null);
+  }, []);
 
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
   useEffect(() => {
@@ -89,6 +150,7 @@ function Editor({
   };
 
   return (
+    <div style={{ flex: 1, display: "flex", minWidth: 0, position: "relative", overflow: "hidden" }}>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", overflow: "hidden" }}>
       {/* Header */}
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--app-bg)" }}>
@@ -132,6 +194,16 @@ function Editor({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+          {current && (
+            <button
+              onClick={() => setThreadsOpen((v) => !v)}
+              title="Threads — plotlines & character arcs"
+              aria-label="Threads"
+              style={{ padding: 8, border: `1px solid ${threadsOpen ? accentHex : "var(--border)"}`, borderRadius: 6, background: threadsOpen ? `${accentHex}15` : "none", cursor: "pointer", transition: "all 0.15s", color: threadsOpen ? accentHex : "var(--text-1)", display: "flex", alignItems: "center" }}
+            >
+              <DSIcons.Tag size={20} color="currentColor" />
+            </button>
+          )}
           <button
             ref={burgerBtnRef}
             onClick={onToggleMenu}
@@ -186,9 +258,16 @@ function Editor({
           </button>
         </div>
       )}
-      <main style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem" : "1.5rem" }}>
+      <main ref={mainRef} style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem" : "1.5rem" }}>
         {current ? (
           <>
+            {/* Colored gutter markers for thread anchors (prose stays unstyled) */}
+            <ThreadGutter
+              editorRef={editorRef} containerRef={mainRef}
+              session={current} data={threadsData}
+              contentVersion={current?.content}
+              onMarkerClick={openThreadFromMarker}
+            />
             <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} editorRef={editorRef} />
             <div
               ref={editorRef}
@@ -211,6 +290,36 @@ function Editor({
           </div>
         )}
       </main>
+    </div>
+
+    {/* Selection chip + action menu (fixed-positioned; renders only with a selection) */}
+    {current && (
+      <ThreadSelectionLayer
+        editorRef={editorRef}
+        data={threadsData}
+        onChangeData={handleChangeThreads}
+        onEditContent={onEditContent}
+        onOpenThread={(id) => { setThreadsOpen(true); setOpenThreadId(id); setFocusEntryId(null); }}
+        accentHex={accentHex}
+      />
+    )}
+
+    {/* Threads panel — desktop side pane / Android 5⁄8 bottom sheet */}
+    {threadsOpen && current && (
+      <ThreadsPanel
+        session={fullSession ?? current}
+        data={threadsData}
+        onChangeData={handleChangeThreads}
+        onStripAnchors={handleStripAnchors}
+        onJump={handleJumpToAnchor}
+        openThreadId={openThreadId}
+        focusEntryId={focusEntryId}
+        onOpenThread={(id) => { setOpenThreadId(id); if (!id) setFocusEntryId(null); }}
+        accentHex={accentHex}
+        android={android}
+        onClose={() => { setThreadsOpen(false); setOpenThreadId(null); setFocusEntryId(null); }}
+      />
+    )}
     </div>
   );
 }
@@ -835,6 +944,7 @@ function AppInner({ navigateRef }) {
       ) : (
         <Editor
           current={editorCurrent} onEditTitle={handleEditTitle} onEditContent={handleEditContent}
+          fullSession={current} onUpdateSession={handleUpdateSession} onOpenChapter={handleEditChapter}
           onEditChapterTitle={currentChapterIdx ? handleEditChapterTitle : undefined}
           chapterTitle={currentChapter?.title ?? null}
           onBack={() => setView("book-dashboard")}
