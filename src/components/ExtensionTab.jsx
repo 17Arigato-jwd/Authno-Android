@@ -83,22 +83,22 @@ function ContribChip({ contrib, onClick }) {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '5px',
         padding: '4px 10px',
-        background: 'rgba(255,255,255,0.07)',
-        border: '1px solid rgba(255,255,255,0.12)',
+        background: 'var(--surface-md)',
+        border: '1px solid var(--border)',
         borderRadius: '99px',
-        color: 'rgba(255,255,255,0.75)',
+        color: 'var(--text-2)',
         fontSize: '11px', fontWeight: 500,
         cursor: 'pointer',
         transition: 'background 0.15s, border-color 0.15s',
         whiteSpace: 'nowrap',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.13)';
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+        e.currentTarget.style.background = 'var(--accent-a08)';
+        e.currentTarget.style.borderColor = 'var(--accent-a33)';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+        e.currentTarget.style.background = 'var(--surface-md)';
+        e.currentTarget.style.borderColor = 'var(--border)';
       }}
     >
       <span style={{ display: 'flex', alignItems: 'center', opacity: 0.7 }}>
@@ -233,8 +233,8 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
         style={{
           padding: '14px 14px 12px',
           borderRadius: '12px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.09)',
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', gap: '10px',
           userSelect: 'none',
           WebkitUserSelect: 'none',
@@ -254,12 +254,12 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              color: 'rgba(255,255,255,0.92)', fontWeight: 600, fontSize: '14px',
+              color: 'var(--text-1)', fontWeight: 600, fontSize: '14px',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {ext.name}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', marginTop: '1px' }}>
+            <div style={{ color: 'var(--text-4)', fontSize: '11px', marginTop: '1px' }}>
               {ext.id}
             </div>
           </div>
@@ -336,13 +336,13 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                   alignSelf: 'flex-start',
                   display: 'inline-flex', alignItems: 'center', gap: '4px',
                   background: 'none', border: 'none',
-                  color: 'rgba(255,255,255,0.35)',
+                  color: 'var(--text-4)',
                   fontSize: '11px', cursor: 'pointer',
                   padding: '2px 0',
                   transition: 'color 0.15s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.65)'}
-                onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-3)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-4)'}
               >
                 {expanded
                   ? <><DSIcons.ChevronUp size={12} style={{ marginRight: 2 }} /> Show less</>
@@ -354,7 +354,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
         )}
 
         {allContribs.length === 0 && (
-          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-5)', fontStyle: 'italic' }}>
             No contributions declared
           </div>
         )}
@@ -374,8 +374,8 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
               left: contextMenu.x,
               zIndex: 9999,
               minWidth: 190,
-              background: 'rgba(15,15,18,0.98)',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'var(--modal-bg)',
+              border: '1px solid var(--border)',
               borderRadius: 12,
               boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
               overflow: 'hidden',
@@ -395,7 +395,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                 gap: 8,
                 padding: '12px 14px',
                 background: 'transparent',
-                color: '#fca5a5',
+                color: 'var(--color-danger)',
                 border: 'none',
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -432,8 +432,8 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
               transform: 'translate(-50%, -50%)',
               zIndex: 10000,
               width: 'min(92vw, 360px)',
-              background: 'rgba(18,18,22,0.98)',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'var(--modal-bg)',
+              border: '1px solid var(--border)',
               borderRadius: 16,
               padding: 18,
               boxShadow: '0 20px 60px rgba(0,0,0,0.55)',
@@ -442,22 +442,22 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <div style={{
                 width: 34, height: 34, borderRadius: 10,
-                background: '#ef444422', color: '#fca5a5',
+                background: 'var(--color-danger-bg)', color: 'var(--color-danger)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <DSIcons.Trash size={16} />
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ color: 'rgba(255,255,255,0.95)', fontWeight: 700, fontSize: 15 }}>
+                <div style={{ color: 'var(--text-1)', fontWeight: 700, fontSize: 15 }}>
                   Remove extension?
                 </div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 }}>
+                <div style={{ color: 'var(--text-4)', fontSize: 12, marginTop: 2 }}>
                   {ext.name} ({ext.id})
                 </div>
               </div>
             </div>
 
-            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
+            <div style={{ color: 'var(--text-2)', fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
               This will delete the extension from the app. Any saved extension config will also be cleared.
             </div>
 
@@ -468,8 +468,8 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                   padding: '10px 14px',
                   borderRadius: 10,
                   background: 'transparent',
-                  border: '1px solid rgba(255,255,255,0.16)',
-                  color: 'rgba(255,255,255,0.72)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-2)',
                   cursor: 'pointer',
                 }}
               >
@@ -480,8 +480,8 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                 style={{
                   padding: '10px 14px',
                   borderRadius: 10,
-                  background: '#dc2626',
-                  border: '1px solid #dc2626',
+                  background: 'var(--color-danger)',
+                  border: '1px solid var(--color-danger)',
                   color: '#fff',
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -634,7 +634,7 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
       {/* Footer: refresh + slightly-hidden open-folder button */}
       <div style={{
         padding: '8px 10px 10px',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        borderTop: '1px solid var(--border-sm)',
         flexShrink: 0,
         display: 'flex', gap: '6px',
       }}>
@@ -643,20 +643,20 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
           style={{
             flex: 1, padding: '7px',
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
-            color: 'rgba(255,255,255,0.35)',
+            color: 'var(--text-4)',
             fontSize: '11px', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
             transition: 'color 0.15s, border-color 0.15s',
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+            e.currentTarget.style.color = 'var(--text-2)';
+            e.currentTarget.style.borderColor = 'var(--accent-a33)';
           }}
           onMouseLeave={e => {
-            e.currentTarget.style.color = 'rgba(255,255,255,0.35)';
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+            e.currentTarget.style.color = 'var(--text-4)';
+            e.currentTarget.style.borderColor = 'var(--border)';
           }}
         >
           <DSIcons.Refresh size={12} />
@@ -671,20 +671,20 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             width: '32px', flexShrink: 0,
             padding: '7px 6px',
             background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.07)',
+            border: '1px solid var(--border-sm)',
             borderRadius: '8px',
-            color: 'rgba(255,255,255,0.2)',
+            color: 'var(--text-5)',
             cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             transition: 'color 0.15s, border-color 0.15s',
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.color = 'rgba(255,255,255,0.55)';
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)';
+            e.currentTarget.style.color = 'var(--text-3)';
+            e.currentTarget.style.borderColor = 'var(--border)';
           }}
           onMouseLeave={e => {
-            e.currentTarget.style.color = 'rgba(255,255,255,0.2)';
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
+            e.currentTarget.style.color = 'var(--text-5)';
+            e.currentTarget.style.borderColor = 'var(--border-sm)';
           }}
         >
           <DSIcons.FolderOpen size={13} />

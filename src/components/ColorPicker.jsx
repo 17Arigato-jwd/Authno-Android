@@ -109,7 +109,7 @@ function PickerBody({ value, onChange, canvasSize }) {
         <div style={{
           width: '32px', height: '32px', borderRadius: '6px',
           background: previewHex, flexShrink: 0,
-          border: '1px solid rgba(255,255,255,0.1)',
+          border: '1px solid var(--border)',
         }} />
         <input
           value={hexInput}
@@ -117,14 +117,14 @@ function PickerBody({ value, onChange, canvasSize }) {
           spellCheck={false}
           style={{
             flex: 1,
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '6px', color: '#fff',
-            fontSize: '13px', fontFamily: 'monospace',
+            background: 'var(--input-bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px', color: 'var(--text-1)',
+            fontSize: '13px', fontFamily: 'var(--font-mono)',
             padding: '6px 10px', outline: 'none', letterSpacing: '0.5px',
           }}
           onFocus={e => e.target.style.borderColor = value}
-          onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+          onBlur={e  => e.target.style.borderColor = 'var(--border)'}
         />
       </div>
     </div>
@@ -216,8 +216,8 @@ export function ColorPicker({ value = '#3b82f6', onChange, label, inline = false
         width:        `${canvasSize + 28}px`,
         padding:      '14px',
         borderRadius: '12px',
-        background:   '#111214',
-        border:       '1px solid rgba(255,255,255,0.1)',
+        background:   'var(--modal-bg)',
+        border:       '1px solid var(--border)',
         boxShadow:    '0 16px 48px rgba(0,0,0,0.8)',
         animation:    'cpFadeIn 0.12s ease',
       }}
@@ -238,7 +238,7 @@ export function ColorPicker({ value = '#3b82f6', onChange, label, inline = false
         style={{
           width: '36px', height: '36px', borderRadius: '50%',
           background: value, border: 'none', cursor: 'pointer',
-          outline:      open ? '3px solid #fff' : '3px solid rgba(255,255,255,0.2)',
+          outline:      open ? '3px solid var(--text-1)' : '3px solid var(--border)',
           outlineOffset:'2px',
           transition:   'outline 0.15s, transform 0.15s',
           transform:    open ? 'scale(1.15)' : 'scale(1)',
