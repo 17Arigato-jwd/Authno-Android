@@ -135,6 +135,7 @@ export function fromLegacySession(session) {
       publisher:   session.publisher   || '',
       isbn:        session.isbn        || '',
       coverMime:   session.coverMime   || '',
+      threads:     session.threads     || null,
     },
     chapters: [{
       chap_idx: 1,
@@ -538,6 +539,10 @@ export function sessionToBook(session) {
         isbn:        session.isbn        || '',
         externalId:  session.externalId  || '',
         coverMime:   session.coverMime   || '',
+        // Threads (plotlines / character arcs — see docs/threads-spec.md) live
+        // inside META: JSON, RS-parity-protected, ignored by older readers, and
+        // bookToSession's `...book.meta` spread restores it on load for free.
+        threads:     session.threads     || null,
       },
       chapters,
       streak:  session.streak || {},
