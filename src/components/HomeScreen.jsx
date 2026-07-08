@@ -5,6 +5,7 @@ import { useState, useRef, useCallback } from 'react';
 import { DSIcons } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
+import { hapticSwipeReveal, hapticSave } from '../utils/haptics';
 import Logo from '../logo.svg';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 
@@ -173,9 +174,9 @@ function usePullToRefresh(onRefresh) {
   const [pullY,        setPullY]      = useState(0);
   const [refreshing,   setRefreshing] = useState(false);
 
-  const vibrate = useCallback((pattern) => {
-    try { navigator.vibrate?.(pattern); } catch {}
-  }, []);
+  // Native impact haptics on Android (falls back to navigator.vibrate on web).
+  const buzzThreshold = useCallback(() => { hapticSwipeReveal(); }, []);
+  const buzzComplete  = useCallback(() => { hapticSave(); }, []);
 
   const onTouchStart = useCallback((e) => {
     if (scrollRef.current?.scrollTop === 0) {
@@ -194,9 +195,9 @@ function usePullToRefresh(onRefresh) {
     // Single short buzz exactly when threshold is crossed
     if (eased >= PULL_THRESHOLD && !didVibrate.current) {
       didVibrate.current = true;
-      vibrate(30);
+      buzzThreshold();
     }
-  }, [refreshing, vibrate]);
+  }, [refreshing, buzzThreshold]);
 
   const onTouchEnd = useCallback(async () => {
     if (!pulling.current) return;
@@ -207,12 +208,12 @@ function usePullToRefresh(onRefresh) {
       try { await onRefresh?.(); } catch {}
       await new Promise(r => setTimeout(r, 650));
       // Double-bump on completion — feels like a satisfying "done" tick
-      vibrate([45, 30, 45]);
+      buzzComplete();
       setRefreshing(false);
     } else {
       setPullY(0);
     }
-  }, [pullY, onRefresh, vibrate]);
+  }, [pullY, onRefresh, buzzComplete]);
 
   return { scrollRef, pullY, refreshing, onTouchStart, onTouchMove, onTouchEnd };
 }

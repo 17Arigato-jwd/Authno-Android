@@ -1,5 +1,5 @@
 import { BackgroundRouter, DSIcons, injectDesignSystemFonts, ToastContainer, toast } from "./DesignSystem";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { APP_VERSION } from "./version";
 
 import { App as CapApp } from '@capacitor/app';
@@ -17,7 +17,8 @@ import { DEFAULT_FONTS } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ThreadsPanel from "./components/ThreadsPanel";
 import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
-import { getThreadsData, stripAnchorsFromChapters, locateAnchors } from "./utils/threads";
+import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
+import { hapticSelect } from "./utils/haptics";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -82,7 +83,10 @@ function Editor({
   const [openThreadId, setOpenThreadId] = useState(null);
   const [focusEntryId, setFocusEntryId] = useState(null);
   const pendingFlash = useRef(null);
-  const threadsData = getThreadsData(fullSession);
+  // Memoized on the threads slice only — the session object gets a new identity
+  // every keystroke, and an unstable threads object would re-fire the gutter
+  // and panel effects on a hot path where nothing thread-related changed.
+  const threadsData = useMemo(() => getThreadsData(fullSession), [fullSession?.threads]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChangeThreads = useCallback((next) => {
     onUpdateSession?.({ threads: next });
@@ -96,14 +100,7 @@ function Editor({
     const { chapters, changed } = stripAnchorsFromChapters(fullSession?.chapters || [], anchorIds);
     if (changed) onUpdateSession?.({ chapters });
     const editorEl = editorRef.current;
-    if (editorEl) {
-      anchorIds.forEach((id) => {
-        editorEl.querySelectorAll(`[data-authno-anchor="${id}"],[data-authno-pin="${id}"]`).forEach((el) => {
-          if (el.hasAttribute('data-authno-pin')) el.remove();
-          else el.replaceWith(...el.childNodes);
-        });
-      });
-    }
+    if (editorEl) stripAnchorEls(editorEl, anchorIds);
   }, [fullSession, onUpdateSession]);
 
   // Panel→prose jump: switch chapter if needed, then sync-scroll + flash.
@@ -128,6 +125,7 @@ function Editor({
   }, [current?._editingChap]);
 
   const openThreadFromMarker = useCallback((threadId, entryId) => {
+    hapticSelect();
     setThreadsOpen(true);
     setOpenThreadId(threadId);
     setFocusEntryId(entryId ?? null);
@@ -196,7 +194,7 @@ function Editor({
           <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
           {current && (
             <button
-              onClick={() => setThreadsOpen((v) => !v)}
+              onClick={() => { hapticSelect(); setThreadsOpen((v) => !v); }}
               title="Threads — plotlines & character arcs"
               aria-label="Threads"
               style={{ padding: 8, border: `1px solid ${threadsOpen ? accentHex : "var(--border)"}`, borderRadius: 6, background: threadsOpen ? `${accentHex}15` : "none", cursor: "pointer", transition: "all 0.15s", color: threadsOpen ? accentHex : "var(--text-1)", display: "flex", alignItems: "center" }}
@@ -314,7 +312,7 @@ function Editor({
         onJump={handleJumpToAnchor}
         openThreadId={openThreadId}
         focusEntryId={focusEntryId}
-        onOpenThread={(id) => { setOpenThreadId(id); if (!id) setFocusEntryId(null); }}
+        onOpenThread={(id, entryId = null) => { setOpenThreadId(id); setFocusEntryId(id ? entryId : null); }}
         accentHex={accentHex}
         android={android}
         onClose={() => { setThreadsOpen(false); setOpenThreadId(null); setFocusEntryId(null); }}
@@ -748,11 +746,12 @@ function AppInner({ navigateRef }) {
     newBook();
   };
   const handleSelect = (id, sessionObj) => {
+    hapticSelect();
     if (sessionObj) setSessions((prev) => prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]);
     setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
     if (android) setDrawerOpen(false);
   };
-  const handleEditChapter = useCallback((chapIdx) => { setCurrentChapterIdx(chapIdx); setView("editor"); }, []);
+  const handleEditChapter = useCallback((chapIdx) => { hapticSelect(); setCurrentChapterIdx(chapIdx); setView("editor"); }, []);
   const handleNewChapter = useCallback(() => {
     const cur = sessions.find(s => s.id === currentId);
     if (!cur) return;

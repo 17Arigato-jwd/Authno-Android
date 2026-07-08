@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
+import { hapticSave, hapticSelect } from "../utils/haptics";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
 import { MinimalButton, Divider, COLORS, DSIcons } from "../DesignSystem";
@@ -98,6 +99,7 @@ export default function BurgerMenu({
         );
       }
       setStatus("saved");
+      hapticSave();
     } catch (err) {
       showError("saveBook", err, { sessionTitle: current?.title });
       setStatus("error");
@@ -132,6 +134,7 @@ export default function BurgerMenu({
     try {
       const session = await openBook();
       if (session) {
+        hapticSelect();
         setSessions((prev) => {
           const idx = prev.findIndex(
             (s) => s.id === session.id || (session.filePath && s.filePath === session.filePath)

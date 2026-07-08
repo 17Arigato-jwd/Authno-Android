@@ -17,6 +17,7 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { DSIcons, COLORS } from "../DesignSystem";
+import { hapticError } from "./haptics";
 import {
   logError,
   formatError,
@@ -291,6 +292,7 @@ export function ErrorProvider({ children, accentHex = "#5a00d9" }) {
   const [showLog,    setShowLog]    = useState(false);
 
   const showError = useCallback((operation, err, context = {}) => {
+    hapticError();
     const entry = logError(operation, err, context);
     setErrorEntry(entry);
   }, []);

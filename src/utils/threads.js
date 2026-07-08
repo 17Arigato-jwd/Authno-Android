@@ -154,31 +154,49 @@ export function relationsOf(data, threadId) {
 }
 
 // ── Anchor position lookup (anchors live in chapter HTML) ─────────────────────
+// One attribute regex is the single source of truth for anchor markup detection;
+// DOM-side removal goes through stripAnchorEls below.
 
-const ANCHOR_ATTR_RE = (id) => new RegExp(`data-authno-(?:anchor|pin)="${id}"`);
+const ANCHOR_SCAN_RE = /data-authno-(?:anchor|pin)="([^"]+)"/g;
 
 /**
  * Map anchorId → { chapIdx, offset } by scanning chapter content strings.
- * Cheap enough for typical books; called on demand, not per keystroke.
+ * Cheap enough for typical books; callers debounce/memoize (never per keystroke).
+ * Legacy chapterless sessions fall back to scanning session.content as chapter 1.
  */
 export function locateAnchors(session) {
   const map = new Map();
-  const chapters = [...(session?.chapters || [])].sort((a, b) => a.order - b.order);
+  const chapters = session?.chapters?.length
+    ? [...session.chapters].sort((a, b) => a.order - b.order)
+    : (session?.content ? [{ chap_idx: 1, order: 1, content: session.content }] : []);
   chapters.forEach((c, chapPos) => {
     const html = c.content || '';
-    // Find every anchor/pin attribute occurrence with its string offset.
-    const re = /data-authno-(?:anchor|pin)="([^"]+)"/g;
+    ANCHOR_SCAN_RE.lastIndex = 0;
     let m;
-    while ((m = re.exec(html)) !== null) {
+    while ((m = ANCHOR_SCAN_RE.exec(html)) !== null) {
       if (!map.has(m[1])) map.set(m[1], { chapIdx: c.chap_idx, chapPos, offset: m.index });
     }
   });
   return map;
 }
 
-/** True if the anchor still exists somewhere in the manuscript. */
-export function anchorExists(session, anchorId) {
-  return (session?.chapters || []).some(c => ANCHOR_ATTR_RE(anchorId).test(c.content || ''));
+/**
+ * Remove anchor markup for the given ids inside a live DOM root: span anchors
+ * are unwrapped (prose kept), point pins deleted. Shared by the state-side
+ * stripAnchorsFromChapters and the Editor's live-DOM patch so the two can
+ * never diverge. Returns true if anything was removed.
+ */
+export function stripAnchorEls(root, ids) {
+  const idSet = ids instanceof Set ? ids : new Set(ids);
+  let touched = false;
+  root.querySelectorAll('[data-authno-anchor],[data-authno-pin]').forEach(el => {
+    const id = el.getAttribute('data-authno-anchor') || el.getAttribute('data-authno-pin');
+    if (!idSet.has(id)) return;
+    touched = true;
+    if (el.hasAttribute('data-authno-pin')) el.remove();
+    else el.replaceWith(...el.childNodes);   // unwrap, keep the prose
+  });
+  return touched;
 }
 
 /**
@@ -223,7 +241,8 @@ export function allOpenTodos(data) {
 /**
  * Remove anchor/pin markup for `anchorIds` from every chapter's HTML.
  * Returns { chapters, changed } with span anchors unwrapped (text kept) and
- * point pins deleted.
+ * point pins deleted. Uses the same stripAnchorEls as the Editor's live-DOM
+ * patch, so serialized and on-screen results always match.
  */
 export function stripAnchorsFromChapters(chapters, anchorIds) {
   if (!anchorIds.length) return { chapters, changed: false };
@@ -231,15 +250,11 @@ export function stripAnchorsFromChapters(chapters, anchorIds) {
   let changed = false;
   const next = (chapters || []).map(c => {
     const html = c.content || '';
-    if (!anchorIds.some(id => ANCHOR_ATTR_RE(id).test(html))) return c;
+    // Cheap substring guard before paying for a DOM parse of the chapter.
+    if (![...ids].some(id => html.includes(`"${id}"`))) return c;
     const div = document.createElement('div');
     div.innerHTML = html;
-    div.querySelectorAll('[data-authno-anchor],[data-authno-pin]').forEach(el => {
-      const id = el.getAttribute('data-authno-anchor') || el.getAttribute('data-authno-pin');
-      if (!ids.has(id)) return;
-      if (el.hasAttribute('data-authno-pin')) el.remove();
-      else el.replaceWith(...el.childNodes);   // unwrap, keep the prose
-    });
+    if (!stripAnchorEls(div, ids)) return c;
     changed = true;
     return { ...c, content: div.innerHTML };
   });

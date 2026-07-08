@@ -19,6 +19,21 @@ import {
   addType, removeType, addRelation, removeRelation, relationsOf,
   locateAnchors, exportOutlineMarkdown, THREAD_COLORS,
 } from '../utils/threads';
+import { hapticSelect, hapticDelete, hapticNodeConnect } from '../utils/haptics';
+
+/**
+ * Debounce a value until it stops changing for `ms`. The session object gets a
+ * new identity on every keystroke; anchor lookups over the whole manuscript
+ * should wait for a typing lull instead of rescanning per character.
+ */
+function useDebounced(value, ms) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 
 const ICON_CHOICES = ['BookOpen', 'User', 'Star', 'Flame', 'Lightning', 'Globe', 'Heart', 'Target', 'Key', 'Eye'];
 
@@ -106,7 +121,11 @@ function ThreadDetail({ session, data, thread, onChangeData, onStripAnchors, onJ
   const focusRef = useRef(null);
   const type = typeById(data, thread.typeId);
   const color = threadColor(data, thread);
-  const anchorMap = useMemo(() => locateAnchors(session), [session]);
+  // Debounced: locateAnchors regex-scans every chapter's HTML — O(manuscript).
+  // The session identity changes per keystroke, so without the debounce this
+  // rescans the whole book on every character typed while the panel is open.
+  const settledSession = useDebounced(session, 300);
+  const anchorMap = useMemo(() => locateAnchors(settledSession), [settledSession]);
   const entries = useMemo(() => sortedEntries(thread, anchorMap), [thread, anchorMap]);
   const rels = relationsOf(data, thread.id);
 
@@ -115,6 +134,7 @@ function ThreadDetail({ session, data, thread, onChangeData, onStripAnchors, onJ
   }, [focusEntryId]);
 
   const deleteEntry = (entry) => {
+    hapticDelete();
     if (entry.anchorIds?.length) onStripAnchors(entry.anchorIds);
     onChangeData(removeEntry(data, thread.id, entry.id));
   };
@@ -166,7 +186,7 @@ function ThreadDetail({ session, data, thread, onChangeData, onStripAnchors, onJ
             <select
               autoFocus
               onBlur={() => setLinkOpen(false)}
-              onChange={e => { if (e.target.value) { onChangeData(addRelation(data, thread.id, e.target.value).data); } setLinkOpen(false); }}
+              onChange={e => { if (e.target.value) { hapticNodeConnect(); onChangeData(addRelation(data, thread.id, e.target.value).data); } setLinkOpen(false); }}
               defaultValue=""
               style={{ fontSize: 11.5, padding: '3px 6px', borderRadius: 8, background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--text-1)', outline: 'none' }}
             >
@@ -195,8 +215,8 @@ function ThreadDetail({ session, data, thread, onChangeData, onStripAnchors, onJ
             color={color}
             focusRef={e.id === focusEntryId ? focusRef : null}
             anchored={(e.anchorIds || []).some(id => anchorMap.has(id))}
-            onToggleTodo={() => onChangeData(updateEntry(data, thread.id, e.id, { todo: true, done: false }))}
-            onToggleDone={() => onChangeData(updateEntry(data, thread.id, e.id, { done: !e.done }))}
+            onToggleTodo={() => { hapticSelect(); onChangeData(updateEntry(data, thread.id, e.id, { todo: true, done: false })); }}
+            onToggleDone={() => { hapticSelect(); onChangeData(updateEntry(data, thread.id, e.id, { done: !e.done })); }}
             onJump={() => { const id = (e.anchorIds || []).find(a => anchorMap.has(a)); if (id) onJump(id); }}
             onDelete={() => deleteEntry(e)}
             onEditText={(text) => onChangeData(updateEntry(data, thread.id, e.id, { text }))}
@@ -352,6 +372,7 @@ function ThreadList({ session, data, onOpenThread, onChangeData, onStripAnchors,
   const types = getAllTypes(data);
 
   const deleteThread = (t) => {
+    hapticDelete();
     const anchorIds = t.entries.flatMap(e => e.anchorIds || []);
     if (anchorIds.length) onStripAnchors(anchorIds);
     onChangeData(removeThread(data, t.id));
@@ -371,7 +392,7 @@ function ThreadList({ session, data, onOpenThread, onChangeData, onStripAnchors,
           {remindersOpen && (
             <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {todos.map(({ thread, entry }) => (
-                <button key={entry.id} onClick={() => onJumpEntry(thread.id, entry.id)}
+                <button key={entry.id} onClick={() => { hapticSelect(); onJumpEntry(thread.id, entry.id); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, border: 'none', background: 'var(--modal-bg)', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ width: 8, height: 8, borderRadius: 3, background: threadColor(data, thread), flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.text}</span>
@@ -474,7 +495,7 @@ export default function ThreadsPanel({
       session={session} data={data} accentHex={accentHex}
       onOpenThread={onOpenThread} onChangeData={onChangeData} onStripAnchors={onStripAnchors}
       onNew={() => setView('new')} onTypes={() => setView('types')}
-      onJumpEntry={(threadId) => onOpenThread(threadId)}
+      onJumpEntry={(threadId, entryId) => onOpenThread(threadId, entryId)}
     />
   );
 

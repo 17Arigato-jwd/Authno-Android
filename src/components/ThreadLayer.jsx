@@ -20,8 +20,9 @@ import { DSIcons } from '../DesignSystem';
 import {
   getAllTypes, typeById, threadColor, addThread, addEntry, tid,
 } from '../utils/threads';
+import { hapticNodeConnect, hapticPin } from '../utils/haptics';
 
-// ── Shared CSS (flash animation, anchor resets) ───────────────────────────────
+// ── Shared CSS (anchor resets only — the flash uses the Web Animations API) ──
 const STYLE_ID = 'authno-thread-layer-css';
 function injectThreadCss() {
   if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
@@ -30,26 +31,31 @@ function injectThreadCss() {
   el.textContent = `
     .authno-anchor { border-radius: 2px; }
     .authno-pin { display: inline; }
-    @keyframes authnoAnchorFlash {
-      0%   { background: var(--accent-a33); box-shadow: 0 0 0 4px var(--accent-a33); }
-      100% { background: transparent; box-shadow: none; }
-    }
-    .authno-anchor-flash { animation: authnoAnchorFlash 1.4s ease-out; }
   `;
   document.head.appendChild(el);
 }
 
-/** Scroll an anchor into view and flash it. Returns false if not in the DOM. */
+/**
+ * Scroll an anchor into view and flash it. Returns false if not in the DOM.
+ * Uses element.animate() rather than a CSS class: the editor serializes
+ * innerHTML on every input, so a temporary class would get captured into the
+ * saved chapter HTML if the user typed mid-flash and replay forever after.
+ */
 export function flashAnchor(editorEl, anchorId) {
   if (!editorEl) return false;
   const el = editorEl.querySelector(`[data-authno-anchor="${anchorId}"],[data-authno-pin="${anchorId}"]`);
   if (!el) return false;
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.classList.remove('authno-anchor-flash');
-  // restart the animation
-  void el.offsetWidth; // eslint-disable-line no-unused-expressions
-  el.classList.add('authno-anchor-flash');
-  setTimeout(() => el.classList.remove('authno-anchor-flash'), 1500);
+  try {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent-a33').trim() || 'rgba(128,128,128,0.4)';
+    el.animate(
+      [
+        { backgroundColor: accent, boxShadow: `0 0 0 4px ${accent}` },
+        { backgroundColor: 'transparent', boxShadow: 'none' },
+      ],
+      { duration: 1400, easing: 'ease-out' }
+    );
+  } catch { /* WAAPI unavailable — the scroll alone still locates the spot */ }
   return true;
 }
 
@@ -60,7 +66,29 @@ function looksLikeName(text) {
 }
 
 // ── Anchor creation on the live editor DOM ────────────────────────────────────
+// Insert through document.execCommand('insertHTML') so the operation joins the
+// contentEditable's native undo stack (the whole editor is execCommand-based) —
+// raw DOM mutation here would sever Ctrl+Z history at the tag point. Falls back
+// to direct DOM surgery only if insertHTML is unavailable.
+
+function rangeToHtml(range) {
+  const div = document.createElement('div');
+  div.appendChild(range.cloneContents());
+  return div.innerHTML;
+}
+
+function execInsertAtRange(range, html) {
+  const s = window.getSelection();
+  if (!s) return false;
+  s.removeAllRanges();
+  s.addRange(range);
+  try { return document.execCommand('insertHTML', false, html); } catch { return false; }
+}
+
 function wrapSelectionAsAnchor(range, anchorId) {
+  const inner = rangeToHtml(range);
+  const html = `<span class="authno-anchor" data-authno-anchor="${anchorId}">${inner}</span>`;
+  if (execInsertAtRange(range, html)) return;
   const span = document.createElement('span');
   span.className = 'authno-anchor';
   span.setAttribute('data-authno-anchor', anchorId);
@@ -74,13 +102,16 @@ function wrapSelectionAsAnchor(range, anchorId) {
   }
 }
 
+const PIN_HTML = (anchorId) => `<span class="authno-pin" data-authno-pin="${anchorId}">​</span>`;
+
 function insertPinAt(range, anchorId) {
+  const r = range.cloneRange();
+  r.collapse(false);
+  if (execInsertAtRange(r, PIN_HTML(anchorId))) return;
   const pin = document.createElement('span');
   pin.className = 'authno-pin';
   pin.setAttribute('data-authno-pin', anchorId);
-  pin.appendChild(document.createTextNode('​')); // keeps the node editable-safe
-  const r = range.cloneRange();
-  r.collapse(false);
+  pin.appendChild(document.createTextNode('​'));
   r.insertNode(pin);
 }
 
@@ -99,9 +130,13 @@ export function ThreadSelectionLayer({
 
   useEffect(() => { injectThreadCss(); }, []);
 
-  // Track selection inside the editor.
+  // Track selection inside the editor. Coalesced to one measurement per frame —
+  // selectionchange fires per caret step (drag / shift+arrow), and reading
+  // getBoundingClientRect on each event forces synchronous layout.
   useEffect(() => {
-    const onSel = () => {
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
       if (menuOpen) return; // freeze while the menu is open
       const s = window.getSelection();
       const editorEl = editorRef?.current;
@@ -114,9 +149,19 @@ export function ThreadSelectionLayer({
       savedRange.current = range.cloneRange();
       setSel({ rect, text });
     };
+    const onSel = () => { if (!raf) raf = requestAnimationFrame(measure); };
     document.addEventListener('selectionchange', onSel);
-    return () => document.removeEventListener('selectionchange', onSel);
+    return () => { document.removeEventListener('selectionchange', onSel); if (raf) cancelAnimationFrame(raf); };
   }, [editorRef, menuOpen]);
+
+  // The chip/menu are fixed-positioned from a rect captured at selection time;
+  // scrolling moves the text out from under them, so dismiss on any scroll.
+  useEffect(() => {
+    if (!sel && !menuOpen) return;
+    const onScroll = () => { setMenuOpen(false); setSel(null); };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
+  }, [sel, menuOpen]);
 
   // Right-click with a selection also opens the menu (Electron has no native menu).
   useEffect(() => {
@@ -140,8 +185,8 @@ export function ThreadSelectionLayer({
     if (!editorEl || !range) { closeAll(); return; }
     const text = range.toString().trim();
     const anchorId = tid('an');
-    if (pinMode) insertPinAt(range, anchorId);
-    else wrapSelectionAsAnchor(range, anchorId);
+    if (pinMode) { insertPinAt(range, anchorId); hapticPin(); }
+    else { wrapSelectionAsAnchor(range, anchorId); hapticNodeConnect(); }
     // Persist the mutated HTML through the normal edit path (caret-safe).
     onEditContent(editorEl.innerHTML);
     const base = dataOverride ?? data;
@@ -196,7 +241,7 @@ export function ThreadSelectionLayer({
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: 'fixed', zIndex: 3002,
-              top: Math.min(chipTop, window.innerHeight - 380),
+              top: Math.max(8, Math.min(chipTop, window.innerHeight - 380)),
               left: Math.min(Math.max(8, chipLeft - 110), window.innerWidth - 268),
               width: 260, maxHeight: 360, overflowY: 'auto',
               background: 'var(--modal-bg)', border: '1px solid var(--border)',
@@ -318,6 +363,9 @@ export function ThreadGutter({ editorRef, containerRef, session, data, onMarkerC
         }
       }
     }
+    // Nothing to draw and nothing drawn — skip all DOM work (the common case
+    // for books that don't use threads; this effect re-runs on every keystroke).
+    if (anchorInfo.size === 0) { setMarks((m) => (m.length ? [] : m)); return; }
 
     const compute = () => {
       const contRect = containerEl.getBoundingClientRect();
@@ -338,9 +386,13 @@ export function ThreadGutter({ editorRef, containerRef, session, data, onMarkerC
       setMarks(next);
     };
 
-    compute();
+    // Debounced: this effect re-fires per keystroke (content dep), and compute
+    // does querySelectorAll + per-anchor getBoundingClientRect (forced layout).
+    // Waiting for a typing lull keeps the hot path free; markers land ~150ms
+    // after the last change, which is imperceptible for a passive gutter.
+    const t = setTimeout(compute, 150);
     window.addEventListener('resize', compute);
-    return () => window.removeEventListener('resize', compute);
+    return () => { clearTimeout(t); window.removeEventListener('resize', compute); };
   }, [editorRef, containerRef, session?.id, session?._editingChap, data, contentVersion]);
 
   return (
