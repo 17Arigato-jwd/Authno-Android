@@ -7,6 +7,7 @@
     "email": "blader.ultramate@gmail.com"
   },
   "homepage": "./",
+  "desktopName": "authno.desktop",
   "repository": {
     "type": "git",
     "url": "https://github.com/17arigato-jwd/authno-android"
@@ -46,10 +47,10 @@
     "eject": "react-scripts eject",
     "electron": "cross-env NODE_ENV=development electron .",
     "electron-build": "cross-env NODE_ENV=production electron .",
-    "dist": "electron-builder --win",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
-    "dist:all": "electron-builder --win --linux",
+    "dist": "electron-builder --win --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:all": "electron-builder --win --linux --publish never",
     "cap:add": "npx cap add android",
     "cap:sync": "npx cap sync android",
     "dist:android": "npm run build && npx cap sync android",
@@ -155,7 +156,15 @@
         "rpm"
       ],
       "category": "Utility",
-      "icon": "public"
+      "icon": "public/authno-512.png",
+      "synopsis": "Offline story editor",
+      "desktop": {
+        "entry": {
+          "Name": "AuthNo",
+          "StartupWMClass": "AuthNo"
+        }
+      },
+      "syncDesktopName": true
     },
     "extraResources": [
       {

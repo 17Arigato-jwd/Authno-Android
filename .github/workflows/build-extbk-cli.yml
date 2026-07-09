@@ -388,7 +388,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: { path: release-assets/ }
-      - uses: softprops/action-gh-release@v2
+
+      # ── cli-v* tags: the release IS the CLI — full name + body ────────────
+      - name: Publish CLI release (cli-v* tags)
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: "extbk-cli ${{ github.ref_name }}"
@@ -416,5 +420,20 @@ jobs:
             powershell -ExecutionPolicy Bypass -File install.ps1
             extbk --help
             ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── v* app tags: attach the CLI installers QUIETLY ─────────────────────
+      # No name:, no body: — this must not clobber the app release's identity.
+      # (Previously this step renamed every app release to "extbk-cli vX",
+      # which is why the Releases page showed only CLI titles.)
+      - name: Attach CLI installers to app release (v* tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release-assets/**/*.tar.gz
+            release-assets/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
