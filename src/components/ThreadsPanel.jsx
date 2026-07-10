@@ -19,7 +19,7 @@ import {
   addType, removeType, addRelation, removeRelation, relationsOf,
   locateAnchors, exportOutlineMarkdown, THREAD_COLORS,
 } from '../utils/threads';
-import { hapticSelect, hapticDelete, hapticNodeConnect } from '../utils/haptics';
+import { hapticDelete, hapticNodeConnect } from '../utils/haptics';
 
 /**
  * Debounce a value until it stops changing for `ms`. The session object gets a
@@ -215,8 +215,8 @@ function ThreadDetail({ session, data, thread, onChangeData, onStripAnchors, onJ
             color={color}
             focusRef={e.id === focusEntryId ? focusRef : null}
             anchored={(e.anchorIds || []).some(id => anchorMap.has(id))}
-            onToggleTodo={() => { hapticSelect(); onChangeData(updateEntry(data, thread.id, e.id, { todo: true, done: false })); }}
-            onToggleDone={() => { hapticSelect(); onChangeData(updateEntry(data, thread.id, e.id, { done: !e.done })); }}
+            onToggleTodo={() => onChangeData(updateEntry(data, thread.id, e.id, { todo: true, done: false }))}
+            onToggleDone={() => onChangeData(updateEntry(data, thread.id, e.id, { done: !e.done }))}
             onJump={() => { const id = (e.anchorIds || []).find(a => anchorMap.has(a)); if (id) onJump(id); }}
             onDelete={() => deleteEntry(e)}
             onEditText={(text) => onChangeData(updateEntry(data, thread.id, e.id, { text }))}
@@ -392,7 +392,7 @@ function ThreadList({ session, data, onOpenThread, onChangeData, onStripAnchors,
           {remindersOpen && (
             <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {todos.map(({ thread, entry }) => (
-                <button key={entry.id} onClick={() => { hapticSelect(); onJumpEntry(thread.id, entry.id); }}
+                <button key={entry.id} onClick={() => onJumpEntry(thread.id, entry.id)}
                   style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, border: 'none', background: 'var(--modal-bg)', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ width: 8, height: 8, borderRadius: 3, background: threadColor(data, thread), flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.text}</span>

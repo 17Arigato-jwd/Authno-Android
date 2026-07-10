@@ -403,6 +403,13 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
 
       <div style={{ height: 16 }} />
 
+      {/* Vibration feedback (B7) */}
+      <SettingRow icon={DSIcons.Bell} title="Vibration feedback" description="Light haptic tick on taps, plus stronger cues for saves, deletes and goals" accentHex={accentHex}>
+        <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
+      </SettingRow>
+
+      <div style={{ height: 16 }} />
+
       {/* Background Effect dropdown */}
       <BackgroundEffectPicker
         value={settings.backgroundEffect ?? (settings.enableGradient ? 'gradient' : 'none')}
@@ -792,6 +799,7 @@ export const DEFAULT_SETTINGS = {
   startupBehavior: 'last',
   restoreOpenBooks: true,
   dailyWordGoal: 500,
+  hapticsEnabled: true,
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange }) {
@@ -823,7 +831,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       id:    `ext::${item._extId}::${item.id}`,
       label: item.label,
       icon:  (() => {
-        const DS_MAP = { Cloud: 'Star', Puzzle: 'Extension', Upload: 'Upload', Settings2: 'Settings',
+        const DS_MAP = { Cloud: 'Cloud', Puzzle: 'Extension', Upload: 'Upload', Settings2: 'Settings',
           HardDrive: 'Package', Server: 'Package', Box: 'Package', Database: 'Package',
           BookOpen: 'BookOpen', Zap: 'Lightning' };
         const dsKey = item.icon && DS_MAP[item.icon];

@@ -58,6 +58,25 @@ export function findFont(fontId) {
   return FONT_LIBRARY.find(f => f.id === fontId) || null;
 }
 
+// ── Weight variants ───────────────────────────────────────────────────────────
+
+export const WEIGHT_NAMES = {
+  100: 'Thin', 200: 'ExtraLight', 300: 'Light', 400: 'Regular',
+  500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black',
+};
+
+/**
+ * Variants (weights) a library font ships. Parsed from the Google Fonts spec
+ * (e.g. 'Inter:wght@400;500;600;700' → [400,500,600,700]); system stacks get
+ * the universal Regular/Bold pair. Used by the editor's font picker to group
+ * variants under one family (author-requested sub-menu behaviour).
+ */
+export function fontVariants(font) {
+  const m = font?.google?.match(/:wght@([\d;]+)/);
+  const weights = m ? m[1].split(';').map(Number) : [400, 700];
+  return weights.map(w => ({ weight: w, label: WEIGHT_NAMES[w] || String(w) }));
+}
+
 /** Resolve a font id → CSS font-family stack, honouring uploaded custom fonts. */
 export function resolveFontStack(fontId, customFonts = []) {
   if (!fontId) return `'Inter', ${SYSTEM_SANS}`;

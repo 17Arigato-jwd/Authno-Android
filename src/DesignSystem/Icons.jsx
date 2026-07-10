@@ -1,179 +1,174 @@
 /**
- * Icons.jsx — Icon system with guaranteed rendering.
+ * Icons.jsx — Icon system, now backed by lucide-react.
  *
- * v1.1.16 fix: the app used @hackernoon/pixel-icon-library font glyphs by name,
- * but ~1/3 of the requested names (chevron-left/right, file, list, calendar,
- * key, palette, sliders-h, terminal, ellipsis, bullseye, eraser…) DON'T EXIST
- * in that font, so those icons rendered blank everywhere. Fixes:
- *   1. Names that exist in the font under a different spelling are remapped
- *      (e.g. calendar → calendar-alt, user-circle → user).
- *   2. Names the font lacks entirely render as inline SVG (SVGS below), so an
- *      icon is ALWAYS drawn regardless of the font's coverage.
+ * History: v1.1.16 used the @hackernoon pixel icon font with SVG fallbacks for
+ * missing glyphs. The pixel look read as "retro website" next to the rest of
+ * the UI (author feedback with screenshots), so every icon now maps to a
+ * modern lucide-react stroke icon behind the SAME DSIcons API — callers keep
+ * using <DSIcons.Name size color style /> untouched.
  *
- * Font glyphs still use `currentColor` and the `size` prop like before; SVG
- * fallbacks honour the same size/color/style contract.
+ * Rules:
+ *   • Keep the DSIcons key set stable — components all over the app import it.
+ *   • color defaults to 'currentColor' so CSS-var theming keeps working.
+ *   • Brand glyphs lucide doesn't guarantee long-term (Discord, Npm) are
+ *     inline SVGs so a lucide upgrade can never silently break them.
  */
 
-// ── Inline SVG fallbacks for glyphs the pixel font doesn't provide ────────────
-// Simple, stroke-based, 24x24 viewBox, inherit color via stroke="currentColor".
-const P = (d) => ({ d });
-const SVGS = {
-  'chevron-left':  ['<polyline points="15 18 9 12 15 6"/>'],
-  'chevron-right': ['<polyline points="9 18 15 12 9 6"/>'],
-  'ellipsis-h':    ['<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>'],
-  'ellipsis-v':    ['<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>'],
-  'file':          ['<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'],
-  'file-alt':      ['<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>'],
-  'file-plus':     ['<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/>'],
-  'book-open':     ['<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'],
-  'list':          ['<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>'],
-  'calendar':      ['<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'],
-  'bullseye':      ['<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>'],
-  'eraser':        ['<path d="M20 20H7L3 16a2 2 0 0 1 0-3L13 3a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-9 9"/><line x1="18" y1="12.5" x2="9.5" y2="4"/>'],
-  'key':           ['<circle cx="7.5" cy="15.5" r="4.5"/><line x1="10.7" y1="12.3" x2="21" y2="2"/><line x1="17" y1="6" x2="20" y2="9"/><line x1="15" y1="8" x2="18" y2="11"/>'],
-  'palette':       ['<circle cx="13.5" cy="6.5" r="1.3"/><circle cx="17.5" cy="10.5" r="1.3"/><circle cx="8.5" cy="7.5" r="1.3"/><circle cx="6.5" cy="12.5" r="1.3"/><path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.5A4.5 4.5 0 0 0 22 11 10 10 0 0 0 12 2z"/>'],
-  'sliders-h':     ['<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="9" cy="8" r="2.2"/><circle cx="15" cy="16" r="2.2"/>'],
-  'terminal':      ['<polyline points="4 7 9 12 4 17"/><line x1="12" y1="17" x2="20" y2="17"/>'],
-  'font':          ['<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>'],
-  'infinity':      ['<path d="M18.2 8.4c-2 0-3.2 1.6-4.2 3.6-1 2-2.2 3.6-4.2 3.6a3.6 3.6 0 0 1 0-7.2c2 0 3.2 1.6 4.2 3.6 1 2 2.2 3.6 4.2 3.6a3.6 3.6 0 0 0 0-7.2z"/>'],
-  'redo':          ['<polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10"/>'],
-  'rocket':        ['<path d="M5 13l-2 6 6-2m-4-4a10 10 0 0 1 8-8c3 0 4 1 4 1s1 1 1 4a10 10 0 0 1-8 8m-6-6l6 6"/><circle cx="14.5" cy="9.5" r="1.5"/>'],
-  'shield-alt':    ['<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/>'],
-  'puzzle-piece':  ['<path d="M10 3v2.5a1.5 1.5 0 0 0 3 0V3h4v4h2.5a1.5 1.5 0 0 1 0 3H17v4h-2.5a1.5 1.5 0 0 0 0 3H17v-3m-7 3H6v-4H3.5a1.5 1.5 0 0 1 0-3H6V6"/>'],
-  'magic':         ['<path d="M15 4V2m0 20v-2M4 15H2m20 0h-2M6 6L4.5 4.5M19.5 19.5L18 18m0-12l1.5-1.5M4.5 19.5L6 18"/><line x1="9" y1="9" x2="20" y2="20"/>'],
-  'exclamation-circle': ['<circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/>'],
-  'eye-slash':     ['<path d="M17.9 17.9A10.5 10.5 0 0 1 12 20C5 20 1 12 1 12a19 19 0 0 1 5.1-6M9.9 4.2A10.5 10.5 0 0 1 12 4c7 0 11 8 11 8a19 19 0 0 1-2.2 3.2M14.1 14.1a3 3 0 0 1-4.2-4.2"/><line x1="1" y1="1" x2="23" y2="23"/>'],
-  'user-circle':   ['<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18a5.5 5.5 0 0 1 11 0"/>'],
-  'box':           ['<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="21"/>'],
-  'volume':        ['<polygon points="4 9 4 15 8 15 13 20 13 4 8 9 4 9"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a9 9 0 0 1 0 12"/>'],
-  'flask':         ['<path d="M9 2h6M10 2v6.5L4.8 18A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-3L14 8.5V2"/><line x1="8.5" y1="14" x2="15.5" y2="14"/>'],
-  'flame':         ['<path d="M12 2s5 4 5 9a5 5 0 0 1-10 0c0-1.6.6-2.9 1.5-3.9C9 8.4 10 7 9.7 5 11 5.6 12 6.6 12 8c.6-1.3 1-3 0-6z"/>'],
-  'globe':         ['<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>'],
-  'pin':           ['<line x1="12" y1="16" x2="12" y2="22"/><path d="M9 3h6l-1.2 2.2v3.6l2.7 3.2a1 1 0 0 1-.8 1.6H7.3a1 1 0 0 1-.8-1.6l2.7-3.2V5.2L9 3z"/>'],
-};
+import {
+  Home, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Menu,
+  MoreHorizontal, MoreVertical,
+  Book, BookOpen, File, FilePlus, FileText, Folder, FolderOpen, Archive, Save, Target,
+  Check, X, Plus, Minus, Search, Pencil, Eraser, Trash2, Copy, Link, Upload, Download, RotateCw,
+  Info, AlertTriangle, CheckCircle2, XCircle, AlertCircle, Bell, BellRing,
+  Lock, Unlock, Shield, Key,
+  Eye, EyeOff, Camera, Palette, Type, SlidersHorizontal,
+  MessagesSquare, Star, Rocket, Sparkles, Zap,
+  Settings, Puzzle, Code, Terminal, Bug, Tag, Bookmark, Clock, Calendar,
+  User, CircleUser, Infinity as InfinityIcon, List, Package, PackagePlus,
+  Github, Figma, Heart,
+  Volume2, FlaskConical, Flame, Globe, Pin, Cloud,
+  Strikethrough, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  ListOrdered, Indent, Outdent, RemoveFormatting, Baseline, Highlighter,
+  Undo2, Redo2, Scissors, ClipboardPaste, TextSelect,
+} from 'lucide-react';
 
-function SvgIcon({ paths, size = 16, color = 'currentColor', style = {} }) {
+// Uniform wrapper: preserves the legacy {size, color, style} contract and the
+// inline-flex baseline behaviour the old font glyphs had.
+const icon = (Lucide, extraProps = {}) =>
+  function DSIcon({ size = 16, color = 'currentColor', style = {} }) {
+    return (
+      <Lucide
+        size={size}
+        color={color}
+        strokeWidth={2}
+        style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}
+        {...extraProps}
+      />
+    );
+  };
+
+// ── Brand glyphs kept as inline SVG (lucide brand icons are deprecated) ──────
+function DiscordIcon({ size = 16, color = 'currentColor', style = {} }) {
   return (
-    <svg
-      width={size} height={size} viewBox="0 0 24 24"
-      fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}
-      dangerouslySetInnerHTML={{ __html: paths.join('') }}
-    />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}
+      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}>
+      <path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.8 13.8 0 0 0-.64 1.28 18.3 18.3 0 0 0-5.5 0 13.7 13.7 0 0 0-.64-1.28c-1.71.29-3.37.8-4.93 1.51A20.3 20.3 0 0 0 .1 18.06a19.9 19.9 0 0 0 6.07 3.03c.49-.66.93-1.37 1.3-2.1a12.9 12.9 0 0 1-2.06-.98c.17-.12.34-.25.5-.38a14.2 14.2 0 0 0 12.18 0c.16.13.33.26.5.38-.66.39-1.35.72-2.07.98.38.73.81 1.44 1.3 2.1a19.8 19.8 0 0 0 6.08-3.03 20.2 20.2 0 0 0-3.58-13.69ZM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.95-2.42 2.16-2.42c1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Zm7.96 0c-1.18 0-2.16-1.08-2.16-2.42s.95-2.42 2.16-2.42c1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Z"/>
+    </svg>
   );
 }
-
-function HNIcon({ name, size = 16, color = 'currentColor', style = {} }) {
+function NpmIcon({ size = 16, color = 'currentColor', style = {} }) {
   return (
-    <i
-      className={`hn hn-${name}`}
-      style={{ fontSize: size, color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, ...style }}
-    />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}
+      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}>
+      <path d="M2 2h20v20H2V2zm4 4v12h6V10h4v8h4V6H6z"/>
+    </svg>
   );
 }
-
-// Names that exist in the pixel font under a DIFFERENT spelling.
-const FONT_ALIAS = {
-  'calendar':    'calendar-alt',
-};
-
-// Build an icon component. If we have an SVG fallback for this name, use it;
-// otherwise use the font glyph (applying any alias).
-const icon = (name) => {
-  if (SVGS[name]) {
-    const paths = SVGS[name];
-    return ({ size, color, style }) => <SvgIcon paths={paths} size={size} color={color} style={style} />;
-  }
-  const fontName = FONT_ALIAS[name] || name;
-  return ({ size, color, style }) => <HNIcon name={fontName} size={size} color={color} style={style} />;
-};
 
 export const DSIcons = {
   // Navigation
-  Home:          icon('home'),
-  ChevronRight:  icon('chevron-right'),
-  ChevronLeft:   icon('chevron-left'),
-  ChevronUp:     icon('chevron-up'),
-  ChevronDown:   icon('chevron-down'),
-  Menu:          icon('bars'),
-  More:          icon('ellipsis-h'),
-  MoreVertical:  icon('ellipsis-v'),
+  Home:          icon(Home),
+  ChevronRight:  icon(ChevronRight),
+  ChevronLeft:   icon(ChevronLeft),
+  ChevronUp:     icon(ChevronUp),
+  ChevronDown:   icon(ChevronDown),
+  Menu:          icon(Menu),
+  More:          icon(MoreHorizontal),
+  MoreVertical:  icon(MoreVertical),
   // Content & files
-  Book:          icon('book'),
-  BookOpen:      icon('book-open'),
-  File:          icon('file'),
-  FilePlus:      icon('file-plus'),
-  FileText:      icon('file-alt'),
-  Folder:        icon('folder'),
-  FolderOpen:    icon('folder-open'),
-  Archive:       icon('archive'),
-  Save:          icon('save'),
-  Target:        icon('bullseye'),
+  Book:          icon(Book),
+  BookOpen:      icon(BookOpen),
+  File:          icon(File),
+  FilePlus:      icon(FilePlus),
+  FileText:      icon(FileText),
+  Folder:        icon(Folder),
+  FolderOpen:    icon(FolderOpen),
+  Archive:       icon(Archive),
+  Save:          icon(Save),
+  Target:        icon(Target),
   // Actions
-  Check:         icon('check'),
-  X:             icon('times'),
-  Plus:          icon('plus'),
-  Minus:         icon('minus'),
-  Search:        icon('search'),
-  Edit:          icon('pen'),
-  Eraser:        icon('eraser'),
-  Trash:         icon('trash'),
-  Copy:          icon('copy'),
-  Link:          icon('link'),
-  Upload:        icon('upload'),
-  Download:      icon('download'),
-  Refresh:       icon('redo'),
+  Check:         icon(Check),
+  X:             icon(X),
+  Plus:          icon(Plus),
+  Minus:         icon(Minus),
+  Search:        icon(Search),
+  Edit:          icon(Pencil),
+  Eraser:        icon(Eraser),
+  Trash:         icon(Trash2),
+  Copy:          icon(Copy),
+  Link:          icon(Link),
+  Upload:        icon(Upload),
+  Download:      icon(Download),
+  Refresh:       icon(RotateCw),
+  Cut:           icon(Scissors),
+  Paste:         icon(ClipboardPaste),
+  SelectAll:     icon(TextSelect),
+  Undo:          icon(Undo2),
+  Redo:          icon(Redo2),
   // Status
-  Info:          icon('info-circle'),
-  Warning:       icon('exclamation-triangle'),
-  CheckCircle:   icon('check-circle'),
-  XCircle:       icon('times-circle'),
-  WarningCircle: icon('exclamation-circle'),
-  Bell:          icon('bell'),
-  BellRinging:   icon('bell-solid'),
+  Info:          icon(Info),
+  Warning:       icon(AlertTriangle),
+  CheckCircle:   icon(CheckCircle2),
+  XCircle:       icon(XCircle),
+  WarningCircle: icon(AlertCircle),
+  Bell:          icon(Bell),
+  BellRinging:   icon(BellRing),
   // Security
-  Lock:          icon('lock'),
-  Unlock:        icon('lock-open'),
-  Shield:        icon('shield-alt'),
-  Key:           icon('key'),
+  Lock:          icon(Lock),
+  Unlock:        icon(Unlock),
+  Shield:        icon(Shield),
+  Key:           icon(Key),
   // Visual / settings
-  Eye:           icon('eye'),
-  EyeOff:        icon('eye-slash'),
-  Camera:        icon('camera'),
-  Palette:       icon('palette'),
-  Text:          icon('font'),
-  Sliders:       icon('sliders-h'),
+  Eye:           icon(Eye),
+  EyeOff:        icon(EyeOff),
+  Camera:        icon(Camera),
+  Palette:       icon(Palette),
+  Text:          icon(Type),
+  Sliders:       icon(SlidersHorizontal),
+  // Formatting (editor toolbar)
+  Strikethrough: icon(Strikethrough),
+  AlignLeft:     icon(AlignLeft),
+  AlignCenter:   icon(AlignCenter),
+  AlignRight:    icon(AlignRight),
+  AlignJustify:  icon(AlignJustify),
+  ListOrdered:   icon(ListOrdered),
+  Indent:        icon(Indent),
+  Outdent:       icon(Outdent),
+  ClearFormat:   icon(RemoveFormatting),
+  TextColor:     icon(Baseline),
+  Highlighter:   icon(Highlighter),
   // Social / app
-  Discord:       icon('discord'),
-  Chat:          icon('comments'),
-  Star:          icon('star'),
-  StarFill:      icon('star-solid'),
-  Rocket:        icon('rocket'),
-  Sparkle:       icon('magic'),
-  Lightning:     icon('bolt'),
+  Discord:       DiscordIcon,
+  Chat:          icon(MessagesSquare),
+  Star:          icon(Star),
+  StarFill:      icon(Star, { fill: 'currentColor' }),
+  Rocket:        icon(Rocket),
+  Sparkle:       icon(Sparkles),
+  Lightning:     icon(Zap),
+  Cloud:         icon(Cloud),
   // System
-  Settings:      icon('cog'),
-  Extension:     icon('puzzle-piece'),
-  Code:          icon('code'),
-  Terminal:      icon('terminal'),
-  Bug:           icon('bug'),
-  Tag:           icon('tag'),
-  Bookmark:      icon('bookmark'),
-  Clock:         icon('clock'),
-  Calendar:      icon('calendar'),
-  User:          icon('user'),
-  UserCircle:    icon('user-circle'),
-  Infinity:      icon('infinity'),
-  List:          icon('list'),
-  Package:       icon('box'),
-  PackagePlus:   icon('box'),
-  Volume:        icon('volume'),
-  Flask:         icon('flask'),
-  Flame:         icon('flame'),
-  Globe:         icon('globe'),
-  Pin:           icon('pin'),
-  Npm:           icon('npm'),
-  Github:        icon('github'),
-  Figma:         icon('figma'),
-  Heart:         icon('heart'),
+  Settings:      icon(Settings),
+  Extension:     icon(Puzzle),
+  Code:          icon(Code),
+  Terminal:      icon(Terminal),
+  Bug:           icon(Bug),
+  Tag:           icon(Tag),
+  Bookmark:      icon(Bookmark),
+  Clock:         icon(Clock),
+  Calendar:      icon(Calendar),
+  User:          icon(User),
+  UserCircle:    icon(CircleUser),
+  Infinity:      icon(InfinityIcon),
+  List:          icon(List),
+  Package:       icon(Package),
+  PackagePlus:   icon(PackagePlus),
+  Npm:           NpmIcon,
+  Github:        icon(Github),
+  Figma:         icon(Figma),
+  Heart:         icon(Heart),
+  Volume:        icon(Volume2),
+  Flask:         icon(FlaskConical),
+  Flame:         icon(Flame),
+  Globe:         icon(Globe),
+  Pin:           icon(Pin),
 };

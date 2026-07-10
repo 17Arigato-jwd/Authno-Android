@@ -582,7 +582,17 @@ function _wordCount(html) {
 }
 
 function _preview(html) {
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  // Decode entities too (F1): the regex-only strip leaked raw "&nbsp;" into
+  // the previews users see in the sidebar and home lists.
+  let text;
+  if (typeof document !== 'undefined') {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    text = (div.textContent || '').replace(/\u00a0/g, ' ');
+  } else {
+    text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ');
+  }
+  text = text.replace(/\s+/g, ' ').trim();
   return text.slice(0, 80) + (text.length > 80 ? '\u2026' : '');
 }
 

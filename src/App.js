@@ -10,15 +10,18 @@ import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
 import { FlameButton } from "./components/Streak";
 import { isAndroid, isElectron } from "./utils/platform";
+import { DEFAULT_WORD_GOAL } from "./components/constants";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
 import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent, applyFonts } from "./theme";
 import { FontCustomizer } from "./components/FontCustomizer";
 import { DEFAULT_FONTS } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
+import ChapterInfoModal from "./components/ChapterInfoModal";
 import ThreadsPanel from "./components/ThreadsPanel";
 import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
-import { hapticSelect } from "./utils/haptics";
+import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
+import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -72,6 +75,7 @@ function Editor({
   chapterTitle, onEditChapterTitle,
   onBack, onPrevChapter, onNextChapter, chapterPosition,
   fullSession, onUpdateSession, onOpenChapter,
+  customFonts,
 }) {
   const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
@@ -194,7 +198,7 @@ function Editor({
           <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
           {current && (
             <button
-              onClick={() => { hapticSelect(); setThreadsOpen((v) => !v); }}
+              onClick={() => setThreadsOpen((v) => !v)}
               title="Threads — plotlines & character arcs"
               aria-label="Threads"
               style={{ padding: 8, border: `1px solid ${threadsOpen ? accentHex : "var(--border)"}`, borderRadius: 6, background: threadsOpen ? `${accentHex}15` : "none", cursor: "pointer", transition: "all 0.15s", color: threadsOpen ? accentHex : "var(--text-1)", display: "flex", alignItems: "center" }}
@@ -256,7 +260,8 @@ function Editor({
           </button>
         </div>
       )}
-      <main ref={mainRef} style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem" : "1.5rem" }}>
+      {/* Android: extra bottom padding clears the floating/docked toolbar */}
+      <main ref={mainRef} style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem 0.75rem 96px" : "1.5rem" }}>
         {current ? (
           <>
             {/* Colored gutter markers for thread anchors (prose stays unstyled) */}
@@ -266,7 +271,7 @@ function Editor({
               contentVersion={current?.content}
               onMarkerClick={openThreadFromMarker}
             />
-            <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} editorRef={editorRef} />
+            <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} editorRef={editorRef} customFonts={customFonts} />
             <div
               ref={editorRef}
               contentEditable
@@ -280,6 +285,18 @@ function Editor({
                 WebkitUserSelect: "text", userSelect: "text",
               }}
               onInput={(e) => onEditContent(e.currentTarget.innerHTML)}
+              onPaste={(e) => {
+                // F4: strip foreign fonts/colors/scripts from web pastes while
+                // keeping bold/italic/lists/paragraph structure. Routed through
+                // insertHTML so the paste stays undoable.
+                const html = e.clipboardData?.getData("text/html");
+                const text = e.clipboardData?.getData("text/plain");
+                if (!html && !text) return;
+                e.preventDefault();
+                if (html) document.execCommand("insertHTML", false, sanitizePastedHtml(html));
+                else document.execCommand("insertText", false, text);
+                onEditContent(e.currentTarget.innerHTML);
+              }}
             />
           </>
         ) : (
@@ -379,6 +396,7 @@ function AppInner({ navigateRef }) {
   const [fontCustomizerOpen, setFontCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [readAloudSession, setReadAloudSession] = useState(null);
+  const [chapterInfoOpen, setChapterInfoOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   useEffect(() => subscribeBilling(() => setBillingOpen(true)), []);
   const [settings, setSettings] = useState(() => _safeParse("writerSettings", DEFAULT_SETTINGS));
@@ -409,6 +427,24 @@ function AppInner({ navigateRef }) {
   // Like applyAccent, this writes a CSS-var override that outranks the theme's
   // default fonts and is re-asserted after every theme switch.
   useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts]);
+
+  // ── Global tap haptics (B7) ───────────────────────────────────────────────
+  // Every button/menu tap gives a light tick (author: "vibrations don't really
+  // work when clicking buttons"). Delegated + throttled; heavier semantic
+  // haptics (delete/save/goal) still fire from their own call sites on top.
+  useEffect(() => { setHapticsEnabled(settings.hapticsEnabled ?? true); }, [settings.hapticsEnabled]);
+  const _lastTapHaptic = useRef(0);
+  useEffect(() => {
+    const onTap = (e) => {
+      if (!e.target?.closest?.('button, [role="button"], select')) return;
+      const now = Date.now();
+      if (now - _lastTapHaptic.current < 90) return;
+      _lastTapHaptic.current = now;
+      hapticSelect();
+    };
+    document.addEventListener('click', onTap, true);
+    return () => document.removeEventListener('click', onTap, true);
+  }, []);
 
   // ── Swipe-from-left-edge to open drawer (Android only) ──────────────────
   useEffect(() => {
@@ -655,7 +691,7 @@ function AppInner({ navigateRef }) {
       if (!book) return;
       setSessions((prev) => {
         if (prev.some((s) => s.id === book.id)) return prev;
-        const nb = { ...book, id: book.id || Date.now().toString(), preview: (book.content || "").replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." };
+        const nb = { ...book, id: book.id || Date.now().toString(), preview: previewOf(book.content || "") };
         setCurrentId(nb.id); return [nb, ...prev];
       });
     };
@@ -796,7 +832,7 @@ function AppInner({ navigateRef }) {
     const chapIdx = currentChapterIdx || 1;
     const now = new Date().toISOString();
     const chapters = (x.chapters || []).map((ch) => ch.chap_idx === chapIdx ? { ...ch, content: c, updated: now } : ch);
-    return { ...x, chapters, content: chapIdx === 1 ? c : x.content, preview: chapIdx === 1 ? c.replace(/<[^>]*>?/gm, "").slice(0, 60) + "..." : x.preview, updated: now };
+    return { ...x, chapters, content: chapIdx === 1 ? c : x.content, preview: chapIdx === 1 ? previewOf(c) : x.preview, updated: now };
   }));
   const handleEditChapterTitle = useCallback((t) => {
     setSessions((prev) => prev.map((s) => {
@@ -918,7 +954,7 @@ function AppInner({ navigateRef }) {
           onNewBook={newBook} onSelect={handleSelect}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
-          current={current} goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          current={current} goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
           onRefresh={async () => {
             try { const { listSavedBooks } = await import('./utils/storage'); const books = await listSavedBooks(); if (books.length) setSessions(prev => { const ids = new Set(prev.map(s => s.id)); return [...prev, ...books.filter(b => !ids.has(b.id))]; }); }
@@ -937,12 +973,13 @@ function AppInner({ navigateRef }) {
           onReadAloud={() => current && setReadAloudSession(current)}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
-          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
       ) : (
         <Editor
           current={editorCurrent} onEditTitle={handleEditTitle} onEditContent={handleEditContent}
+          customFonts={customization.fonts?.custom ?? []}
           fullSession={current} onUpdateSession={handleUpdateSession} onOpenChapter={handleEditChapter}
           onEditChapterTitle={currentChapterIdx ? handleEditChapterTitle : undefined}
           chapterTitle={currentChapter?.title ?? null}
@@ -951,7 +988,7 @@ function AppInner({ navigateRef }) {
           onNextChapter={nextChapIdx !== null ? () => handleEditChapter(nextChapIdx) : null}
           chapterPosition={currentChapterPos >= 0 ? { pos: currentChapterPos + 1, total: sortedChapters.length } : null}
           onToggleMenu={handleToggleMenu} accentHex={customization.accentHex}
-          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? 300}
+          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
@@ -964,7 +1001,21 @@ function AppInner({ navigateRef }) {
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
+        context={view === "home" ? "home" : "book"}
+        onRename={(t) => handleUpdateSession({ title: t })}
+        onChapterInfo={current ? () => setChapterInfoOpen(true) : null}
+        onExport={{ txt: handleExportTxt, html: handleExportHtml, epub: handleExportEpub, pdf: handleExportPdf }}
+        onReadAloud={() => current && setReadAloudSession(current)}
       />
+
+      {chapterInfoOpen && current && (
+        <ChapterInfoModal
+          session={current}
+          chapterIdx={currentChapterIdx ?? 1}
+          accentHex={customization.accentHex}
+          onClose={() => setChapterInfoOpen(false)}
+        />
+      )}
 
       <Settings
         isOpen={settingsOpen} onClose={() => setSettingsOpen(false)}

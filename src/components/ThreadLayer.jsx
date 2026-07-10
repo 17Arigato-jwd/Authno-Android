@@ -20,7 +20,8 @@ import { DSIcons } from '../DesignSystem';
 import {
   getAllTypes, typeById, threadColor, addThread, addEntry, tid,
 } from '../utils/threads';
-import { hapticNodeConnect, hapticPin } from '../utils/haptics';
+import { hapticNodeConnect, hapticPin, hapticSelect } from '../utils/haptics';
+import { selectAllIn, insertTextAtSelection } from '../utils/editorFormat';
 
 // ── Shared CSS (anchor resets only — the flash uses the Web Animations API) ──
 const STYLE_ID = 'authno-thread-layer-css';
@@ -122,6 +123,7 @@ export function ThreadSelectionLayer({
 }) {
   const [sel, setSel] = useState(null);          // { rect, text }
   const [menuOpen, setMenuOpen] = useState(false);
+  const [caretOnly, setCaretOnly] = useState(false); // menu opened at a bare caret
   const [todoMode, setTodoMode] = useState(false);
   const [pinMode, setPinMode] = useState(false);
   const [newName, setNewName] = useState('');
@@ -163,21 +165,86 @@ export function ThreadSelectionLayer({
     return () => document.removeEventListener('scroll', onScroll, { capture: true });
   }, [sel, menuOpen]);
 
-  // Right-click with a selection also opens the menu (Electron has no native menu).
+  // Right-click opens the menu (Electron has no native menu). With a selection
+  // it's the full menu; at a bare caret it's the clipboard-only variant — the
+  // native Android toolbar is suppressed (MainActivity), so Paste must live here.
   useEffect(() => {
     const editorEl = editorRef?.current;
     if (!editorEl) return;
-    const onCtx = (e) => {
-      if (sel && savedRange.current) { e.preventDefault(); setMenuOpen(true); }
+    const openAtCaret = (x, y) => {
+      const s = window.getSelection();
+      if (s?.rangeCount) savedRange.current = s.getRangeAt(0).cloneRange();
+      setSel({ rect: { top: y, left: x, width: 0 }, text: '' });
+      setCaretOnly(true);
+      setMenuOpen(true);
     };
+    const onCtx = (e) => {
+      e.preventDefault();
+      if (sel?.text && savedRange.current) { setCaretOnly(false); setMenuOpen(true); }
+      else openAtCaret(e.clientX, e.clientY);
+    };
+    // Android: long-press at a bare caret (selection long-press is handled by
+    // the chip; this covers paste-at-caret since the native toolbar is gone).
+    let timer = null, sx = 0, sy = 0;
+    const onTouchStart = (e) => {
+      const t = e.touches?.[0]; if (!t) return;
+      sx = t.clientX; sy = t.clientY;
+      timer = setTimeout(() => {
+        const s = window.getSelection();
+        if (s && s.isCollapsed) { hapticSelect(); openAtCaret(sx, sy); }
+      }, 550);
+    };
+    const onTouchMove = (e) => {
+      const t = e.touches?.[0]; if (!t) return;
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) clearTimeout(timer);
+    };
+    const onTouchEnd = () => clearTimeout(timer);
     editorEl.addEventListener('contextmenu', onCtx);
-    return () => editorEl.removeEventListener('contextmenu', onCtx);
+    editorEl.addEventListener('touchstart', onTouchStart, { passive: true });
+    editorEl.addEventListener('touchmove', onTouchMove, { passive: true });
+    editorEl.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      editorEl.removeEventListener('contextmenu', onCtx);
+      editorEl.removeEventListener('touchstart', onTouchStart);
+      editorEl.removeEventListener('touchmove', onTouchMove);
+      editorEl.removeEventListener('touchend', onTouchEnd);
+    };
   }, [editorRef, sel]);
 
   const closeAll = useCallback(() => {
     setMenuOpen(false); setSel(null); setTodoMode(false); setPinMode(false);
-    setNewName(''); setNewTypeId(null);
+    setNewName(''); setNewTypeId(null); setCaretOnly(false);
   }, []);
+
+  // ── Clipboard actions (replace the suppressed native menu) ────────────────
+  const restoreRange = () => {
+    const r = savedRange.current;
+    if (!r) return false;
+    const s = window.getSelection();
+    s.removeAllRanges(); s.addRange(r);
+    editorRef?.current?.focus();
+    return true;
+  };
+  const doCut = () => { if (restoreRange()) { document.execCommand('cut'); onEditContent(editorRef.current.innerHTML); } closeAll(); };
+  const doCopy = () => { if (restoreRange()) document.execCommand('copy'); closeAll(); };
+  const doPaste = async () => {
+    if (restoreRange()) {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) { insertTextAtSelection(editorRef.current, text); onEditContent(editorRef.current.innerHTML); }
+      } catch { /* clipboard permission denied — nothing to paste */ }
+    }
+    closeAll();
+  };
+  const doSelectAll = () => {
+    selectAllIn(editorRef?.current);
+    setMenuOpen(false); setCaretOnly(false); // keep chip flow alive with new selection
+  };
+  const doQuickFormat = (cmd) => {
+    if (restoreRange()) { document.execCommand(cmd); onEditContent(editorRef.current.innerHTML); }
+    closeAll();
+  };
 
   const commitToThread = useCallback((threadId, dataOverride) => {
     const editorEl = editorRef?.current;
@@ -249,7 +316,47 @@ export function ThreadSelectionLayer({
               boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
             }}
           >
+            {/* Clipboard row — replaces the suppressed native selection toolbar */}
+            <div style={{ display: 'flex', gap: 2, paddingBottom: 6, borderBottom: '1px solid var(--border-sm)', marginBottom: 6 }}>
+              {[
+                { label: 'Cut',        Icon: DSIcons.Cut,       act: doCut,       disabled: caretOnly },
+                { label: 'Copy',       Icon: DSIcons.Copy,      act: doCopy,      disabled: caretOnly },
+                { label: 'Paste',      Icon: DSIcons.Paste,     act: doPaste,     disabled: false },
+                { label: 'Select all', Icon: DSIcons.SelectAll, act: doSelectAll, disabled: false },
+              ].map(({ label, Icon, act, disabled }) => (
+                <button key={label} onClick={act} disabled={disabled} title={label}
+                  style={{
+                    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    padding: '7px 2px', borderRadius: 8, border: 'none', background: 'transparent',
+                    color: disabled ? 'var(--text-5)' : 'var(--text-2)', fontSize: 9.5, fontWeight: 600,
+                    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+                  }}
+                  onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--surface)'; }}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Icon size={15} color="currentColor" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Quick format row */}
+            {!caretOnly && (
+              <div style={{ display: 'flex', gap: 4, paddingBottom: 6, borderBottom: '1px solid var(--border-sm)', marginBottom: 6 }}>
+                {[
+                  ['bold', <b key="b">B</b>], ['italic', <i key="i">I</i>],
+                  ['underline', <u key="u">U</u>], ['strikeThrough', <DSIcons.Strikethrough key="s" size={14} />],
+                ].map(([cmd, glyph]) => (
+                  <button key={cmd} onClick={() => doQuickFormat(cmd)}
+                    style={{ flex: 1, padding: '6px 0', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {glyph}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Mode toggles */}
+            {!caretOnly && (
             <div style={{ display: 'flex', gap: 6, padding: '2px 4px 8px' }}>
               {[
                 { on: todoMode, set: setTodoMode, label: 'TODO', Icon: DSIcons.Check },
@@ -267,9 +374,10 @@ export function ThreadSelectionLayer({
                 </button>
               ))}
             </div>
+            )}
 
             {/* Quick character-arc from a name-looking selection */}
-            {nameish && (
+            {!caretOnly && nameish && (
               <button
                 onClick={() => createThreadAndCommit('character-arc', `${sel.text.trim()}'s arc`, { character: sel.text.trim() })}
                 style={{
@@ -284,7 +392,7 @@ export function ThreadSelectionLayer({
             )}
 
             {/* Existing threads */}
-            {data.threads.length > 0 && (
+            {!caretOnly && data.threads.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 6 }}>
                 {data.threads.map(t => (
                   <button key={t.id} onClick={() => commitToThread(t.id)}
@@ -306,6 +414,7 @@ export function ThreadSelectionLayer({
             )}
 
             {/* New thread inline (per type) */}
+            {!caretOnly && (
             <div style={{ borderTop: '1px solid var(--border-sm)', paddingTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {types.map(ty => (
                 newTypeId === ty.id ? (
@@ -337,6 +446,7 @@ export function ThreadSelectionLayer({
                 )
               ))}
             </div>
+            )}
           </div>
         </>
       )}

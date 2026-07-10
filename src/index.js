@@ -4,7 +4,6 @@ import './index.css';
 
 // Pixel Icon Library (CC BY 4.0 — attribution in DesignSystem/Fonts.js)
 // Provides the <i class="hn hn-{name}"> icon font used by DSIcons
-import '@hackernoon/pixel-icon-library/fonts/iconfont.css';
 
 import App from './App';
 import reportWebVitals from './reportWebVitals';

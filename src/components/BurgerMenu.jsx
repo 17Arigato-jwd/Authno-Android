@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
-import { hapticSave, hapticSelect } from "../utils/haptics";
+import { hapticSave } from "../utils/haptics";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
 import { MinimalButton, Divider, COLORS, DSIcons } from "../DesignSystem";
@@ -28,10 +28,22 @@ export default function BurgerMenu({
   onOpen,
   accentHex,
   anchorRef,
+  // ── Context-aware content (B6): 'home' hides book actions & shows Open;
+  //    'book' shows Docs-style book options and hides Open.
+  context = "book",
+  onRename,
+  onChapterInfo,          // present only when a chapter is open
+  onExport,               // { txt, html, epub, pdf }
+  onReadAloud,
 }) {
   const { showError } = useError();
   const [status, setStatus] = useState("idle");
   const [busy,   setBusy]   = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameVal, setRenameVal] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
+
+  useEffect(() => { if (!open) { setRenaming(false); setExportOpen(false); } }, [open]);
   const menuRef     = useRef(null);
   const swipeStartY = useRef(null);
   const android     = isAndroid();
@@ -134,7 +146,6 @@ export default function BurgerMenu({
     try {
       const session = await openBook();
       if (session) {
-        hapticSelect();
         setSessions((prev) => {
           const idx = prev.findIndex(
             (s) => s.id === session.id || (session.filePath && s.filePath === session.filePath)
@@ -175,61 +186,83 @@ export default function BurgerMenu({
     : status === "error"  ? "Failed ✗"
     : "Save";
 
-  // ── Shared menu content ───────────────────────────────────────────────────
+  // ── Shared menu content — context-aware (B6) ──────────────────────────────
+  const item = (props) => (
+    <MinimalButton
+      variant="smooth" size="md" color="var(--text-1)"
+      style={{ width: "100%", justifyContent: "center" }}
+      {...props}
+    />
+  );
+
+  const bookItems = renaming ? (
+    <div style={{ display: "flex", gap: 6 }}>
+      <input
+        autoFocus value={renameVal}
+        onChange={(e) => setRenameVal(e.target.value)}
+        placeholder="Book title…"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && renameVal.trim()) { onRename?.(renameVal.trim()); setRenaming(false); onClose?.(); }
+          if (e.key === "Escape") setRenaming(false);
+        }}
+        style={{ flex: 1, minWidth: 0, padding: "9px 11px", borderRadius: 8, background: "var(--input-bg)", border: "1px solid var(--input-border)", color: "var(--text-1)", fontSize: 13.5, outline: "none" }}
+      />
+      <button
+        onClick={() => { if (renameVal.trim()) { onRename?.(renameVal.trim()); setRenaming(false); onClose?.(); } }}
+        style={{ padding: "0 14px", borderRadius: 8, border: "none", background: accentHex, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+      >
+        Rename
+      </button>
+    </div>
+  ) : (
+    <>
+      {item({ color: saveColor, icon: <DSIcons.Save size={15} />, disabled: busy || !current, onClick: handleSave, children: saveLabel })}
+      <Divider style={{ margin: "2px 0" }} />
+      {item({ icon: <DSIcons.Archive size={15} />, disabled: busy || !current, onClick: handleSaveAs, children: "Save As…" })}
+      <Divider style={{ margin: "2px 0" }} />
+      {item({ icon: <DSIcons.Edit size={15} />, disabled: !current, onClick: () => { setRenameVal(current?.title ?? ""); setRenaming(true); }, children: "Rename…" })}
+      {onChapterInfo && (
+        <>
+          <Divider style={{ margin: "2px 0" }} />
+          {item({ icon: <DSIcons.Info size={15} />, onClick: () => { onClose?.(); onChapterInfo(); }, children: "Chapter info" })}
+        </>
+      )}
+      <Divider style={{ margin: "2px 0" }} />
+      {item({ icon: <DSIcons.Upload size={15} />, disabled: !current, onClick: () => setExportOpen(v => !v), children: (
+        <>Export {exportOpen ? <DSIcons.ChevronUp size={12} style={{ marginLeft: 4 }} /> : <DSIcons.ChevronDown size={12} style={{ marginLeft: 4 }} />}</>
+      ) })}
+      {exportOpen && onExport && (
+        <div style={{ display: "flex", gap: 6, padding: "2px 4px" }}>
+          {[["TXT", onExport.txt], ["HTML", onExport.html], ["EPUB", onExport.epub], ["PDF", onExport.pdf]].map(([label, fn]) => (
+            <button key={label} onClick={() => { onClose?.(); fn?.(); }}
+              style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {onReadAloud && (
+        <>
+          <Divider style={{ margin: "2px 0" }} />
+          {item({ icon: <DSIcons.Volume size={15} />, disabled: !current, onClick: () => { onClose?.(); onReadAloud(); }, children: "Read aloud" })}
+        </>
+      )}
+      <Divider style={{ margin: "2px 0" }} />
+      {item({ icon: <DSIcons.Settings size={15} />, onClick: onOpenSettings, children: "Settings" })}
+    </>
+  );
+
+  const homeItems = (
+    <>
+      {item({ icon: <DSIcons.FolderOpen size={15} />, disabled: busy, onClick: handleOpen, children: "Open…" })}
+      <Divider style={{ margin: "2px 0" }} />
+      {item({ icon: <DSIcons.Settings size={15} />, onClick: onOpenSettings, children: "Settings" })}
+    </>
+  );
+
   const menuContent = (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <MinimalButton
-        variant="smooth"
-        color={saveColor}
-        size="md"
-        icon={<DSIcons.Save size={15} />}
-        disabled={busy || !current}
-        onClick={handleSave}
-        style={{ width: "100%", justifyContent: "center" }}
-      >
-        {saveLabel}
-      </MinimalButton>
-
-      <Divider style={{ margin: "2px 0" }} />
-
-      <MinimalButton
-        variant="smooth"
-        color='var(--text-1)'
-        size="md"
-        icon={<DSIcons.Archive size={15} />}
-        disabled={busy || !current}
-        onClick={handleSaveAs}
-        style={{ width: "100%", justifyContent: "center" }}
-      >
-        Save As…
-      </MinimalButton>
-
-      <Divider style={{ margin: "2px 0" }} />
-
-      <MinimalButton
-        variant="smooth"
-        color='var(--text-1)'
-        size="md"
-        icon={<DSIcons.FolderOpen size={15} />}
-        disabled={busy}
-        onClick={handleOpen}
-        style={{ width: "100%", justifyContent: "center" }}
-      >
-        Open…
-      </MinimalButton>
-
-      <Divider style={{ margin: "2px 0" }} />
-
-      <MinimalButton
-        variant="smooth"
-        color='var(--text-1)'
-        size="md"
-        icon={<DSIcons.Settings size={15} />}
-        onClick={onOpenSettings}
-        style={{ width: "100%", justifyContent: "center" }}
-      >
-        Settings
-      </MinimalButton>
+      {context === "home" ? homeItems : bookItems}
     </div>
   );
 

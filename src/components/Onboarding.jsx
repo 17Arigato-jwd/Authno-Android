@@ -459,7 +459,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                   <button
                     onClick={() => requestFullStoragePermission()}
                     className="mt-1 flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/12 active:scale-95"
-                    style={{ background: "rgba(255,255,255,0.07)" }}
+                    style={{ background: "var(--surface-md)" }}
                   >
                     <DSIcons.Key size={15} />
                     Grant All Files Access
@@ -481,7 +481,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                   <span
                     className="flex h-4 w-4 items-center justify-center rounded border transition-colors"
                     style={{
-                      borderColor: dontShowAgain ? accentHex : "rgba(255,255,255,0.25)",
+                      borderColor: dontShowAgain ? accentHex : "var(--border)",
                       background: dontShowAgain ? accentHex : "transparent",
                     }}
                   >
@@ -525,7 +525,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                     className="h-2 rounded-full transition-all duration-300"
                     style={{
                       width: i === page ? 22 : 6,
-                      background: i <= page ? accentHex : "rgba(255,255,255,0.18)",
+                      background: i <= page ? accentHex : "var(--border)",
                     }}
                   />
                 ))}
@@ -675,7 +675,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
                 <button
                   onClick={() => requestFullStoragePermission()}
                   className="mt-6 w-full flex items-center justify-center gap-2 rounded-2xl border border-white/15 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/12 active:scale-95"
-                  style={{ background: "rgba(255,255,255,0.07)" }}
+                  style={{ background: "var(--surface-md)" }}
                 >
                   <DSIcons.Key size={15} />
                   Grant All Files Access
@@ -716,7 +716,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
                     className="h-2 rounded-full transition-all duration-300"
                     style={{
                       width: i === page ? 22 : 6,
-                      background: i <= page ? accentHex : "rgba(255,255,255,0.18)",
+                      background: i <= page ? accentHex : "var(--border)",
                     }}
                   />
                 ))}

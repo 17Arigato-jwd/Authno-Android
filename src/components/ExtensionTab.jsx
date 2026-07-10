@@ -28,7 +28,7 @@ const EMOJI_MAP = {
 
 // Lucide icon name → component (manifest.icon string like "Cloud", "Server", etc.)
 const LUCIDE_ICON_MAP = {
-  Cloud: DSIcons.Star, Server: DSIcons.Package, HardDrive: DSIcons.Package,
+  Cloud: DSIcons.Cloud, Server: DSIcons.Package, HardDrive: DSIcons.Package,
   Box: DSIcons.Package, Upload: DSIcons.Upload, BookOpen: DSIcons.BookOpen,
   Settings2: DSIcons.Settings, Puzzle: DSIcons.Extension, BarChart2: DSIcons.Star,
   Zap: DSIcons.Lightning, Globe: DSIcons.Link, Star: DSIcons.Star,

@@ -12,7 +12,7 @@ import { useExtensionContributions, useExtensions } from '../utils/ExtensionCont
 // Resolve manifest.icon string → Lucide component, or null if not found
 // Extension-contributed tile icon resolver — maps string name → DSIcons key
 const TILE_ICON_MAP = {
-  Cloud: 'Star', Server: 'Package', HardDrive: 'Package', Upload: 'Upload',
+  Cloud: 'Cloud', Server: 'Package', HardDrive: 'Package', Upload: 'Upload',
   BookOpen: 'BookOpen', Settings2: 'Settings', Puzzle: 'Extension',
   BarChart2: 'Star', Zap: 'Lightning', Globe: 'Link', Star: 'Star',
   Eye: 'Eye', Home: 'Home', Box: 'Package',

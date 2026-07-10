@@ -345,7 +345,9 @@ export default function Sidebar({
             onClick={() => setDropdownOpen((v) => !v)}
             style={{ width: "100%", justifyContent: "center" }}
           >
-            + New Book ▾
+            <DSIcons.Plus size={13} color="currentColor" style={{ marginRight: 5 }} />
+            New Book
+            <DSIcons.ChevronDown size={13} color="currentColor" style={{ marginLeft: 5 }} />
           </MinimalButton>
           {dropdownOpen && (
             <div style={{
