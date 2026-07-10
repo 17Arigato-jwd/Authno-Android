@@ -46,6 +46,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleSignInPlugin.class);
         registerPlugin(GoogleDrivePlugin.class);   // v1.3.0: Drive scope via Identity Authorization API
         registerPlugin(OAuthPlugin.class);
+        registerPlugin(AppIconPlugin.class);       // launcher icon switcher (Settings → Appearance)
         super.onCreate(savedInstanceState);
 
         internalFilesDir = getFilesDir();

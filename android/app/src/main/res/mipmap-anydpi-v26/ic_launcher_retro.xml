@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Retro" alternate launcher icon: pixel-art alpha glyph, white canvas. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/ic_launcher_background"/>
+  <foreground>
+    <inset android:drawable="@mipmap/ic_launcher_retro_fg" android:inset="18%"/>
+  </foreground>
+</adaptive-icon>

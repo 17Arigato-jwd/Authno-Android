@@ -24,6 +24,14 @@
  */
 
 import { useEffect, useState, memo, useRef } from 'react';
+import { isAndroid } from '../../utils/platform';
+
+// A WebView can't afford up to ten independently-composited blur(60px) layers
+// re-blending every frame — that one style was the "app becomes extremely
+// laggy when the gradient background is on" report. On Android the radial
+// gradient's own falloff keeps blobs soft without any filter, the population
+// is capped and the simulation ticks slower.
+const PERF_LITE = isAndroid();
 
 // ── Keyframes (injected once) ─────────────────────────────────────────────────
 const STYLE_ID = 'ds-blob-keyframes';
@@ -49,7 +57,7 @@ const BlobItem = memo(({ data, fadeTime, fadeInTime }) => (
       left: `${data.x}%`, top: `${data.y}%`,
       width: `${data.size}px`, height: `${data.size}px`,
       background: `radial-gradient(closest-side, ${data.color}, transparent)`,
-      filter: 'blur(60px)',
+      filter: PERF_LITE ? 'none' : 'blur(60px)',
       opacity: data.isDying ? 0 : data.opacity,
       willChange: 'transform, opacity',
       transform: 'translate3d(0,0,0)',
@@ -110,9 +118,15 @@ export function GradientBackground({
   const palette = paletteProp ?? buildPalette(accentHex);
   configRef.current = { palette, colorRange, blobSizeRange, blobSpeedMultiplier, isDark };
 
-  const ABSOLUTE_MAX = maxBlobs + 1;
+  // Clamp regardless of what the theme/customizer asked for — user settings
+  // tuned on desktop must not be able to re-introduce the Android jank.
+  const loBlobs = PERF_LITE ? Math.min(minBlobs, 4) : minBlobs;
+  const hiBlobs = PERF_LITE ? Math.min(maxBlobs, 5) : maxBlobs;
+
+  const ABSOLUTE_MAX = hiBlobs + 1;
   const FADE_TIME    = 2000;
   const FADE_IN_TIME = 2000;
+  const TICK_MS      = PERF_LITE ? 2500 : 1000;
 
   function generateBlob() {
     const { palette: c, colorRange: cr, blobSizeRange: bsr, blobSpeedMultiplier: bsm, isDark: dark } = configRef.current;
@@ -158,7 +172,7 @@ export function GradientBackground({
     // invisible — previously the 1s simulation kept running behind a 0-opacity
     // div whenever a theme disabled the gradient.
     if (!visible) { setBlobs([]); return undefined; }
-    setBlobs(Array.from({ length: minBlobs }, generateBlob));
+    setBlobs(Array.from({ length: loBlobs }, generateBlob));
     const interval = setInterval(() => {
       if (document.hidden) return;
       const now = Date.now();
@@ -171,19 +185,19 @@ export function GradientBackground({
         const before = next.length;
         next = next.filter(b => now - b.createdAt < b.lifetime);
         if (next.length !== before) changed = true;
-        const target = minBlobs + Math.floor(Math.random() * (maxBlobs - minBlobs + 1));
+        const target = loBlobs + Math.floor(Math.random() * (hiBlobs - loBlobs + 1));
         if (next.length < target && next.length < ABSOLUTE_MAX && Math.random() > 0.2) { next.push(generateBlob()); changed = true; }
         return changed ? next : current;
       });
-    }, 1000);
+    }, TICK_MS);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [palette.accent, minBlobs, maxBlobs, visible]);
+  }, [palette.accent, loBlobs, hiBlobs, visible]);
 
   return (
     <div
       className={className}
-      style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden', backgroundColor: baseColor, ...style }}
+      style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden', contain: 'layout paint', backgroundColor: baseColor, ...style }}
     >
       {/* Static accent gradient — shown when blobs are disabled */}
       <div style={{

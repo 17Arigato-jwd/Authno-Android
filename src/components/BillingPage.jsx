@@ -14,7 +14,7 @@
 import { useState, useEffect } from 'react';
 import { unlockProMock, resetToFree } from '../utils/entitlements';
 import { useEntitlement } from '../utils/useEntitlement';
-import { DSIcons } from '../DesignSystem';
+import { DSIcons, CloseButton } from '../DesignSystem';
 
 // Desktop = a centered dialog with a two-column layout; mobile/portrait = a
 // full-screen sheet with a single column. This is the "not optimised for PC" fix.
@@ -237,10 +237,8 @@ function Screen({ children, accentHex, onClose, title, wide }) {
       }}>
         {/* Sticky header — the close button no longer scrolls away */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--modal-bg)', flexShrink: 0 }}>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text-1)' }}>{title}</h1>
-          <button onClick={onClose} aria-label="Close" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', cursor: 'pointer', flexShrink: 0 }}>
-            <DSIcons.X size={16} color="currentColor" />
-          </button>
+          <h1 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>{title}</h1>
+          <CloseButton onClick={onClose} />
         </div>
         {/* Scroll body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: wide ? '24px 28px max(24px, env(safe-area-inset-bottom))' : '18px 18px max(24px, env(safe-area-inset-bottom))' }}>

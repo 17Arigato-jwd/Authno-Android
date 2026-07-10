@@ -253,7 +253,6 @@ const ONB_THEME_CSS = `
 
 export function Onboarding({ accentHex = "#5a00d9", onDone }) {
   const [page, setPage] = useState(0);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
   const contentRef = useRef(null);
 
   const pages = [
@@ -332,19 +331,19 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
-        if (dontShowAgain) markOnboardingDone().catch(() => {});
+        markOnboardingDone().catch(() => {});
         onDone?.();
       }
       if (e.key === "ArrowRight" || e.key === "Enter" || e.key === "PageDown") {
         e.preventDefault();
         if (current.permissionPage) {
           requestFullStoragePermission().catch(() => {});
-          if (dontShowAgain) markOnboardingDone().catch(() => {});
+          markOnboardingDone().catch(() => {});
           onDone?.();
         } else if (page < pages.length - 1) {
           setPage((p) => p + 1);
         } else {
-          if (dontShowAgain) markOnboardingDone().catch(() => {});
+          markOnboardingDone().catch(() => {});
           onDone?.();
         }
       }
@@ -356,10 +355,13 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [page, dontShowAgain, onDone, pages.length]);
+  }, [page, onDone, pages.length]);
 
+  // Seeing (or skipping) the tour once is enough — it used to persist only
+  // when the "don't show again" box was ticked, so it replayed on every
+  // launch. It stays reachable from Settings via resetOnboarding().
   const finish = async () => {
-    if (dontShowAgain) await markOnboardingDone();
+    await markOnboardingDone().catch(() => {});
     onDone?.();
   };
 
@@ -466,30 +468,6 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                   </button>
                 )}
               </div>
-
-              {current.last && (
-                <label
-                  className="mt-6 flex items-center justify-center gap-2 select-none"
-                  style={{ WebkitTapHighlightColor: "transparent" }}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={dontShowAgain}
-                    onChange={(e) => setDontShowAgain(e.target.checked)}
-                  />
-                  <span
-                    className="flex h-4 w-4 items-center justify-center rounded border transition-colors"
-                    style={{
-                      borderColor: dontShowAgain ? accentHex : "var(--border)",
-                      background: dontShowAgain ? accentHex : "transparent",
-                    }}
-                  >
-                    {dontShowAgain && <DSIcons.Check size={10} color="#fff" />}
-                  </span>
-                  <span className="text-xs text-white/45">Don’t show this again</span>
-                </label>
-              )}
 
               <div className="mt-6 flex gap-3">
                 <button

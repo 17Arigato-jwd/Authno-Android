@@ -5,7 +5,7 @@
  */
 
 import { useMemo } from 'react';
-import { DSIcons } from '../DesignSystem';
+import { DSIcons, CloseButton } from '../DesignSystem';
 import { textStats, formatReadingTime } from '../utils/editorFormat';
 
 function StatRow({ label, value }) {
@@ -50,14 +50,12 @@ export default function ChapterInfoModal({ session, chapterIdx, onClose, accentH
             <DSIcons.Info size={16} color="currentColor" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {chapter?.title || 'Chapter info'}
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--text-4)' }}>{session?.title || 'Untitled Book'}</div>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'var(--surface)', color: 'var(--text-4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <DSIcons.X size={14} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         {chapter && (

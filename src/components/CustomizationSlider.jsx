@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { DSIcons } from '../DesignSystem';
+import { DSIcons, CloseButton } from '../DesignSystem';
 import { DEFAULT_FONTS } from '../utils/fontManager';
 
 import { ColorPicker } from './ColorPicker';
@@ -425,20 +425,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
         {/* ── Content ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}>
           <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
-            <button
-              onClick={onClose}
-              style={{
-                position: 'absolute', top: '0px', right: '0px',
-                width: '32px', height: '32px', borderRadius: '50%',
-                background: 'var(--surface)', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.color = 'var(--text-4)'; }}
-            >
-              <DSIcons.X size={16} />
-            </button>
+            <CloseButton onClick={onClose} style={{ position: 'absolute', top: '0px', right: '0px' }} />
           </div>
 
           {activeSection === 'background' && <BackgroundPanel {...panelProps} />}

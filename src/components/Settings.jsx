@@ -15,6 +15,7 @@ import {
   AboutSection,
   DSIcons,
   buildPalette,
+  CloseButton,
 } from '../DesignSystem';
 
 import { useTheme, ALL_THEMES, getAllThemes, subscribeThemes, injectThemeFonts } from '../theme';
@@ -22,6 +23,7 @@ import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
+import { APP_ICONS, appIconSupported, getAppIcon, setAppIcon } from '../utils/appIcon';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
@@ -94,6 +96,63 @@ function SettingRow({ icon: Icon, title, description, children, accentHex }) {
         </div>
       </div>
       <div style={{ flexShrink: 0 }}>{children}</div>
+    </div>
+  );
+}
+
+// ── App icon picker (Android only) ───────────────────────────────────────────
+// The enabled launcher alias is the source of truth (see utils/appIcon.js),
+// so the current pick is read from the plugin on mount instead of settings.
+function AppIconPicker({ accentHex }) {
+  const [selected, setSelected] = useState('default');
+
+  useEffect(() => {
+    let alive = true;
+    getAppIcon().then((id) => { if (alive) setSelected(id); });
+    return () => { alive = false; };
+  }, []);
+
+  const pick = async (id) => {
+    const prev = selected;
+    setSelected(id);
+    try { await setAppIcon(id); } catch { setSelected(prev); }
+  };
+
+  return (
+    <div>
+      <Label>App icon</Label>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        {APP_ICONS.map(({ id, label, preview }) => {
+          const active = selected === id;
+          return (
+            <button
+              key={id}
+              onClick={() => pick(id)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+                padding: '10px', borderRadius: '12px', cursor: 'pointer', minWidth: '72px',
+                background: active ? `${accentHex}18` : 'var(--surface)',
+                border: `2px solid ${active ? accentHex : 'var(--border-sm)'}`,
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <span style={{
+                width: '48px', height: '48px', borderRadius: '12px', overflow: 'hidden',
+                background: '#ffffff', border: '1px solid var(--border-sm)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <img src={preview} alt={label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </span>
+              <span style={{ fontSize: '11px', fontWeight: active ? 700 : 500, color: active ? accentHex : 'var(--text-3)' }}>
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: '8px' }}>
+        Changes the home-screen icon. On a few devices the launcher may briefly close the app to apply it.
+      </p>
     </div>
   );
 }
@@ -417,6 +476,13 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
         accentHex={accentHex}
         onOpenCustomizer={onOpenCustomizer}
       />
+
+      {appIconSupported() && (
+        <>
+          <SettingsDivider />
+          <AppIconPicker accentHex={accentHex} />
+        </>
+      )}
     </div>
   );
 }
@@ -878,9 +944,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             {/* Portrait header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 0', background: 'var(--nav-bg)', flexShrink: 0 }}>
               <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px' }}>Settings</span>
-              <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--surface-md)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)' }}>
-                <DSIcons.X size={16} />
-              </button>
+              <CloseButton onClick={onClose} />
             </div>
             {/* Scrollable tab bar */}
             <div className="settings-tabs" style={{ display: 'flex', overflowX: 'auto', gap: '4px', padding: '10px 12px', background: 'var(--nav-bg)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -938,13 +1002,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                   top-right while the panel scrolls (was position:absolute, which
                   scrolled away with the content). */}
               <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
-                <button onClick={onClose}
-                  style={{ position: 'absolute', top: '0px', right: '0px', width: '32px', height: '32px', borderRadius: '50%', background: 'var(--surface-md)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = 'var(--text-1)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-md)'; e.currentTarget.style.color = 'var(--text-4)'; }}
-                >
-                  <DSIcons.X size={16} />
-                </button>
+                <CloseButton onClick={onClose} style={{ position: 'absolute', top: '0px', right: '0px' }} />
               </div>
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}

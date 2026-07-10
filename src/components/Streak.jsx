@@ -5,14 +5,15 @@
  *   - StreakCalendar close button and month-nav buttons → MinimalButton from DesignSystem
  *   - COLORS from tokens replace hardcoded Discord-palette hex strings
  *     (#72767d → COLORS.textSubtle, #4f545c → COLORS.textDisabled, etc.)
- *   - FlameButton + all streak logic is identical — no behaviour changes.
+ *   - FlameButton counts words with countBookWords (all chapters), not just
+ *     the chapter-1 mirror in session.content.
  */
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Flame } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
-import { MinimalButton, COLORS, DSIcons } from '../DesignSystem';
+import { MinimalButton, COLORS, DSIcons, CloseButton } from '../DesignSystem';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,18 @@ export function countWords(html) {
   if (!html) return 0;
   const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ');
   return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+}
+
+/**
+ * Words across the WHOLE book. The streak used to count only
+ * `session.content` — which mirrors chapter 1 — so writing in any other
+ * chapter never advanced the flame (author bug report). Multi-chapter books
+ * now sum every chapter; legacy flat sessions fall back to content.
+ */
+export function countBookWords(session) {
+  const chapters = session?.chapters;
+  if (chapters?.length) return chapters.reduce((n, c) => n + countWords(c.content || ''), 0);
+  return countWords(session?.content ?? '');
 }
 
 function makeDateKey(year, month, day) {
@@ -224,16 +237,8 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
     }}>
       <style>{`@keyframes streakFadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
-      {/* Close — MinimalButton from DesignSystem */}
       <div style={{ position: 'absolute', top: 10, right: 10 }}>
-        <MinimalButton
-          variant="smooth" size="xs"
-          color={COLORS.textSubtle}
-          onClick={onClose}
-          style={{ width: 26, height: 26, borderRadius: '50%', justifyContent: 'center', padding: 0 }}
-        >
-          <DSIcons.X size={12} />
-        </MinimalButton>
+        <CloseButton onClick={onClose} />
       </div>
 
       {/* Streak count */}
@@ -312,7 +317,7 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
   const effectiveGoal = streak.goalWords ?? goalWords;
   const log           = normalizeLog(rawLog, effectiveGoal);
   const todayKey      = getTodayKey();
-  const currentWords  = countWords(current?.content ?? '');
+  const currentWords  = countBookWords(current);
 
   if (currentWords > hwRef.current) hwRef.current = currentWords;
 
@@ -323,12 +328,12 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
     baselineSetRef.current = key;
     const existing = current.streak?.dailyBaseline?.[todayKey];
     if (existing !== undefined) return;
-    const wc = countWords(current.content ?? '');
+    const wc = countBookWords(current);
     hwRef.current = wc;
     onStreakUpdate?.({ ...streak, dailyBaseline: { ...(streak.dailyBaseline ?? {}), [todayKey]: wc } });
   }, [current?.id, todayKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { hwRef.current = countWords(current?.content ?? ''); }, [current?.id, todayKey]); // eslint-disable-line
+  useEffect(() => { hwRef.current = countBookWords(current); }, [current?.id, todayKey]); // eslint-disable-line
 
   const baseline   = streak.dailyBaseline?.[todayKey] ?? currentWords;
   const wordsToday = Math.max(0, hwRef.current - baseline);

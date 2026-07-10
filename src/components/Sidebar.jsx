@@ -26,6 +26,7 @@ import {
   TYPOGRAPHY,
   DSIcons,
   toast,
+  CloseButton,
 } from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -301,23 +302,7 @@ export default function Sidebar({
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <img src={Logo} alt="AuthNo" style={{ height: 56, width: 56, objectFit: "contain", filter: "drop-shadow(0 0 6px rgba(255,255,255,0.15))" }} />
-        {android && (
-          <button
-            onClick={onDrawerClose}
-            style={{
-              width: 34, height: 34, borderRadius: "50%",
-              border: "1px solid var(--border)",
-              background: "transparent",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", color: "var(--text-3)",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = "var(--surface)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          >
-            <DSIcons.X size={18} />
-          </button>
-        )}
+        {android && <CloseButton onClick={onDrawerClose} label="Close drawer" />}
       </div>
 
       {/* ── SEARCH — uses DesignSystem TextInput ────────────────────────── */}
