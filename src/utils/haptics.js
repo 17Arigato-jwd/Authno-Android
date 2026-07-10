@@ -2,7 +2,13 @@
 // All haptic calls across the app should import from here.
 // Requires: npm install @capacitor/haptics
 
+// ── Global enable switch (Settings → "Vibration feedback") ──────────────────
+let _enabled = true;
+export function setHapticsEnabled(v) { _enabled = !!v; }
+export function hapticsEnabled() { return _enabled; }
+
 async function _impact(style) {
+  if (!_enabled) return true;   // pretend handled so fallbacks stay silent too
   try {
     const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
     await Haptics.impact({ style: ImpactStyle[style] });
@@ -26,6 +32,7 @@ export async function hapticSelect() {
 
 /** Auto-save confirmation — Medium, 80ms gap, Light */
 export async function hapticSave() {
+  if (!_enabled) return;
   try {
     const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
     await Haptics.impact({ style: ImpactStyle.Medium });
@@ -52,6 +59,7 @@ export async function hapticPin() {
 
 /** Daily word goal crossed — Med, 150ms, Med, 325ms, Heavy */
 export async function hapticGoalMet() {
+  if (!_enabled) return;
   try {
     const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
     await Haptics.impact({ style: ImpactStyle.Medium });

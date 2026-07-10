@@ -7,3 +7,7 @@ export const FONT_OPTIONS = [
 ];
 
 export const SIZE_OPTIONS = [1, 2, 3, 4, 5, 6, 7];
+
+// Single source of truth for the daily word goal default (was 500 in
+// Settings but 300 in three App.js fallbacks - F3).
+export const DEFAULT_WORD_GOAL = 500;

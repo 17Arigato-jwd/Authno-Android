@@ -121,6 +121,19 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    // ── Suppress the native text-selection toolbar (B5) ──────────────────────
+    // The WebView's floating Cut/Copy/"Search DuckDuckGo" ActionMode fought the
+    // app's own selection menu (which adds Add-to-Thread, quick formatting and
+    // themed clipboard actions). Web code cannot extend or hide that toolbar,
+    // so it is dismissed here the moment it starts; the selection itself (and
+    // its drag handles) remain fully functional and the JS layer shows its own
+    // menu. Long-press paste at a bare caret is also covered by the JS menu.
+    @Override
+    public void onActionModeStarted(android.view.ActionMode mode) {
+        super.onActionModeStarted(mode);
+        try { mode.finish(); } catch (Exception ignored) { }
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
