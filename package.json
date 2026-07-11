@@ -157,16 +157,32 @@
         "deb",
         "rpm"
       ],
-      "category": "Utility",
+      "executableName": "authno",
+      "category": "Office;WordProcessor;",
       "icon": "public/authno-512.png",
       "synopsis": "Offline story editor",
+      "description": "AuthNo is a private, offline-first editor for books and long-form stories. Your work stays on your device in the resilient .authbook format — no account, no cloud lock-in. Includes a distraction-free chapter editor, plot/character Threads, writing streaks, multi-format import (TXT, Markdown, HTML, RTF, DOCX, ODT, EPUB, PDF) and export.",
       "desktop": {
         "entry": {
           "Name": "AuthNo",
+          "GenericName": "Story Editor",
+          "Comment": "Write books and stories offline",
+          "Categories": "Office;WordProcessor;",
+          "Keywords": "writing;author;novel;story;manuscript;book;editor;",
           "StartupWMClass": "AuthNo"
         }
       },
       "syncDesktopName": true
+    },
+    "deb": {
+      "fpm": [
+        "appstream/com.aurorastudios.authno.metainfo.xml=/usr/share/metainfo/com.aurorastudios.authno.metainfo.xml"
+      ]
+    },
+    "rpm": {
+      "fpm": [
+        "appstream/com.aurorastudios.authno.metainfo.xml=/usr/share/metainfo/com.aurorastudios.authno.metainfo.xml"
+      ]
     },
     "extraResources": [
       {

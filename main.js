@@ -1,11 +1,34 @@
 // main.js
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
 let mainWindow;
 let splash;
 let openFilePath = null;
+
+const isLinux = process.platform === "linux";
+
+// ── App icon switcher (desktop) ──────────────────────────────────────────────
+// Maps the icon ids used by the renderer to the on-disk assets. Persisted in
+// userData so the choice survives restarts (a desktop analogue of Android's
+// activity-alias switcher).
+const ICON_ASSETS = {
+  default: "authno-512.png",
+  light:   "app-icons/ic_launcher_light.png",
+  retro:   "app-icons/ic_launcher_retro.png",
+  gold:    "app-icons/ic_launcher_gold.png",
+};
+function iconPrefPath() {
+  try { return path.join(app.getPath("userData"), "app-icon.json"); } catch { return null; }
+}
+function readIconPref() {
+  try { return JSON.parse(fs.readFileSync(iconPrefPath(), "utf8")).icon || "default"; }
+  catch { return "default"; }
+}
+function writeIconPref(id) {
+  try { fs.writeFileSync(iconPrefPath(), JSON.stringify({ icon: id })); } catch { /* best-effort */ }
+}
 
 // ── Resolve a .authbook path from launch argv (Windows/Linux cold start) ──
 // The old code never inspected process.argv on first launch, so double-clicking
@@ -84,6 +107,20 @@ if (!gotTheLock) {
   ipcMain.on("window-close", () => { mainWindow?.close(); });
   ipcMain.handle("window-is-maximized", () => !!(mainWindow && mainWindow.isMaximized()));
 
+  // ── App icon switcher IPC ──────────────────────────────────────────────────
+  ipcMain.handle("get-app-icon", () => readIconPref());
+  ipcMain.handle("set-app-icon", (_e, id) => {
+    const asset = ICON_ASSETS[id] || ICON_ASSETS.default;
+    try {
+      const img = nativeImage.createFromPath(resolveAsset(asset));
+      if (!img.isEmpty() && mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(img);
+      writeIconPref(id in ICON_ASSETS ? id : "default");
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err && err.message || err) };
+    }
+  });
+
   function resolveAsset(name) {
     // In a packaged build, public/ is unpacked next to the app resources; in
     // dev it's at the project root. Try both so splash + icon always resolve
@@ -119,13 +156,27 @@ if (!gotTheLock) {
       frame: false,
       titleBarStyle: "hidden",
       icon: resolveAsset("authno.ico"),
-      backgroundColor: "#000000",
+      // Linux: a transparent frameless window lets the renderer paint rounded
+      // corners (the app root has border-radius). Windows 11 already rounds
+      // frameless windows via DWM, and transparency there disables the drop
+      // shadow, so it's Linux-only.
+      transparent: isLinux,
+      backgroundColor: isLinux ? "#00000000" : "#000000",
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "Preload.js"), // safe — after handlers registered
       },
     });
+
+    // Re-apply the user's chosen launcher icon at startup (desktop switcher).
+    try {
+      const savedIcon = readIconPref();
+      if (savedIcon && savedIcon !== "default") {
+        const img = nativeImage.createFromPath(resolveAsset(ICON_ASSETS[savedIcon] || ICON_ASSETS.default));
+        if (!img.isEmpty()) mainWindow.setIcon(img);
+      }
+    } catch { /* icon best-effort */ }
 
     // Notify the renderer's title bar when the maximise state changes so it can
     // swap the maximise/restore glyph.

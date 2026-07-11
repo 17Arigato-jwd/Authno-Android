@@ -7,9 +7,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
+  // ── Platform (renderer uses this for OS-specific chrome, e.g. Linux window rounding) ──
+  platform: process.platform,   // 'linux' | 'win32' | 'darwin'
+
   // ── Generic IPC ───────────────────────────────────────────────────────────
   send:    (channel, data) => ipcRenderer.send(channel, data),
   receive: (channel, func) => ipcRenderer.on(channel, (_event, ...args) => func(...args)),
+
+  // ── App icon switcher (desktop) — swaps the taskbar/window icon at runtime ──
+  setAppIcon: (id) => ipcRenderer.invoke('set-app-icon', id),
+  getAppIcon: ()   => ipcRenderer.invoke('get-app-icon'),
 
   // ── Binary file operations (VCHS-ECS, used by storage.js) ────────────────
   saveBookBytes:   (data) => ipcRenderer.invoke('save-book-bytes',    data),

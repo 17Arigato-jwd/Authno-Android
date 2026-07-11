@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo — what GNOME Software / KDE Discover read to render
+  AuthNo's store page (icon, summary, description, website, license,
+  categories). Installed to /usr/share/metainfo/ by the deb/rpm (see the
+  fpm mapping in package.json > build.deb/rpm).
+
+  The component id MUST match the .desktop file basename
+  (com.aurorastudios.authno.desktop) so the two are linked.
+-->
+<component type="desktop-application">
+  <id>com.aurorastudios.authno</id>
+  <launchable type="desktop-id">authno.desktop</launchable>
+  <name>AuthNo</name>
+  <summary>Offline story editor</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+
+  <developer id="dev.aurorastudios">
+    <name>Aurora Studios</name>
+  </developer>
+
+  <description>
+    <p>
+      AuthNo is a private, offline-first editor for writing books, stories and
+      long-form manuscripts. Your work stays on your device in the resilient
+      .authbook format — no account required, no cloud lock-in.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Distraction-free chapter editor with rich formatting, custom fonts and themes</li>
+      <li>Threads — track plotlines, character arcs and TODOs alongside your prose</li>
+      <li>Writing streaks and daily word-count goals</li>
+      <li>Import from TXT, Markdown, HTML, RTF, DOCX, ODT, EPUB and PDF</li>
+      <li>Export to TXT, HTML, EPUB and PDF</li>
+      <li>Extensions and downloadable themes</li>
+    </ul>
+  </description>
+
+  <categories>
+    <category>Office</category>
+    <category>WordProcessor</category>
+  </categories>
+
+  <keywords>
+    <keyword>writing</keyword>
+    <keyword>author</keyword>
+    <keyword>novel</keyword>
+    <keyword>story</keyword>
+    <keyword>manuscript</keyword>
+    <keyword>editor</keyword>
+    <keyword>book</keyword>
+  </keywords>
+
+  <url type="homepage">https://authno.pages.dev</url>
+  <url type="bugtracker">https://github.com/17Arigato-jwd/Authno-Android/issues</url>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="1.1.16-beta.4" date="2026-07-11">
+      <description>
+        <p>Resume-writing path, share-to-AuthNo, launcher shortcuts, a Docs-style
+        selection menu, thread tiling, a multi-format book importer and many fixes.</p>
+      </description>
+    </release>
+  </releases>
+</component>

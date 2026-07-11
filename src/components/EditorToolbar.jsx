@@ -52,6 +52,8 @@ function ExtIconResolved({ iconName, size = 14 }) {
 
 // ── Insert menu items ─────────────────────────────────────────────────────────
 const INSERT_ITEMS = [
+  { label: 'Image…',       glyph: <DSIcons.Image size={13} />,    kind: 'image' },
+  { label: 'Link…',        glyph: <DSIcons.Link size={13} />,     kind: 'link' },
   { label: 'Scene break',  glyph: <DSIcons.More size={13} />,     kind: 'html', value: '<p style="text-align:center">*&nbsp;&nbsp;*&nbsp;&nbsp;*</p><p><br></p>' },
   { label: 'Divider line', glyph: <DSIcons.Minus size={13} />,    kind: 'hr' },
   { label: 'Em dash',      glyph: <span style={{ fontSize: 13 }}>—</span>, kind: 'text', value: '—' },
@@ -144,6 +146,10 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   const alignRef  = useRef(null);
   const insertRef = useRef(null);
   const deskRowRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl]   = useState('');
+  const [linkText, setLinkText] = useState('');
   const extButtons = useEditorToolbarExtensions();
   const { navigate } = useExtensions();
   const { theme } = useTheme();
@@ -234,12 +240,58 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
     return () => document.removeEventListener('keydown', down);
   }, []); // eslint-disable-line
 
+  const savedInsertRange = useRef(null);
   const doInsert = (item) => {
     editorRef?.current?.focus();
+    if (item.kind === 'image') {
+      // Remember where the caret was — opening the file dialog blurs the editor.
+      const s = window.getSelection();
+      savedInsertRange.current = s?.rangeCount ? s.getRangeAt(0).cloneRange() : null;
+      imageInputRef.current?.click();
+      return;
+    }
+    if (item.kind === 'link') {
+      const s = window.getSelection();
+      savedInsertRange.current = s?.rangeCount ? s.getRangeAt(0).cloneRange() : null;
+      setLinkText(s && !s.isCollapsed ? s.toString() : '');
+      setLinkUrl('');
+      setLinkOpen(true);
+      return;
+    }
     if (item.kind === 'hr') { document.execCommand('insertHorizontalRule'); return; }
     if (item.kind === 'html') { document.execCommand('insertHTML', false, item.value); return; }
     const text = typeof item.value === 'function' ? item.value() : item.value;
     document.execCommand('insertText', false, text);
+  };
+
+  const restoreInsertRange = () => {
+    editorRef?.current?.focus();
+    const r = savedInsertRange.current;
+    if (r) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+  };
+
+  const onImageFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    if (file.size > 8 * 1024 * 1024) { window.alert('Image is larger than 8 MB — please use a smaller one.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      restoreInsertRange();
+      const src = String(reader.result || '');
+      document.execCommand('insertHTML', false, `<img src="${src}" alt="${file.name.replace(/"/g, '')}" style="max-width:100%;height:auto;border-radius:6px;" />`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const insertLink = () => {
+    const url = linkUrl.trim();
+    setLinkOpen(false);
+    if (!url) return;
+    const href = /^(https?:|mailto:|#|\/)/i.test(url) ? url : `https://${url}`;
+    restoreInsertRange();
+    const label = (linkText.trim() || href).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    document.execCommand('insertHTML', false, `<a href="${href.replace(/"/g, '%22')}" target="_blank" rel="noopener">${label}</a>`);
   };
 
   const applyStyle = (styleObj) => { applyInlineStyle(editorRef?.current, styleObj); };
@@ -383,12 +435,40 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
     </>
   );
 
+  // Shared, position-independent extras (hidden file input + link dialog).
+  // Rendered in both the Android and desktop return branches.
+  const extras = (
+    <>
+      <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImageFile} />
+      {linkOpen && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 4100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.6))', backdropFilter: 'blur(4px)' }}
+          onMouseDown={() => setLinkOpen(false)}>
+          <div onMouseDown={(e) => e.stopPropagation()} style={{ background: 'var(--modal-bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 18, width: 'min(380px, 92vw)', boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginBottom: 12 }}>Insert link</div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Text</label>
+            <input autoFocus value={linkText} onChange={(e) => setLinkText(e.target.value)} placeholder="Link text"
+              style={{ width: '100%', margin: '5px 0 12px', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)', fontSize: 13, outline: 'none' }} />
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>URL</label>
+            <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://…"
+              onKeyDown={(e) => { if (e.key === 'Enter') insertLink(); }}
+              style={{ width: '100%', margin: '5px 0 16px', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)', fontSize: 13, outline: 'none' }} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setLinkOpen(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-2)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cancel</button>
+              <button onClick={insertLink} disabled={!linkUrl.trim()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: linkUrl.trim() ? accentHex : 'var(--surface)', color: linkUrl.trim() ? '#fff' : 'var(--text-5)', cursor: linkUrl.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 700 }}>Insert</button>
+            </div>
+          </div>
+        </div>, document.body)}
+    </>
+  );
+
   // ── Android: floating pill that docks above the keyboard (B4) ─────────────
   // With Capacitor Keyboard resize:'body' the webview shrinks when the
   // keyboard opens, so bottom:0 already sits on the keyboard's top edge — the
   // pill↔bar morph animates position, width and radius for the Docs feel.
   if (android) {
     return (
+      <>
+      {extras}
       <div style={{
         position: 'fixed', zIndex: 30,
         left: kbOpen ? 0 : 10,
@@ -409,6 +489,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
           {controls(true)}
         </div>
       </div>
+      </>
     );
   }
 
@@ -418,8 +499,13 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   // wheel handler maps vertical scrolling to the row; it's attached natively
   // because React registers wheel listeners passively (preventDefault no-ops).
   return (
+    <>
+    {extras}
+    {/* sticky top:8 keeps the pill docked right under the chapter switcher as
+        the manuscript scrolls; z-index sits below the selection menu, which is
+        positioned to never overlap the pill (see ThreadLayer PILL_ZONE). */}
     <div style={{
-      position: 'sticky', top: 16, zIndex: 20,
+      position: 'sticky', top: 8, zIndex: 20,
       margin: '0 auto', maxWidth: '100%', width: 'fit-content',
       borderRadius: 24, overflow: 'hidden',
       backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
@@ -435,5 +521,6 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
         {controls(false)}
       </div>
     </div>
+    </>
   );
 }
