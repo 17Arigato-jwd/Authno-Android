@@ -1,7 +1,7 @@
 {
   "name": "authno",
   "version": "1.1.16",
-  "description": "AuthNo \u2014 offline story editor",
+  "description": "AuthNo — offline story editor",
   "author": {
     "name": "VCHS Studios",
     "email": "blader.ultramate@gmail.com"
@@ -36,7 +36,7 @@
     "lucide-react": "^0.552.0",
     "pako": "^2.1.0",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "^4.5.136",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-scripts": "^5.0.1",
@@ -90,7 +90,7 @@
   "build": {
     "appId": "com.aurorastudios.authno",
     "productName": "AuthNo",
-    "copyright": "\u00a9 2026 AS Code Studios",
+    "copyright": "© 2026 AS Code Studios",
     "files": [
       "build/**/*",
       "public/**/*",
@@ -177,8 +177,5 @@
         ]
       }
     ]
-  },
-  "overrides": {
-    "canvas": "file:./stubs/canvas"
   }
 }

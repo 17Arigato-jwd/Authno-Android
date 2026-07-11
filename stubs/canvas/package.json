@@ -1,6 +1,0 @@
-{
-  "name": "canvas",
-  "version": "0.0.0-stub",
-  "description": "Empty stand-in for node-canvas. pdfjs-dist lists canvas as an optional dependency for Node-side page rendering, which AuthNo never does (we only extract text in the browser) - but its presence makes jsdom load the native binding and break every test, and its node-gyp build breaks CI runners. jsdom treats a canvas-less module as 'canvas unavailable' and falls back cleanly.",
-  "main": "index.js"
-}

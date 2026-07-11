@@ -163,11 +163,15 @@ async function fromEpub(bytes, filename) {
 }
 
 async function fromPdf(bytes, filename) {
-  // pdfjs is ~2 MB, loaded only when a PDF is actually imported. The legacy
-  // UMD build avoids CRA/webpack ESM friction; worker runs inline (fake
-  // worker) — fine for one-shot imports.
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf');
-  pdfjs.GlobalWorkerOptions.workerSrc = false;
+  // pdfjs is heavy, so both modules load only when a PDF is actually
+  // imported (webpack splits them into a lazy chunk). The worker module is
+  // imported on the MAIN thread: it registers globalThis.pdfjsWorker, which
+  // pdfjs uses as its in-process fallback when the real Worker can't start —
+  // Electron's file:// origin can't spawn module workers, and a one-shot
+  // import doesn't need one.
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = 'pdfjs-bundled-fallback';
   let doc;
   try {
     doc = await pdfjs.getDocument({ data: bytes, isEvalSupported: false, disableFontFace: true, useWorkerFetch: false }).promise;
