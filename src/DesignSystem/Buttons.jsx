@@ -1,12 +1,13 @@
 /**
  * Buttons.jsx — All button variants
  *
- * Exports: PixelButton, GradientButton, GhostButton, DangerButton, MinimalButton
+ * Exports: PixelButton, GradientButton, GhostButton, DangerButton, MinimalButton, CloseButton
  */
 
 import { useState } from 'react';
 import { COLORS, GRADIENTS, TYPOGRAPHY, SHADOWS } from './tokens';
 import { pixelClip } from './_utils';
+import { DSIcons } from './Icons';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PixelButton — retro GBA-style button with chamfered corners
@@ -243,6 +244,38 @@ export function MinimalButton({ variant = 'smooth', size = 'md', color = '#fffff
           {children}
         </div>
       </div>
+    </button>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CloseButton — THE close affordance for modals, sheets and panels
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Before this existed every overlay rolled its own dismiss button (26–32px
+// circles, X icons from 12 to 20, three different backgrounds), which read as
+// "different apps" side by side. One spec: 32px circle, surface fill,
+// text-4 glyph, border/text-1 on hover.
+
+export function CloseButton({ onClick, size = 32, label = 'Close', style }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: size, height: size, borderRadius: '50%', border: 'none',
+        background: hovered ? 'var(--border)' : 'var(--surface)',
+        color: hovered ? 'var(--text-1)' : 'var(--text-4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', flexShrink: 0, padding: 0,
+        transition: 'background 0.15s, color 0.15s',
+        ...style,
+      }}
+    >
+      <DSIcons.X size={Math.round(size / 2)} />
     </button>
   );
 }

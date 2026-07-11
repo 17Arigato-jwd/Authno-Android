@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { DSIcons } from '../DesignSystem';
+import { DSIcons, CloseButton } from '../DesignSystem';
 import {
   FONT_LIBRARY, DEFAULT_FONTS, resolveFontStack, loadGoogleFont, readCustomFontFile,
 } from '../utils/fontManager';
@@ -163,10 +163,7 @@ export function FontCustomizer({ isOpen, onClose, fonts = DEFAULT_FONTS, onSave,
               <div style={{ fontSize: 12, color: 'var(--text-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Pick a font for each part of the app, or upload your own.</div>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close"
-            style={{ flexShrink: 0, width: 32, height: 32, borderRadius: '50%', background: 'var(--surface)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-4)' }}>
-            <DSIcons.X size={16} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         {/* Target tabs */}

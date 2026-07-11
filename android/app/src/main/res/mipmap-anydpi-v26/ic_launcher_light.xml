@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Light" alternate launcher icon: watercolour alpha glyph on the white
+     canvas from the source design. The 18% inset keeps the full glyph inside
+     the adaptive-icon safe zone on circular masks. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/ic_launcher_background"/>
+  <foreground>
+    <inset android:drawable="@mipmap/ic_launcher_light_fg" android:inset="18%"/>
+  </foreground>
+</adaptive-icon>

@@ -12,7 +12,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { DSIcons, toast } from '../DesignSystem';
+import { DSIcons, toast, CloseButton } from '../DesignSystem';
 import {
   getAllTypes, typeById, threadColor, sortedEntries, todoCount, allOpenTodos,
   addThread, updateThread, removeThread, addEntry, updateEntry, removeEntry,
@@ -50,11 +50,9 @@ function PanelHeader({ title, onBack, onClose, right }) {
           <DSIcons.ChevronLeft size={16} />
         </button>
       )}
-      <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+      <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
       {right}
-      <button onClick={onClose} aria-label="Close threads panel" style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--surface)', color: 'var(--text-4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <DSIcons.X size={14} />
-      </button>
+      <CloseButton onClick={onClose} label="Close threads panel" />
     </div>
   );
 }

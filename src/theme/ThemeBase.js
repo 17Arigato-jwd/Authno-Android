@@ -20,6 +20,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces } from '../utils/fontManager';
+import { isAndroid } from '../utils/platform';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Colour math
@@ -104,8 +105,31 @@ export function createTheme(base, overrides = {}) {
 
 const STYLE_ID   = 'authno-theme-vars';
 const EFFECTS_ID = 'authno-theme-effects';
+const PERF_ID    = 'authno-perf-lite';
+
+/**
+ * Android WebView chokes on large backdrop-filter blurs: every open sheet or
+ * modal re-blurs the whole scene behind it on each frame, which is the bulk of
+ * the "menus feel laggy / non-native" report. Rather than hunting the ~30
+ * surfaces that set an inline blur, one !important rule clamps them all to a
+ * cheap 6px pass on Android (stylesheet !important outranks plain inline
+ * styles). Desktop keeps the full frosted look.
+ */
+function injectPerfLite() {
+  if (!isAndroid() || document.getElementById(PERF_ID)) return;
+  const el = document.createElement('style');
+  el.id = PERF_ID;
+  el.textContent = `
+    [style*="backdrop-filter"] {
+      backdrop-filter: blur(6px) !important;
+      -webkit-backdrop-filter: blur(6px) !important;
+    }
+  `;
+  document.head.appendChild(el);
+}
 
 export function applyTheme(theme, selector = ':root') {
+  injectPerfLite();
   const acc = buildAccentPalette(theme.accent.primary);
 
   const vars = `

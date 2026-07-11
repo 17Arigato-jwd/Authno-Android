@@ -94,7 +94,7 @@ export { COLORS, GRADIENTS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from './token
 export { injectDesignSystemFonts, APP_META, ATTRIBUTION } from './Fonts';
 
 // ── Buttons ───────────────────────────────────────────────────────────────────
-export { PixelButton, GradientButton, GhostButton, DangerButton, MinimalButton } from './Buttons';
+export { PixelButton, GradientButton, GhostButton, DangerButton, MinimalButton, CloseButton } from './Buttons';
 
 // ── Sliders ───────────────────────────────────────────────────────────────────
 export { PillSlider, DualPillSlider } from './Sliders';

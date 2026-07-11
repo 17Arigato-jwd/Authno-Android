@@ -27,7 +27,7 @@ import { FlameButton } from './Streak';
 import { ChapterRow } from './ChapterRow';
 import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
-import { DSIcons } from '../DesignSystem';
+import { DSIcons, CloseButton } from '../DesignSystem';
 
 // Matches the BurgerIcon used in the Editor header in App.js (three-line SVG,
 // border-2 border-white) so the button looks identical across all screens.
@@ -198,10 +198,8 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
       <div style={{ ...glass, width: '100%', maxWidth: '480px', padding: '24px', marginBottom: '0', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
         onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--text-1)' }}>Export Options</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '4px' }}>
-            <DSIcons.X size={20} />
-          </button>
+          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-1)' }}>Export Options</h2>
+          <CloseButton onClick={onClose} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {formats.map((f, i) => (
@@ -311,10 +309,8 @@ function MetadataPanel({ session, accentHex, onClose, onSave }) {
         border: `1px solid var(--border)`,
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: 'var(--text-1)' }}>Book Metadata</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: '4px' }}>
-            <DSIcons.X size={20} />
-          </button>
+          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-1)' }}>Book Metadata</h2>
+          <CloseButton onClick={onClose} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {field('Title',       'title',       { placeholder: 'Untitled Book' })}
