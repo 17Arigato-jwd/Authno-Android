@@ -380,7 +380,26 @@ function _readFileBytes(file) {
 // ─── Export helpers ───────────────────────────────────────────────────────────
 
 function _stripHtml(html) {
-  return (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  // ​: thread pins embed a zero-width space that survived tag stripping.
+  return (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Remove Threads markup before content leaves the app: pins are deleted
+ * (they're invisible zero-width markers), anchor spans are unwrapped so the
+ * prose stays. Exports used to ship this internal markup verbatim.
+ */
+function _stripThreadMarkup(html) {
+  if (!html || html.indexOf('data-authno-') === -1) return html || '';
+  try {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    tpl.content.querySelectorAll('[data-authno-pin]').forEach(el => el.remove());
+    tpl.content.querySelectorAll('[data-authno-anchor]').forEach(el => el.replaceWith(...el.childNodes));
+    return tpl.innerHTML;
+  } catch {
+    return html;
+  }
 }
 
 async function _triggerDownload(filename, content, mimeType) {
@@ -498,7 +517,7 @@ export async function exportAsHtml(session, options = {}) {
   const chapHtml = chapters.map(ch => `
     <section class="chapter">
       <h2>${esc(ch.title)}</h2>
-      <div class="content">${toXhtml(ch.content)}</div>
+      <div class="content">${toXhtml(_stripThreadMarkup(ch.content))}</div>
     </section>`).join('\n');
 
   const html = `<!DOCTYPE html>
@@ -811,7 +830,7 @@ export async function exportAsEpub(session, options = {}) {
 </head>
 <body>
   <h1>${esc(ch.title)}</h1>
-  ${toXhtml(ch.content)}
+  ${toXhtml(_stripThreadMarkup(ch.content))}
 </body>
 </html>`;
     manifestItems.push(`<item id="${id}" href="${href}" media-type="application/xhtml+xml"/>`);

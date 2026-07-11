@@ -23,7 +23,8 @@ import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
-import { APP_ICONS, appIconSupported, getAppIcon, setAppIcon } from '../utils/appIcon';
+import { APP_ICON_FAMILIES, familyOf, appIconSupported, getAppIcon, setAppIcon } from '../utils/appIcon';
+import { resetOnboarding } from './Onboarding';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
@@ -118,38 +119,56 @@ function AppIconPicker({ accentHex }) {
     try { await setAppIcon(id); } catch { setSelected(prev); }
   };
 
+  const family = familyOf(selected);
+  const lightFamily = APP_ICON_FAMILIES.find((f) => f.id === 'light');
+  // The Light tile previews whichever of its variants is active.
+  const previewFor = (f) =>
+    (f.id === family && f.variants.find((v) => v.id === selected)?.preview) || f.preview;
+
+  const tile = (active, onClick, preview, label, key, size) => (
+    <button
+      key={key}
+      onClick={onClick}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+        padding: '10px', borderRadius: '12px', cursor: 'pointer', minWidth: size + 24,
+        background: active ? `${accentHex}18` : 'var(--surface)',
+        border: `2px solid ${active ? accentHex : 'var(--border-sm)'}`,
+        transition: 'border-color 0.15s, background 0.15s',
+      }}
+    >
+      <span style={{
+        width: size, height: size, borderRadius: Math.round(size / 4), overflow: 'hidden',
+        background: '#ffffff', border: '1px solid var(--border-sm)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <img src={preview} alt={label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+      </span>
+      <span style={{ fontSize: '11px', fontWeight: active ? 700 : 500, color: active ? accentHex : 'var(--text-3)' }}>
+        {label}
+      </span>
+    </button>
+  );
+
   return (
     <div>
       <Label>App icon</Label>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        {APP_ICONS.map(({ id, label, preview }) => {
-          const active = selected === id;
-          return (
-            <button
-              key={id}
-              onClick={() => pick(id)}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
-                padding: '10px', borderRadius: '12px', cursor: 'pointer', minWidth: '72px',
-                background: active ? `${accentHex}18` : 'var(--surface)',
-                border: `2px solid ${active ? accentHex : 'var(--border-sm)'}`,
-                transition: 'border-color 0.15s, background 0.15s',
-              }}
-            >
-              <span style={{
-                width: '48px', height: '48px', borderRadius: '12px', overflow: 'hidden',
-                background: '#ffffff', border: '1px solid var(--border-sm)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <img src={preview} alt={label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-              </span>
-              <span style={{ fontSize: '11px', fontWeight: active ? 700 : 500, color: active ? accentHex : 'var(--text-3)' }}>
-                {label}
-              </span>
-            </button>
-          );
-        })}
+        {APP_ICON_FAMILIES.map((f) => tile(
+          family === f.id,
+          () => pick(f.id === 'default' ? 'default' : 'light'),
+          previewFor(f), f.label, f.id, 48,
+        ))}
       </div>
+      {family === 'light' && (
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px', paddingLeft: '12px', borderLeft: `2px solid ${accentHex}44` }}>
+          {lightFamily.variants.map((v) => tile(
+            selected === v.id,
+            () => pick(v.id),
+            v.preview, v.label, v.id, 36,
+          ))}
+        </div>
+      )}
       <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: '8px' }}>
         Changes the home-screen icon. On a few devices the launcher may briefly close the app to apply it.
       </p>
@@ -159,7 +178,7 @@ function AppIconPicker({ accentHex }) {
 
 function ConfirmModal({ title, message, type, onConfirm, onCancel }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.75))', backdropFilter: 'blur(4px)' }}>
       <div style={{ background: 'var(--modal-bg)', border: '1px solid var(--border)', borderRadius: '16px', padding: '28px', maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
           <DSIcons.Warning size={20} color={type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)'} />
@@ -670,12 +689,28 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
 }
 
 
-function AboutPanel({ accentHex }) {
+function AboutPanel({ accentHex, onReplayTour }) {
   const { isPro } = useEntitlement();
+  const replay = async () => {
+    try { await resetOnboarding(); } catch { /* best-effort */ }
+    onReplayTour?.();
+  };
   return (
     <div>
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
+
+      {/* The welcome tour persists as seen after its first run; this is the
+          way back in now that the "don't show again" checkbox is gone. */}
+      <SettingRow icon={DSIcons.BookOpen} title="Welcome tour" description="Replay the first-launch walkthrough" accentHex={accentHex}>
+        <button
+          onClick={replay}
+          style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: `${accentHex}22`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+        >
+          Replay
+        </button>
+      </SettingRow>
+      <div style={{ height: 16 }} />
 
       {/* Authno Pro (U10) */}
       <div style={{
@@ -868,7 +903,7 @@ export const DEFAULT_SETTINGS = {
   hapticsEnabled: true,
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onReplayTour }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('profile');
   const isPortrait = useIsPortrait();
@@ -916,7 +951,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', animation: 'settingsFadeIn 0.15s ease', padding: isPortrait ? '0' : '16px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.75))', backdropFilter: 'blur(6px)', animation: 'settingsFadeIn 0.15s ease', padding: isPortrait ? '0' : '16px' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <style>{`
@@ -966,7 +1001,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onReplayTour={onReplayTour} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
@@ -1008,7 +1043,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onReplayTour={onReplayTour} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />

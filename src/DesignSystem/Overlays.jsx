@@ -35,7 +35,7 @@ export function FrostedModal({ isOpen, onClose, title, accentHex, maxWidth = '48
       style={{
         position: 'fixed', inset: 0, zIndex: 200,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.72)',
+        background: 'var(--modal-overlay-bg, rgba(0,0,0,0.72))',
         backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
         animation: 'dsFadeIn 0.15s ease',
       }}
@@ -115,7 +115,7 @@ export function BottomSheet({ isOpen, onClose, title, accentHex, maxWidth = '540
       style={{
         position: 'fixed', inset: 0, zIndex: 300,
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.68)',
+        background: 'var(--modal-overlay-bg, rgba(0,0,0,0.68))',
         backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
         animation: 'dsFadeIn 0.15s ease',
       }}

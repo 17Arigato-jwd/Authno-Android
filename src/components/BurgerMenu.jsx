@@ -276,7 +276,7 @@ export default function BurgerMenu({
     ? createPortal(
         <>
           <div
-            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.5)" }}
+            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "var(--scrim, rgba(0,0,0,0.5))" }}
             onClick={onClose}
             onTouchStart={onClose}
           />

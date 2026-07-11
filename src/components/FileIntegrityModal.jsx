@@ -42,7 +42,7 @@ export default function FileIntegrityModal({ brokenSessions, accentHex, onRemove
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(6px)',
+      background: 'var(--modal-overlay-bg, rgba(0,0,0,0.80))', backdropFilter: 'blur(6px)',
     }}>
       <div style={{
         background: 'var(--modal-bg)',

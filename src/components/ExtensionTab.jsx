@@ -420,7 +420,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
               position: 'fixed',
               inset: 0,
               zIndex: 9999,
-              background: 'rgba(0,0,0,0.65)',
+              background: 'var(--modal-overlay-bg, rgba(0,0,0,0.65))',
               backdropFilter: 'blur(3px)',
             }}
           />

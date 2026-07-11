@@ -12,13 +12,36 @@ import { isAndroid } from './platform';
 
 const AppIcon = registerPlugin('AppIcon');
 
-/** Picker metadata. Previews live in public/app-icons/. */
-export const APP_ICONS = [
-  { id: 'default', label: 'Default',    preview: 'app-icons/ic_launcher_default.png' },
-  { id: 'light',   label: 'Light',      preview: 'app-icons/ic_launcher_light.png' },
-  { id: 'retro',   label: 'Retro',      preview: 'app-icons/ic_launcher_retro.png' },
-  { id: 'gold',    label: 'Space Gold', preview: 'app-icons/ic_launcher_gold.png' },
+/**
+ * Picker metadata. Previews live in public/app-icons/.
+ *
+ * There are two icons: Dark (the default) and Light — Retro and Space Gold
+ * are variants of the Light design, so the picker groups them under it the
+ * same way font weights group under one family.
+ */
+export const APP_ICON_FAMILIES = [
+  {
+    id: 'default',
+    label: 'Dark',
+    preview: 'app-icons/ic_launcher_default.png',
+    variants: [{ id: 'default', label: 'Default', preview: 'app-icons/ic_launcher_default.png' }],
+  },
+  {
+    id: 'light',
+    label: 'Light',
+    preview: 'app-icons/ic_launcher_light.png',
+    variants: [
+      { id: 'light', label: 'Classic',    preview: 'app-icons/ic_launcher_light.png' },
+      { id: 'retro', label: 'Retro',      preview: 'app-icons/ic_launcher_retro.png' },
+      { id: 'gold',  label: 'Space Gold', preview: 'app-icons/ic_launcher_gold.png' },
+    ],
+  },
 ];
+
+/** Which family a variant id belongs to. */
+export function familyOf(id) {
+  return id === 'default' ? 'default' : 'light';
+}
 
 export function appIconSupported() {
   return isAndroid();
