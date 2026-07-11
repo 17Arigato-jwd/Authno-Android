@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version string (e.g. 1.0.1) — leave blank to use tag or run number"
+        description: "Version (e.g. 1.1.16-beta.3). If app release v<version> exists, installers are attached to it."
         required: false
 
 jobs:
@@ -380,9 +380,12 @@ jobs:
     name: Publish CLI Release
     needs: build-cli
     runs-on: ubuntu-latest
+    # Dispatch-with-version also attaches (tag pushes are unavailable to the
+    # repo automation credentials, so app releases can be cut via dispatch).
     if: |
       startsWith(github.ref, 'refs/tags/cli-v') ||
-      startsWith(github.ref, 'refs/tags/v')
+      startsWith(github.ref, 'refs/tags/v')     ||
+      (github.event_name == 'workflow_dispatch' && inputs.version != '')
     permissions:
       contents: write
     steps:
@@ -428,10 +431,10 @@ jobs:
       # (Previously this step renamed every app release to "extbk-cli vX",
       # which is why the Releases page showed only CLI titles.)
       - name: Attach CLI installers to app release (v* tags)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
           files: |
             release-assets/**/*.tar.gz
             release-assets/**/*.zip

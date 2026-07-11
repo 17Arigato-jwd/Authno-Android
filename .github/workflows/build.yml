@@ -6,7 +6,17 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main, master]
+  # release_version exists because this repo's automation credentials can push
+  # branches but NOT tags (GitHub App scope). Dispatching with a version cuts a
+  # full release from the selected ref: the version is stamped everywhere and
+  # the release job has softprops create tag v<version> itself using the
+  # Actions token. Leave blank for a normal CI build.
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Publish a release as v<value> (e.g. 1.1.16-beta.3). Blank = normal CI build."
+        required: false
+        type: string
 
 # ── 1. Build React once, reuse across all platform jobs ──────────────────────
 jobs:
@@ -24,10 +34,13 @@ jobs:
       # in-app About screen, ErrorLogger reports and every artifact all carry
       # the tag version — no more "v1.2.0 release containing a 1.1.16 app".
       - name: Stamp tag version
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
+          if [ -n "$RELEASE_VERSION" ]; then VER="${RELEASE_VERSION#v}"; fi
           npm pkg set version="$VER"
           echo "Stamped package.json version=$VER"
       - name: Reed-Solomon round-trip tests (must pass before any format ships)
@@ -127,9 +140,12 @@ jobs:
         id: version
         env:
           VERSION_CODE_OFFSET: 0
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           VERSION_CODE=$(( VERSION_CODE_OFFSET + ${{ github.run_number }} ))
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [ -n "$RELEASE_VERSION" ]; then
+            VERSION_NAME="${RELEASE_VERSION#v}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION_NAME="${{ github.ref_name }}"
             VERSION_NAME="${VERSION_NAME#v}"   # strip leading 'v'
           else
@@ -178,7 +194,7 @@ jobs:
             -PversionName=${{ steps.version.outputs.name }}
 
       - name: Build release AAB
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_version != ''
         working-directory: android
         env:
           KEYSTORE_PATH: keystore.jks
@@ -222,7 +238,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload release AAB
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_version != ''
         uses: actions/upload-artifact@v4
         with:
           name: authno-android-release
@@ -307,8 +323,12 @@ jobs:
 
       - name: Set version
         id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [ -n "$RELEASE_VERSION" ]; then
+            echo "name=v${RELEASE_VERSION#v}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           else
             echo "name=dev-${{ github.run_number }}" >> $GITHUB_OUTPUT
@@ -386,10 +406,13 @@ jobs:
       # electron-builder reads version from THIS checkout's package.json —
       # stamp the tag version so installer filenames/metadata match the release.
       - name: Stamp tag version
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
+          if [ -n "$RELEASE_VERSION" ]; then VER="${RELEASE_VERSION#v}"; fi
           npm pkg set version="$VER"
       # dist:win runs electron-builder with --publish never: without it,
       # electron-builder's default policy is onTagOrDraft — on tag builds it
@@ -418,10 +441,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: react-build, path: build/ }
       - name: Stamp tag version
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
+          if [ -n "$RELEASE_VERSION" ]; then VER="${RELEASE_VERSION#v}"; fi
           npm pkg set version="$VER"
       - name: Build Linux packages
         run: npm run dist:linux
@@ -441,15 +467,18 @@ jobs:
     name: Publish Release
     needs: [build-android, build-sandbox, build-desktop-windows, build-desktop-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release_version != ''
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with: { path: release-assets/ }
+      # On dispatch releases the tag doesn't exist yet — softprops creates it
+      # at the commit this run built (github.sha) using the Actions token.
       - uses: softprops/action-gh-release@v2
         with:
-          name: "AuthNo ${{ github.ref_name }}"
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.release_version) }}
+          name: "AuthNo ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.release_version) }}"
           files: |
             release-assets/**/*.apk
             release-assets/**/*.aab
