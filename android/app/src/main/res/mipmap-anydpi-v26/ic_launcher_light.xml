@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "Light" alternate launcher icon: watercolour alpha glyph on the white
-     canvas from the source design. The 18% inset keeps the full glyph inside
-     the adaptive-icon safe zone on circular masks. -->
+<!-- "light" alternate launcher icon: the glyph is composed to bleed into the
+     corner and be cropped by the mask (author's intended framing), so the
+     foreground is full-bleed — no inset — over the solid-white background. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
   <background android:drawable="@color/ic_launcher_background"/>
-  <foreground>
-    <inset android:drawable="@mipmap/ic_launcher_light_fg" android:inset="18%"/>
-  </foreground>
+  <foreground android:drawable="@mipmap/ic_launcher_light_fg"/>
 </adaptive-icon>
