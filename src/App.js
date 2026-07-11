@@ -20,7 +20,7 @@ import ChapterInfoModal from "./components/ChapterInfoModal";
 import ShareImportSheet from "./components/ShareImportSheet";
 import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
 import { updateAppShortcuts } from "./utils/appShortcuts";
-import ThreadsPanel from "./components/ThreadsPanel";
+import ThreadsPanel, { ThreadsTilesDesktop } from "./components/ThreadsPanel";
 import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
 import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
@@ -64,12 +64,6 @@ function _safeParse(key, fallback) {
   }
 }
 
-const BurgerIcon = ({ className }) => (
-  <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-
 /* ── Editor ─────────────────────────────────────────────────────────────── */
 function Editor({
   current, onEditTitle, onEditContent,
@@ -88,8 +82,28 @@ function Editor({
 
   // ── Threads (plotlines / character arcs — docs/threads-spec.md) ──────────
   const [threadsOpen, setThreadsOpen] = useState(false);
-  const [openThreadId, setOpenThreadId] = useState(null);
+  // Hyprland-style tiling (desktop): open threads are an ordered list — the
+  // first gets the top window, the rest live as browser-style tabs in the
+  // second window. Mobile keeps the single-thread sheet.
+  const [openThreadIds, setOpenThreadIds] = useState([]);
+  const [activeTabId, setActiveTabId] = useState(null);
   const [focusEntryId, setFocusEntryId] = useState(null);
+
+  const openThread = useCallback((id, entryId = null) => {
+    setFocusEntryId(entryId);
+    if (id == null) { setOpenThreadIds([]); setActiveTabId(null); return; }
+    setThreadsOpen(true);
+    setOpenThreadIds((prev) => {
+      if (android) return [id];
+      return prev.includes(id) ? prev : [...prev, id];
+    });
+    setActiveTabId(id);
+  }, [android]);
+
+  const closeThread = useCallback((id) => {
+    setOpenThreadIds((prev) => prev.filter((x) => x !== id));
+    setActiveTabId((tab) => (tab === id ? null : tab));
+  }, []);
   const pendingFlash = useRef(null);
   // Memoized on the threads slice only — the session object gets a new identity
   // every keystroke, and an unstable threads object would re-fire the gutter
@@ -134,10 +148,8 @@ function Editor({
 
   const openThreadFromMarker = useCallback((threadId, entryId) => {
     hapticSelect();
-    setThreadsOpen(true);
-    setOpenThreadId(threadId);
-    setFocusEntryId(entryId ?? null);
-  }, []);
+    openThread(threadId, entryId ?? null);
+  }, [openThread]);
 
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
   useEffect(() => {
@@ -224,7 +236,7 @@ function Editor({
             <button onClick={onToggleSidebar}
               style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", flexShrink: 0, transition: "background 0.15s" }}
               aria-label="Sessions">
-              <DSIcons.Menu size={20} color="var(--text-1)" />
+              <DSIcons.PanelLeft size={20} color="var(--text-1)" />
             </button>
           )}
           <input
@@ -265,7 +277,7 @@ function Editor({
             onClick={onToggleMenu}
             style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", transition: "background 0.15s", color: "var(--text-1)" }}
           >
-            <BurgerIcon style={{ color: "var(--text-1)" }} />
+            <DSIcons.MoreVertical size={20} color="var(--text-1)" style={{ display: "block" }} />
           </button>
         </div>
       </header>
@@ -368,27 +380,43 @@ function Editor({
         data={threadsData}
         onChangeData={handleChangeThreads}
         onEditContent={onEditContent}
-        onOpenThread={(id) => { setThreadsOpen(true); setOpenThreadId(id); setFocusEntryId(null); }}
+        onOpenThread={(id) => openThread(id)}
         accentHex={accentHex}
       />
     )}
 
-    {/* Threads panel — desktop side pane / Android 5⁄8 bottom sheet */}
-    {threadsOpen && current && (
+    {/* Threads — Android 5⁄8 bottom sheet / desktop tiling (2 windows + tabs) */}
+    {threadsOpen && current && (android ? (
       <ThreadsPanel
         session={fullSession ?? current}
         data={threadsData}
         onChangeData={handleChangeThreads}
         onStripAnchors={handleStripAnchors}
         onJump={handleJumpToAnchor}
-        openThreadId={openThreadId}
+        openThreadId={openThreadIds[0] ?? null}
         focusEntryId={focusEntryId}
-        onOpenThread={(id, entryId = null) => { setOpenThreadId(id); setFocusEntryId(id ? entryId : null); }}
+        onOpenThread={(id, entryId = null) => openThread(id, entryId)}
         accentHex={accentHex}
-        android={android}
-        onClose={() => { setThreadsOpen(false); setOpenThreadId(null); setFocusEntryId(null); }}
+        android
+        onClose={() => { setThreadsOpen(false); openThread(null); }}
       />
-    )}
+    ) : (
+      <ThreadsTilesDesktop
+        session={fullSession ?? current}
+        data={threadsData}
+        onChangeData={handleChangeThreads}
+        onStripAnchors={handleStripAnchors}
+        onJump={handleJumpToAnchor}
+        openThreadIds={openThreadIds}
+        activeTabId={activeTabId}
+        focusEntryId={focusEntryId}
+        onOpenThread={openThread}
+        onCloseThread={closeThread}
+        onActivateTab={setActiveTabId}
+        accentHex={accentHex}
+        onClose={() => { setThreadsOpen(false); openThread(null); }}
+      />
+    ))}
     </div>
   );
 }

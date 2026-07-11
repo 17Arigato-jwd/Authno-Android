@@ -29,14 +29,6 @@ import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
 
-// Matches the BurgerIcon used in the Editor header in App.js (three-line SVG,
-// border-2 border-white) so the button looks identical across all screens.
-const BurgerIcon = ({ className }) => (
-  <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-
 // ─── MIME normaliser ──────────────────────────────────────────────────────────
 // Some Android gallery/file-picker implementations return an empty file.type for
 // JPEG images (and occasionally other formats). Fall back to extension detection
@@ -543,7 +535,7 @@ export default function BookDashboard({
             )}
             <button ref={burgerBtnRef} onClick={onToggleMenu}
               style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', transition: 'background 0.15s' }}>
-              <BurgerIcon style={{ color: 'var(--text-1)' }} />
+              <DSIcons.MoreVertical size={20} color="var(--text-1)" style={{ display: 'block' }} />
             </button>
           </div>
         </header>

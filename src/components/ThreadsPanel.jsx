@@ -538,3 +538,115 @@ export default function ThreadsPanel({
     </div>
   );
 }
+
+// ── Desktop tiling (v1.1 — the hyprland concept from the spec) ───────────────
+// The right column tiles up to TWO thread windows vertically. The first open
+// thread owns the top window; every further thread becomes a browser-style
+// tab in the bottom window (switchable, closable per tab). Closing the top
+// window promotes the bottom window's first tab into it.
+
+function TabStrip({ ids, data, activeId, onActivate, onCloseThread, accentHex }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'stretch', gap: 2, padding: '6px 8px 0',
+      borderBottom: '1px solid var(--border)', background: 'var(--nav-bg)',
+      overflowX: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none', flexShrink: 0,
+    }}>
+      {ids.map((id) => {
+        const t = data.threads.find((x) => x.id === id);
+        if (!t) return null;
+        const active = id === activeId;
+        return (
+          <div
+            key={id}
+            onClick={() => onActivate(id)}
+            title={t.name}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px',
+              borderRadius: '8px 8px 0 0', cursor: 'pointer', maxWidth: 150, minWidth: 0,
+              background: active ? 'var(--surface-md)' : 'transparent',
+              borderBottom: active ? `2px solid ${accentHex}` : '2px solid transparent',
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: threadColor(data, t), flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: active ? 700 : 500, color: active ? 'var(--text-1)' : 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.name}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onCloseThread(id); }}
+              aria-label={`Close ${t.name}`}
+              style={{ border: 'none', background: 'transparent', color: 'var(--text-5)', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}
+            >
+              <DSIcons.X size={10} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ThreadsTilesDesktop({
+  session, data, onChangeData, onStripAnchors, onJump,
+  openThreadIds = [], activeTabId, focusEntryId,
+  onOpenThread, onCloseThread, onActivateTab,
+  accentHex = '#5a00d9', onClose,
+}) {
+  const [view, setView] = useState('list'); // list | new | types — window A only
+
+  const primary = data.threads.find((t) => t.id === openThreadIds[0]) || null;
+  const tabIds = openThreadIds.slice(1);
+  const activeTab = tabIds.includes(activeTabId) ? activeTabId : (tabIds[0] ?? null);
+  const secondary = data.threads.find((t) => t.id === activeTab) || null;
+
+  const detail = (thread) => (
+    <ThreadDetail
+      session={session} data={data} thread={thread}
+      onChangeData={onChangeData} onStripAnchors={onStripAnchors}
+      onJump={onJump} accentHex={accentHex}
+      focusEntryId={focusEntryId}
+    />
+  );
+
+  return (
+    <div style={{
+      width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column',
+      borderLeft: '1px solid var(--border)', background: 'var(--sidebar-bg)',
+      overflow: 'hidden',
+    }}>
+      {/* Window A — first open thread, or the list/new/types views */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <PanelHeader
+          title={primary ? primary.name : view === 'new' ? 'New thread' : view === 'types' ? 'Thread types' : 'Threads'}
+          onBack={primary ? () => onCloseThread(primary.id) : view !== 'list' ? () => setView('list') : null}
+          onClose={onClose}
+        />
+        {primary ? detail(primary) : view === 'new' ? (
+          <NewThreadForm data={data} onChangeData={onChangeData} accentHex={accentHex}
+            onCreated={(id) => { setView('list'); onOpenThread(id); }} />
+        ) : view === 'types' ? (
+          <TypeManager data={data} onChangeData={onChangeData} accentHex={accentHex} />
+        ) : (
+          <ThreadList
+            session={session} data={data} accentHex={accentHex}
+            onOpenThread={onOpenThread} onChangeData={onChangeData} onStripAnchors={onStripAnchors}
+            onNew={() => setView('new')} onTypes={() => setView('types')}
+            onJumpEntry={(threadId, entryId) => onOpenThread(threadId, entryId)}
+          />
+        )}
+      </div>
+
+      {/* Window B — the rest as tabs */}
+      {tabIds.length > 0 && (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '2px solid var(--border)' }}>
+          <TabStrip
+            ids={tabIds} data={data} activeId={activeTab}
+            onActivate={onActivateTab} onCloseThread={onCloseThread}
+            accentHex={accentHex}
+          />
+          {secondary && detail(secondary)}
+        </div>
+      )}
+    </div>
+  );
+}

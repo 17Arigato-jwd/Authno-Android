@@ -1,7 +1,7 @@
 {
   "name": "authno",
   "version": "1.1.16",
-  "description": "AuthNo \u2014 offline story editor",
+  "description": "AuthNo — offline story editor",
   "author": {
     "name": "VCHS Studios",
     "email": "blader.ultramate@gmail.com"
@@ -16,9 +16,13 @@
   "private": true,
   "dependencies": {
     "@capacitor/android": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/browser": "^6.0.0",
     "@capacitor/core": "^6.0.0",
     "@capacitor/filesystem": "^6.0.0",
-    "@capacitor/app": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/keyboard": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0",
     "@capacitor/share": "^6.0.0",
     "@capawesome/capacitor-file-picker": "^6.0.0",
     "@hackernoon/pixel-icon-library": "^1.0.0",
@@ -28,17 +32,15 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "framer-motion": "^12.23.24",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.552.0",
+    "pako": "^2.1.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.5.136",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-scripts": "^5.0.1",
-    "web-vitals": "^2.1.4",
-    "pako": "^2.1.0",
-    "@capacitor/browser": "^6.0.0",
-    "pdf-lib": "^1.17.1",
-    "@capacitor/keyboard": "^6.0.0",
-    "@capacitor/haptics": "^6.0.0",
-    "@capacitor/preferences": "^6.0.0"
+    "web-vitals": "^2.1.4"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -88,7 +90,7 @@
   "build": {
     "appId": "com.aurorastudios.authno",
     "productName": "AuthNo",
-    "copyright": "\u00a9 2026 AS Code Studios",
+    "copyright": "© 2026 AS Code Studios",
     "files": [
       "build/**/*",
       "public/**/*",

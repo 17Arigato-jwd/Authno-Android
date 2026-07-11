@@ -3,78 +3,120 @@
  *
  * Fed from the Font Customizer's library (curated Google/system families) plus
  * the user's uploaded custom fonts — one font system for app AND manuscript.
- * Each family is an <optgroup> whose options are its weight variants
- * (Regular / Medium / SemiBold / Bold …), per the author's grouping request.
- * Selecting a variant applies font-family + font-weight to the selection,
- * undo-safely, and lazy-loads the Google Fonts CSS on first use.
+ * Families group their weight variants (Regular / SemiBold / Bold …).
+ *
+ * Now a themed ToolbarDropdown instead of a native <select>: the old list ran
+ * off the bottom of the window, and the trigger never reflected the font of
+ * the current selection. The trigger label follows the caret (matched against
+ * the library by the computed font-family/weight).
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import ToolbarDropdown, { DropdownRow, DropdownHeader } from './ToolbarDropdown';
 import {
   FONT_LIBRARY, fontVariants, resolveFontStack, loadGoogleFont,
 } from '../utils/fontManager';
 
-const SELECT_STYLE = {
-  background: 'transparent',
-  border: `1px solid var(--toolbar-divider)`,
-  color: 'var(--toolbar-item)',
-  fontSize: 13,
-  padding: '4px 8px',
-  borderRadius: 6,
-  outline: 'none',
-  cursor: 'pointer',
-  maxWidth: 150,
-};
+function firstFamily(stack) {
+  return (stack || '').split(',')[0].trim().replace(/^["']|["']$/g, '').toLowerCase();
+}
 
-const OPT_STYLE = { background: 'var(--modal-bg)', color: 'var(--text-1)' };
+/** Match a computed font-family/weight back to a library entry. */
+function matchFont(computedFamily, computedWeight, customFonts) {
+  const fam = firstFamily(computedFamily);
+  if (!fam) return null;
+  const weight = parseInt(computedWeight, 10) || 400;
+  for (const f of FONT_LIBRARY) {
+    if (firstFamily(resolveFontStack(f.id, [])) === fam || f.label.toLowerCase() === fam) {
+      const v = fontVariants(f).find((x) => x.weight === weight);
+      return { id: f.id, weight, label: f.label + (v && v.label !== 'Regular' ? ` ${v.label}` : '') };
+    }
+  }
+  const c = (customFonts || []).find(
+    (cf) => firstFamily(resolveFontStack(cf.id, customFonts)) === fam || cf.name?.toLowerCase() === fam
+  );
+  if (c) return { id: c.id, weight, label: c.name };
+  // Unknown family (pasted content) — still show its name.
+  const raw = (computedFamily || '').split(',')[0].trim().replace(/^["']|["']$/g, '');
+  return raw ? { id: null, weight, label: raw } : null;
+}
 
-export function FontSelector({ onApply, customFonts = [] }) {
-  const handleChange = (e) => {
-    if (!e.target.value) return;
-    const { kind, id, weight } = JSON.parse(e.target.value);
+export function FontSelector({ onApply, customFonts = [], editorRef }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState(null);
+
+  // Reflect the font at the caret/selection (only while it's in the editor).
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const root = editorRef?.current;
+        const sel = window.getSelection();
+        const node = sel?.anchorNode;
+        if (!root || !node || !root.contains(node)) return;
+        const el = node.nodeType === 3 ? node.parentElement : node;
+        if (!el) return;
+        const cs = getComputedStyle(el);
+        setCurrent(matchFont(cs.fontFamily, cs.fontWeight, customFonts));
+      });
+    };
+    document.addEventListener('selectionchange', update);
+    return () => { cancelAnimationFrame(raf); document.removeEventListener('selectionchange', update); };
+  }, [editorRef, customFonts]);
+
+  const apply = (kind, id, weight) => {
     if (kind === 'lib') loadGoogleFont(id);
-    const stack = resolveFontStack(id, customFonts);
-    onApply?.({ fontFamily: stack, fontWeight: weight ?? 400 });
-    e.target.value = '';        // let the same variant be re-picked later
+    onApply?.({ fontFamily: resolveFontStack(id, customFonts), fontWeight: weight ?? 400 });
+    setOpen(false);
   };
 
   return (
-    <select defaultValue="" onChange={handleChange} style={SELECT_STYLE} title="Font family & weight"
-      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--toolbar-item)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--toolbar-divider)'}
+    <ToolbarDropdown
+      label={current?.label ?? 'Font…'}
+      title="Font family & weight"
+      minWidth={86}
+      open={open}
+      setOpen={setOpen}
     >
-      <option value="" disabled style={OPT_STYLE}>Font…</option>
-
-      {FONT_LIBRARY.map(f => {
+      {FONT_LIBRARY.map((f) => {
         const variants = fontVariants(f);
-        return variants.length > 1 ? (
-          <optgroup key={f.id} label={f.label} style={OPT_STYLE}>
-            {variants.map(v => (
-              <option key={v.weight} style={OPT_STYLE}
-                value={JSON.stringify({ kind: 'lib', id: f.id, weight: v.weight })}>
+        if (variants.length <= 1) {
+          const w = variants[0]?.weight ?? 400;
+          return (
+            <DropdownRow key={f.id} current={current?.id === f.id} onClick={() => apply('lib', f.id, w)}>
+              {f.label}
+            </DropdownRow>
+          );
+        }
+        return (
+          <React.Fragment key={f.id}>
+            <DropdownHeader>{f.label}</DropdownHeader>
+            {variants.map((v) => (
+              <DropdownRow
+                key={v.weight}
+                indent
+                current={current?.id === f.id && current?.weight === v.weight}
+                onClick={() => apply('lib', f.id, v.weight)}
+              >
                 {f.label} {v.label}
-              </option>
+              </DropdownRow>
             ))}
-          </optgroup>
-        ) : (
-          <option key={f.id} style={OPT_STYLE}
-            value={JSON.stringify({ kind: 'lib', id: f.id, weight: variants[0]?.weight ?? 400 })}>
-            {f.label}
-          </option>
+          </React.Fragment>
         );
       })}
 
       {customFonts.length > 0 && (
-        <optgroup label="Your fonts" style={OPT_STYLE}>
-          {customFonts.map(f => (
-            <option key={f.id} style={OPT_STYLE}
-              value={JSON.stringify({ kind: 'custom', id: f.id, weight: 400 })}>
+        <>
+          <DropdownHeader>Your fonts</DropdownHeader>
+          {customFonts.map((f) => (
+            <DropdownRow key={f.id} indent current={current?.id === f.id} onClick={() => apply('custom', f.id, 400)}>
               {f.name}
-            </option>
+            </DropdownRow>
           ))}
-        </optgroup>
+        </>
       )}
-    </select>
+    </ToolbarDropdown>
   );
 }
 

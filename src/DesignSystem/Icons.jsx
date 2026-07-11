@@ -16,7 +16,7 @@
 
 import {
   Home, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, Menu,
-  MoreHorizontal, MoreVertical,
+  MoreHorizontal, MoreVertical, PanelLeft,
   Book, BookOpen, File, FilePlus, FileText, Folder, FolderOpen, Archive, Save, Target,
   Check, X, Plus, Minus, Search, Pencil, Eraser, Trash2, Copy, Link, Upload, Download, RotateCw,
   Info, AlertTriangle, CheckCircle2, XCircle, AlertCircle, Bell, BellRing,
@@ -73,6 +73,7 @@ export const DSIcons = {
   ChevronUp:     icon(ChevronUp),
   ChevronDown:   icon(ChevronDown),
   Menu:          icon(Menu),
+  PanelLeft:     icon(PanelLeft),
   More:          icon(MoreHorizontal),
   MoreVertical:  icon(MoreVertical),
   // Content & files
