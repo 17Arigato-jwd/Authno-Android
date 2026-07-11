@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback } from 'react';
 
 
-import { DSIcons } from '../DesignSystem';
+import { DSIcons, toast } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
 import { hapticSwipeReveal, hapticSave } from '../utils/haptics';
@@ -28,10 +28,6 @@ function resolveTileIcon(iconName, size = 28) {
 /* useLightMode() removed (N3) — theming now flows through CSS variables. */
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
-const BurgerIcon = ({ className, style }) => (
-  <DSIcons.Menu size={22} style={{ display: 'inline-flex', ...style }} />
-);
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -323,6 +319,29 @@ export default function HomeScreen({
     } catch (err) { showError('openBook', err); }
   };
 
+  // Import a Book: convert txt/md/html/rtf/docx/odt/epub/pdf into an authbook.
+  // The new session has no filePath, so Android's autosave loop parks it in
+  // the AuthNo folder until the user explicitly saves it somewhere.
+  const importInputRef = useRef(null);
+  const handleImportBook = () => importInputRef.current?.click();
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const { convertFileToBook, bookToNewSession, ImportError } = await import('../utils/bookImport');
+      try {
+        const converted = await convertFileToBook(file);
+        const session = bookToNewSession(converted);
+        onSelect(session.id, session);
+        toast(`Imported "${session.title}" (${session.chapters.length} ${session.chapters.length === 1 ? 'chapter' : 'chapters'})`, { variant: 'success' });
+      } catch (err) {
+        if (err instanceof ImportError) toast(err.message, { variant: 'danger', duration: 6000 });
+        else throw err;
+      }
+    } catch (err) { showError('importBook', err); }
+  };
+
   const { navigate } = useExtensions();
   const extHomeTiles  = useExtensionContributions('homescreen');
 
@@ -340,7 +359,7 @@ export default function HomeScreen({
     })),
     // U2: the three placeholder "Coming Soon" tiles are now real actions.
     { icon: <DSIcons.Volume size={28} color="currentColor" />, label: 'Read Aloud', onClick: onReadAloud },
-    { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleOpenExisting },
+    { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleImportBook },
     { icon: <DSIcons.Extension size={28} color="currentColor" />, label: 'Extensions', onClick: onOpenExtensions },
   ];
 
@@ -355,20 +374,26 @@ export default function HomeScreen({
       position: 'relative', zIndex: 1, userSelect: 'none',
     }}>
 
+      <input
+        ref={importInputRef} type="file" style={{ display: 'none' }}
+        accept=".txt,.md,.markdown,.html,.htm,.rtf,.doc,.docx,.odt,.epub,.pdf"
+        onChange={handleImportFile}
+      />
+
       {/* Header */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--app-bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <button onClick={onToggleSidebar}
             style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', color: 'var(--text-1)' }}
             aria-label="Sessions">
-            <DSIcons.Menu size={20} color="var(--text-1)" />
+            <DSIcons.PanelLeft size={20} color="var(--text-1)" />
           </button>
           <span style={{ color: 'var(--text-1)', fontSize: 18, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Welcome Back</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button ref={burgerBtnRef} onClick={onToggleMenu}
             style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', transition: 'background 0.15s', color: 'var(--text-1)' }}>
-            <BurgerIcon style={{ color: 'var(--text-1)' }} />
+            <DSIcons.MoreVertical size={20} color="var(--text-1)" style={{ display: 'block' }} />
           </button>
         </div>
       </header>

@@ -18,7 +18,8 @@
  * editor's native undo stack.
  */
 
-import React, { useReducer, useEffect, useCallback, useState } from 'react';
+import React, { useReducer, useEffect, useCallback, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 import FontSelector from './FontSelector';
 import SizeSelector from './SizeSelector';
@@ -89,25 +90,43 @@ function TDivider() {
   return <div style={{ width: 1, alignSelf: 'stretch', margin: '4px 2px', background: 'var(--toolbar-divider)', flexShrink: 0 }} />;
 }
 
-// One shared popover for colour palettes and the align picker.
-function Popover({ open, onClose, children, up = false }) {
-  if (!open) return null;
-  return (
+// One shared popover for colour palettes, align picker and the Insert menu.
+// Rendered through a portal with fixed positioning (anchored to the trigger)
+// so it survives the toolbar's horizontal scroll container — an absolutely
+// positioned child would be clipped by overflow-x: auto.
+function Popover({ open, onClose, children, up = false, anchorRef, width = 168 }) {
+  const [pos, setPos] = useState(null);
+  useEffect(() => {
+    if (!open) { setPos(null); return undefined; }
+    const place = () => {
+      const r = anchorRef?.current?.getBoundingClientRect();
+      if (!r) return;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      setPos(up
+        ? { left, bottom: window.innerHeight - r.top + 8 }
+        : { left, top: r.bottom + 8 });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [open, up, anchorRef, width]);
+  if (!open || !pos) return null;
+  return createPortal(
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 60 }} onMouseDown={onClose} />
       <div
         onMouseDown={(e) => e.preventDefault()}
         style={{
-          position: 'absolute', zIndex: 61, left: 0,
-          ...(up ? { bottom: 'calc(100% + 8px)' } : { top: 'calc(100% + 8px)' }),
+          position: 'fixed', zIndex: 61, ...pos,
           background: 'var(--modal-bg)', border: '1px solid var(--border)',
           borderRadius: 10, padding: 8, boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
-          display: 'flex', gap: 6, flexWrap: 'wrap', width: 168,
+          display: 'flex', gap: 6, flexWrap: 'wrap', width,
         }}
       >
         {children}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
@@ -120,6 +139,11 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   const [hiliteOpen, setHiliteOpen] = useState(false);
   const [alignOpen, setAlignOpen] = useState(false);
   const [kbOpen, setKbOpen] = useState(false);
+  const colorRef  = useRef(null);
+  const hiliteRef = useRef(null);
+  const alignRef  = useRef(null);
+  const insertRef = useRef(null);
+  const deskRowRef = useRef(null);
   const extButtons = useEditorToolbarExtensions();
   const { navigate } = useExtensions();
   const { theme } = useTheme();
@@ -160,6 +184,21 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       } catch { /* web build — no native keyboard events */ }
     })();
     return () => { subs.forEach(s => s?.remove?.()); };
+  }, [android]);
+
+  // Wheel-over-pill scrolls the toolbar horizontally when it overflows.
+  useEffect(() => {
+    const el = deskRowRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        el.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, [android]);
 
   const toggle = (cmd, val = null) => { execCommand(cmd, val); updateActive(); };
@@ -220,8 +259,8 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   // ── Shared control set ────────────────────────────────────────────────────
   const controls = (up) => (
     <>
-      <FontSelector customFonts={customFonts} onApply={applyStyle} />
-      <SizeSelector onApply={applyStyle} />
+      <FontSelector customFonts={customFonts} onApply={applyStyle} editorRef={editorRef} />
+      <SizeSelector onApply={applyStyle} editorRef={editorRef} />
 
       <TDivider />
 
@@ -231,9 +270,9 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       <TBtn title="Strikethrough" active={active.strike} onClick={() => toggle('strikeThrough')}><DSIcons.Strikethrough size={15} /></TBtn>
 
       {/* Text colour */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div ref={colorRef} style={{ position: 'relative', flexShrink: 0 }}>
         <TBtn title="Text colour" active={colorOpen} onClick={() => { closePopovers(); setColorOpen(v => !v); }}><DSIcons.TextColor size={15} /></TBtn>
-        <Popover open={colorOpen} onClose={() => setColorOpen(false)} up={up}>
+        <Popover open={colorOpen} onClose={() => setColorOpen(false)} up={up} anchorRef={colorRef}>
           {TEXT_COLORS.map(c => (
             <button key={c} onClick={() => setTextColor(c)} title={c}
               style={{ width: 22, height: 22, borderRadius: 6, background: c, border: '1px solid var(--border)', cursor: 'pointer' }} />
@@ -246,9 +285,9 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       </div>
 
       {/* Highlight */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div ref={hiliteRef} style={{ position: 'relative', flexShrink: 0 }}>
         <TBtn title="Highlight (Ctrl+H)" active={active.highlight || hiliteOpen} onClick={() => { closePopovers(); setHiliteOpen(v => !v); }}><DSIcons.Highlighter size={15} /></TBtn>
-        <Popover open={hiliteOpen} onClose={() => setHiliteOpen(false)} up={up}>
+        <Popover open={hiliteOpen} onClose={() => setHiliteOpen(false)} up={up} anchorRef={hiliteRef}>
           {HILITE_COLORS.map(c => (
             <button key={c} onClick={() => setHighlight(c)} title="Highlight"
               style={{ width: 22, height: 22, borderRadius: 6, background: c, border: '1px solid var(--border)', cursor: 'pointer' }} />
@@ -263,9 +302,9 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       <TDivider />
 
       {/* Alignment */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div ref={alignRef} style={{ position: 'relative', flexShrink: 0 }}>
         <TBtn title="Alignment" active={alignOpen} onClick={() => { closePopovers(); setAlignOpen(v => !v); }}>{alignIcon}<DSIcons.ChevronDown size={10} style={{ marginLeft: 2, opacity: 0.6 }} /></TBtn>
-        <Popover open={alignOpen} onClose={() => setAlignOpen(false)} up={up}>
+        <Popover open={alignOpen} onClose={() => setAlignOpen(false)} up={up} anchorRef={alignRef}>
           {[
             ['justifyLeft', 'Align left', <DSIcons.AlignLeft size={15} key="l" />],
             ['justifyCenter', 'Align centre', <DSIcons.AlignCenter size={15} key="c" />],
@@ -288,19 +327,13 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       <TBtn title="Clear formatting" onClick={() => { toggle('removeFormat'); setHighlight(null); }}><DSIcons.ClearFormat size={15} /></TBtn>
 
       {/* Insert menu */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div ref={insertRef} style={{ position: 'relative', flexShrink: 0 }}>
         <TBtn title="Insert…" active={insertOpen} onClick={() => { closePopovers(); setInsertOpen(v => !v); }}>
           <DSIcons.Plus size={14} /><span style={{ fontSize: 12.5, marginLeft: 3 }}>Insert</span>
         </TBtn>
         {insertOpen && (
-          <>
-            <div style={{ position: 'fixed', inset: 0, zIndex: 60 }} onMouseDown={() => setInsertOpen(false)} />
-            <div style={{
-              position: 'absolute', ...(up ? { bottom: 'calc(100% + 8px)' } : { top: 'calc(100% + 8px)' }), left: 0, zIndex: 61,
-              minWidth: 190, padding: 6, borderRadius: 12,
-              background: 'var(--modal-bg)', border: '1px solid var(--border)',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
-            }}>
+          <Popover open onClose={() => setInsertOpen(false)} up={up} anchorRef={insertRef} width={200}>
+            <div style={{ width: '100%' }}>
               {INSERT_ITEMS.map((item) => (
                 <button
                   key={item.label}
@@ -320,7 +353,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
                 </button>
               ))}
             </div>
-          </>
+          </Popover>
         )}
       </div>
 
@@ -380,17 +413,27 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   }
 
   // ── Desktop: floating frosted pill at the top ──────────────────────────────
+  // The row scrolls horizontally when the editor column is narrow (threads
+  // panel open) — buttons used to paint straight off the pill's edge. The
+  // wheel handler maps vertical scrolling to the row; it's attached natively
+  // because React registers wheel listeners passively (preventDefault no-ops).
   return (
     <div style={{
       position: 'sticky', top: 16, zIndex: 20,
       margin: '0 auto', maxWidth: '100%', width: 'fit-content',
-      display: 'flex', alignItems: 'center', gap: 4,
-      padding: '6px 12px', borderRadius: 24,
+      borderRadius: 24, overflow: 'hidden',
       backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
       ...surface,
       boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.3)' : '0 8px 24px rgba(0,0,0,0.12)',
     }}>
-      {controls(false)}
+      <div ref={deskRowRef} className="toolbar-scroll" style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '6px 12px', maxWidth: '100%', overflowX: 'auto',
+        msOverflowStyle: 'none', scrollbarWidth: 'none',
+      }}>
+        <style>{'.toolbar-scroll::-webkit-scrollbar{display:none}'}</style>
+        {controls(false)}
+      </div>
     </div>
   );
 }

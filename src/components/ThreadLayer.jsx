@@ -21,6 +21,7 @@ import {
   getAllTypes, typeById, threadColor, addThread, addEntry, tid,
 } from '../utils/threads';
 import { hapticNodeConnect, hapticPin, hapticSelect } from '../utils/haptics';
+import { isAndroid } from '../utils/platform';
 import { selectAllIn, insertTextAtSelection } from '../utils/editorFormat';
 
 // ── Shared CSS (anchor resets only — the flash uses the Web Animations API) ──
@@ -217,6 +218,28 @@ export function ThreadSelectionLayer({
     setNewName(''); setNewTypeId(null); setCaretOnly(false);
   }, []);
 
+  // PC: finishing a selection opens the full menu directly (Docs/Word style)
+  // — the intermediate tag chip is a mobile affordance. Opens on mouse
+  // release, never mid-drag.
+  const desktop = !isAndroid();
+  useEffect(() => {
+    if (!desktop) return undefined;
+    const editorEl = editorRef?.current;
+    if (!editorEl) return undefined;
+    const onMouseUp = () => {
+      setTimeout(() => {
+        const s = window.getSelection();
+        if (!s || s.isCollapsed || !s.rangeCount) return;
+        if (!editorEl.contains(s.getRangeAt(0).commonAncestorContainer)) return;
+        if (!s.toString().trim()) return;
+        setCaretOnly(false);
+        setMenuOpen(true);
+      }, 0);
+    };
+    editorEl.addEventListener('mouseup', onMouseUp);
+    return () => editorEl.removeEventListener('mouseup', onMouseUp);
+  }, [desktop, editorRef]);
+
   // ── Clipboard actions (replace the suppressed native menu) ────────────────
   const restoreRange = () => {
     const r = savedRange.current;
@@ -242,7 +265,11 @@ export function ThreadSelectionLayer({
     setMenuOpen(false); setCaretOnly(false); // keep chip flow alive with new selection
   };
   const doQuickFormat = (cmd) => {
-    if (restoreRange()) { document.execCommand(cmd); onEditContent(editorRef.current.innerHTML); }
+    if (restoreRange()) {
+      if (cmd === '__hilite') document.execCommand('backColor', false, 'rgba(255,255,0,0.4)');
+      else document.execCommand(cmd);
+      onEditContent(editorRef.current.innerHTML);
+    }
     closeAll();
   };
 
@@ -280,10 +307,21 @@ export function ThreadSelectionLayer({
   const types = getAllTypes(data);
   const nameish = looksLikeName(sel.text);
 
+  // Docs-style placement: above the selection when there's room, else below.
+  const MENU_W = 260;
+  const roomAbove = sel.rect.top - 16;
+  const roomBelow = window.innerHeight - (sel.rect.bottom ?? sel.rect.top) - 16;
+  const placeAbove = roomAbove >= 240 && roomAbove >= roomBelow;
+  const menuMaxH = Math.min(360, Math.max(180, placeAbove ? roomAbove : roomBelow));
+  const menuPos = placeAbove
+    ? { bottom: window.innerHeight - sel.rect.top + 8 }
+    : { top: (sel.rect.bottom ?? sel.rect.top) + 8 };
+  const menuLeft = Math.min(Math.max(8, sel.rect.left + (sel.rect.width || 0) / 2 - MENU_W / 2), window.innerWidth - MENU_W - 8);
+
   return (
     <>
-      {/* Floating chip */}
-      {!menuOpen && (
+      {/* Floating chip (mobile only — PC opens the menu directly) */}
+      {!menuOpen && !desktop && (
         <button
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
           onClick={(e) => { e.stopPropagation(); setMenuOpen(true); }}
@@ -308,9 +346,9 @@ export function ThreadSelectionLayer({
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: 'fixed', zIndex: 3002,
-              top: Math.max(8, Math.min(chipTop, window.innerHeight - 380)),
-              left: Math.min(Math.max(8, chipLeft - 110), window.innerWidth - 268),
-              width: 260, maxHeight: 360, overflowY: 'auto',
+              ...menuPos,
+              left: menuLeft,
+              width: MENU_W, maxHeight: menuMaxH, overflowY: 'auto',
               background: 'var(--modal-bg)', border: '1px solid var(--border)',
               borderRadius: 12, padding: 8,
               boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
@@ -346,6 +384,7 @@ export function ThreadSelectionLayer({
                 {[
                   ['bold', <b key="b">B</b>], ['italic', <i key="i">I</i>],
                   ['underline', <u key="u">U</u>], ['strikeThrough', <DSIcons.Strikethrough key="s" size={14} />],
+                  ['__hilite', <DSIcons.Highlighter key="h" size={14} />],
                 ].map(([cmd, glyph]) => (
                   <button key={cmd} onClick={() => doQuickFormat(cmd)}
                     style={{ flex: 1, padding: '6px 0', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

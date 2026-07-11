@@ -1,39 +1,52 @@
 /**
  * SizeSelector.jsx — editor font-size picker.
  *
- * Real pixel sizes (8–96px) applied as inline CSS, replacing the legacy HTML
- * fontSize 1–7 scale which offered only seven coarse steps.
+ * Real pixel sizes (8–96px) applied as inline CSS. A themed ToolbarDropdown
+ * (clamped height, flips above near the screen bottom) whose trigger shows
+ * the size at the caret — the native <select> did neither.
  */
 
-import React from "react";
+import React, { useEffect, useState } from 'react';
+import ToolbarDropdown, { DropdownRow } from './ToolbarDropdown';
 
 export const PX_SIZES = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 44, 48, 56, 64, 72, 96];
 
-const OPT_STYLE = { background: "var(--modal-bg)", color: "var(--text-1)" };
+export default function SizeSelector({ onApply, editorRef }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState(null);
 
-export default function SizeSelector({ onApply }) {
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const root = editorRef?.current;
+        const sel = window.getSelection();
+        const node = sel?.anchorNode;
+        if (!root || !node || !root.contains(node)) return;
+        const el = node.nodeType === 3 ? node.parentElement : node;
+        if (!el) return;
+        const px = Math.round(parseFloat(getComputedStyle(el).fontSize));
+        if (px > 0) setCurrent(px);
+      });
+    };
+    document.addEventListener('selectionchange', update);
+    return () => { cancelAnimationFrame(raf); document.removeEventListener('selectionchange', update); };
+  }, [editorRef]);
+
   return (
-    <select
-      defaultValue=""
-      onChange={(e) => { if (e.target.value) { onApply?.({ fontSize: `${e.target.value}px` }); e.target.value = ""; } }}
+    <ToolbarDropdown
+      label={current ? `${current}px` : 'Size…'}
       title="Font size"
-      style={{
-        background: "transparent",
-        border: `1px solid var(--toolbar-divider)`,
-        color: "var(--toolbar-item)",
-        fontSize: 13,
-        padding: "4px 6px",
-        borderRadius: 6,
-        outline: "none",
-        cursor: "pointer",
-      }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--toolbar-item)")}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--toolbar-divider)")}
+      minWidth={58}
+      open={open}
+      setOpen={setOpen}
     >
-      <option value="" disabled style={OPT_STYLE}>Size…</option>
       {PX_SIZES.map((s) => (
-        <option key={s} value={s} style={OPT_STYLE}>{s}px</option>
+        <DropdownRow key={s} current={current === s} onClick={() => { onApply?.({ fontSize: `${s}px` }); setOpen(false); }}>
+          {s}px
+        </DropdownRow>
       ))}
-    </select>
+    </ToolbarDropdown>
   );
 }
