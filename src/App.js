@@ -807,9 +807,22 @@ function AppInner({ navigateRef }) {
       if (s.id !== currentId) return s;
       if ((s.chapters || []).length <= 1) return s;
       const chapters = (s.chapters || []).filter(c => c.chap_idx !== chapIdx);
-      return { ...s, chapters, updated: new Date().toISOString() };
+      // Keep the content/preview mirror honest: it tracks the first chapter,
+      // so deleting that chapter must re-mirror from the new first one —
+      // otherwise the home screen kept previewing deleted text.
+      const first = [...chapters].sort((a, b) => a.order - b.order)[0];
+      return { ...s, chapters, content: first?.content ?? '', preview: previewOf(first?.content ?? ''), updated: new Date().toISOString() };
     }));
-  }, [currentId]);
+    // Deleting the chapter that's open left currentChapterIdx dangling — the
+    // editor then silently fell back to the chapter-1 mirror while the header
+    // still claimed the deleted chapter. Point it at the first surviving one.
+    setCurrentChapterIdx((idx) => {
+      if (idx !== chapIdx) return idx;
+      const cur = sessions.find((s) => s.id === currentId);
+      const rest = (cur?.chapters || []).filter(c => c.chap_idx !== chapIdx).sort((a, b) => a.order - b.order);
+      return rest[0]?.chap_idx ?? null;
+    });
+  }, [currentId, sessions]);
   const handleMoveChapter = useCallback((chapIdx, direction) => {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
@@ -832,7 +845,11 @@ function AppInner({ navigateRef }) {
     const chapIdx = currentChapterIdx || 1;
     const now = new Date().toISOString();
     const chapters = (x.chapters || []).map((ch) => ch.chap_idx === chapIdx ? { ...ch, content: c, updated: now } : ch);
-    return { ...x, chapters, content: chapIdx === 1 ? c : x.content, preview: chapIdx === 1 ? previewOf(c) : x.preview, updated: now };
+    // Mirror the FIRST chapter by order, not chap_idx 1 — after chapter 1 is
+    // deleted, no chap_idx 1 exists and the home-screen preview froze forever.
+    const firstIdx = [...chapters].sort((a, b) => a.order - b.order)[0]?.chap_idx ?? 1;
+    const isFirst = chapIdx === firstIdx;
+    return { ...x, chapters, content: isFirst ? c : x.content, preview: isFirst ? previewOf(c) : x.preview, updated: now };
   }));
   const handleEditChapterTitle = useCallback((t) => {
     setSessions((prev) => prev.map((s) => {
@@ -928,7 +945,7 @@ function AppInner({ navigateRef }) {
 
       {/* Android drawer backdrop */}
       {android && drawerOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 40 }} onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)} />
+        <div style={{ position: "fixed", inset: 0, background: "var(--scrim, rgba(0,0,0,0.6))", zIndex: 40 }} onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)} />
       )}
 
       <Sidebar
@@ -1024,6 +1041,7 @@ function AppInner({ navigateRef }) {
         onOpenFontCustomizer={() => setFontCustomizerOpen(true)}
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
         sessions={sessions} onSessionChange={handleSessionChange}
+        onReplayTour={() => { setSettingsOpen(false); setShowOnboarding(true); }}
       />
 
       <CustomizationSlider
@@ -1056,7 +1074,10 @@ injectThemeFonts(_initialTheme);
 try { localStorage.setItem('authno_version', APP_VERSION); } catch { /* ignore */ }
 
 export default function App() {
-  const stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}");
+  // A corrupt writerCustomization entry threw here — at the very root of the
+  // tree — and white-screened the whole app before anything could render.
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem("writerCustomization") || "{}") ?? {}; } catch { /* corrupt — use defaults */ }
   const accentHex = stored.accentHex || "#5a00d9";
   return (
     <ThemeProvider initialTheme={_initialTheme}>

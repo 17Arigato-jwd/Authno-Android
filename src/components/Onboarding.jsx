@@ -7,7 +7,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "2";
+const UPDATE_VERSION = "3";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -526,20 +526,19 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
 const UPDATE_NOTES = [
   {
-    icon: (p) => <DSIcons.Shield {...p} />,
-    title: "Stronger .authbook files",
-    body: "Files now use the VCHS-ECS format — more resilient, binary-safe, and built to survive real-world storage hiccups. Old files still open normally.",
+    icon: (p) => <DSIcons.Pin {...p} />,
+    title: "Threads",
+    body: "Track plotlines, character arcs and TODOs alongside your prose. Select text (or long-press) to anchor a note, then follow every beat from the Threads panel — it scrolls with your manuscript.",
   },
   {
-    icon: (p) => <DSIcons.Key {...p} />,
-    title: "All files access",
-    body: "You can now grant AuthNo access to every folder on your device — including Downloads and external drives.\n\nTap the button below to open the setting, or find it any time under Settings → AuthNo.",
-    permissionPage: true,
+    icon: (p) => <DSIcons.Text {...p} />,
+    title: "A proper writing toolbar",
+    body: "The toolbar now docks above your keyboard like a real editor, with way more fonts, sizes, colors and formatting — plus a custom selection menu with tagging built in.",
   },
   {
-    icon: (p) => <DSIcons.Lightning {...p} />,
-    title: "Vibration feedback",
-    body: "Taps, saves, deletions, and milestone moments now have distinct haptic patterns. No action required — it just works.",
+    icon: (p) => <DSIcons.Palette {...p} />,
+    title: "App icons & smoother everything",
+    body: "Pick a launcher icon under Settings → Appearance (Dark, or Light with Retro and Space Gold variants). Menus, pages and the gradient background are also much faster on phones.",
   },
 ];
 

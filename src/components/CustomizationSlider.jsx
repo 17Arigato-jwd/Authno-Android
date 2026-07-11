@@ -340,7 +340,7 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
       style={{
         position: 'fixed', inset: 0, zIndex: 110,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)',
+        background: 'var(--modal-overlay-bg, rgba(0,0,0,0.8))', backdropFilter: 'blur(8px)',
         animation: 'csFadeIn 0.15s ease',
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}

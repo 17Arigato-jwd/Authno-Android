@@ -53,7 +53,7 @@ function ErrorLogModal({ onClose, accentHex }) {
       style={{
         position: "fixed", inset: 0, zIndex: 30001,
         display: "flex", alignItems: "flex-end", justifyContent: "center",
-        background: "rgba(0,0,0,0.8)",
+        background: "var(--modal-overlay-bg, rgba(0,0,0,0.8))",
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -192,7 +192,7 @@ function ErrorPopup({ entry, onClose, onShowLog, accentHex }) {
       style={{
         position: "fixed", inset: 0, zIndex: 30000,
         display: "flex", alignItems: "flex-end", justifyContent: "center",
-        background: "rgba(0,0,0,0.75)",
+        background: "var(--modal-overlay-bg, rgba(0,0,0,0.75))",
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >

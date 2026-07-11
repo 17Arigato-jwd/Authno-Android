@@ -344,7 +344,10 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
   useEffect(() => {
     if (!current) return;
     const existing   = log[todayKey] ?? null;
-    const needsWrite = !existing || existing.words !== wordsToday || existing.goal !== goalWords;
+    // Compare against effectiveGoal — the value actually written below. With a
+    // per-book goal set, comparing to the global goalWords made needsWrite
+    // permanently true and rewrote the log on every effect run.
+    const needsWrite = !existing || existing.words !== wordsToday || existing.goal !== effectiveGoal;
     if (needsWrite) {
       const updatedLog    = { ...rawLog, [todayKey]: { words: wordsToday, goal: effectiveGoal } };
       const updatedStreak = { ...streak, log: updatedLog };

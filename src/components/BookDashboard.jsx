@@ -192,7 +192,7 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 100,
-      background: 'rgba(0,0,0,0.55)', display: 'flex',
+      background: 'var(--modal-overlay-bg, rgba(0,0,0,0.55))', display: 'flex',
       alignItems: 'flex-end', justifyContent: 'center',
     }} onClick={onClose}>
       <div style={{ ...glass, width: '100%', maxWidth: '480px', padding: '24px', marginBottom: '0', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
@@ -297,7 +297,7 @@ function MetadataPanel({ session, accentHex, onClose, onSave }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 100,
-      background: 'rgba(0,0,0,0.55)',
+      background: 'var(--modal-overlay-bg, rgba(0,0,0,0.55))',
       overflowY: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
       paddingTop: '24px',
     }} onClick={onClose}>
