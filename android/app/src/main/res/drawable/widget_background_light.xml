@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  widget_background_light.xml — light-theme card for the streak widget.
+  Selected at runtime by StreakWidgetProvider from the app theme's isDark
+  flag (the dark widget_background used to be hardcoded in the layout, so
+  the widget ignored light themes entirely).
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F2F7F7F9" />
+    <corners android:radius="20dp" />
+</shape>

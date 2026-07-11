@@ -188,6 +188,45 @@ export async function initBookIndex() {}              // no-op — App.js calls 
 export function listKnownBooks() { return []; }       // no-op — HomeScreen handles []
 export async function pruneBookIndex() { return []; } // no-op — HomeScreen handles []
 
+// ─── Auto-save (Android, Arduino-IDE style) ──────────────────────────────────
+// New books live silently in the app's AuthNo folder so writing is never
+// interrupted by a filesystem decision. The first explicit Save opens the SAF
+// picker, and once the book lands where the user chose, the app-folder
+// original is deleted so exactly one copy exists.
+
+function autosaveName(session) {
+  // Keyed by book id — renaming the book must not strand old autosave files.
+  return `autosave-${session.id}.authbook`;
+}
+
+/** True when the book has a user-chosen location (SAF uri). */
+export function isUserPlaced(session) {
+  return !!session?.filePath?.startsWith('content://');
+}
+
+export async function autoSaveBook(session) {
+  if (!isAndroid() || !session?.id) return { success: false, skipped: true };
+  if (isUserPlaced(session)) return { success: false, skipped: true };
+  try {
+    const bytes = await encodeSession(session);
+    const loc = await writeToAppDir(autosaveName(session), bytes);
+    return { success: true, autosaved: true, path: loc.path };
+  } catch (e) {
+    logError('autoSaveBook', e, { sessionTitle: session?.title });
+    return { success: false };
+  }
+}
+
+export async function deleteAutosave(session) {
+  if (!isAndroid() || !session?.id) return;
+  const { Filesystem, Directory } = await getFS();
+  for (const dir of [Directory.External, Directory.Data]) {
+    try {
+      await Filesystem.deleteFile({ path: `${SAVE_SUBDIR}/${autosaveName(session)}`, directory: dir });
+    } catch { /* no autosave in this directory */ }
+  }
+}
+
 // ─── Core file I/O ────────────────────────────────────────────────────────────
 
 export async function saveBook(session) {
@@ -230,6 +269,9 @@ export async function saveBook(session) {
       if (!result?.uri) return { success: false, cancelled: true };
 
       await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
+      // Arduino-style promotion: the book now lives where the user chose, so
+      // the silent app-folder autosave is deleted to keep a single copy.
+      deleteAutosave(session).catch(() => {});
       return { success: true, filePath: result.uri };
     }
 
@@ -261,6 +303,8 @@ export async function saveAsBook(session) {
       if (!result?.uri) return { success: false, cancelled: true };
 
       await plugin.writeBytesToUri({ uri: result.uri, base64: bytesToBase64(bytes) });
+      // Save As on a never-placed book is its promotion out of the app folder.
+      if (!isUserPlaced(session)) deleteAutosave(session).catch(() => {});
       return { success: true, filePath: result.uri };
     }
 

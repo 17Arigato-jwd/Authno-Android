@@ -103,6 +103,23 @@
         android:textSize="10sp"
         android:layout_marginBottom="8dp" />
 
+    <!-- Start writing — deep-links straight into the editor at the last
+         caret position (the app's Resume Writing path). Background drawable
+         and text colour are set at runtime per theme/accent. -->
+    <TextView
+        android:id="@+id/widget_start_btn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="7dp"
+        android:paddingBottom="7dp"
+        android:layout_marginBottom="8dp"
+        android:text="Start writing"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:background="@drawable/widget_btn_bg"
+        android:textColor="@color/ds_text_secondary" />
+
     <!-- ── Calendar bitmap ── -->
     <ImageView
         android:id="@+id/widget_calendar"

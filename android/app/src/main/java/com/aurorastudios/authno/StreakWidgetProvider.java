@@ -88,14 +88,34 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         RemoteViews views =
                 new RemoteViews(ctx.getPackageName(), R.layout.streak_widget);
 
+        // Theme the card at runtime — the layout's dark drawable used to be
+        // the only option, so the widget ignored light app themes.
+        views.setInt(R.id.widget_root, "setBackgroundResource",
+                isDark ? R.drawable.widget_background : R.drawable.widget_background_light);
+        views.setInt(R.id.widget_start_btn, "setBackgroundResource",
+                isDark ? R.drawable.widget_btn_bg : R.drawable.widget_btn_bg_light);
+        views.setTextColor(R.id.widget_start_btn,
+                DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT));
+
         // Tapping the widget opens MainActivity with a deep-link extra so the
         // app can navigate straight to the correct book.
+        // Request codes: PendingIntents are keyed by (requestCode, Intent) and
+        // Intent extras are NOT compared, so the two taps below need distinct
+        // request codes — widgetId*10 and widgetId*10+1.
         Intent launch = new Intent(ctx, MainActivity.class);
         if (bookId != null) launch.putExtra("widgetBookId", bookId);
         launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
-        PendingIntent pi = PendingIntent.getActivity(ctx, widgetId, launch, flags);
+        PendingIntent pi = PendingIntent.getActivity(ctx, widgetId * 10, launch, flags);
         views.setOnClickPendingIntent(R.id.widget_root, pi);
+
+        // Start writing → the app's Resume Writing path (editor, last caret).
+        Intent write = new Intent(ctx, MainActivity.class);
+        write.putExtra("authnoAction", "resume");
+        if (bookId != null) write.putExtra("authnoBookId", bookId);
+        write.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent piWrite = PendingIntent.getActivity(ctx, widgetId * 10 + 1, write, flags);
+        views.setOnClickPendingIntent(R.id.widget_start_btn, piWrite);
 
         if (book != null) {
             StreakWidgetRenderer.populate(ctx, views, book, accentHex, isDark);

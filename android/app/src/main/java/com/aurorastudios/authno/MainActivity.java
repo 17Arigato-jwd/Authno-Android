@@ -47,6 +47,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleDrivePlugin.class);   // v1.3.0: Drive scope via Identity Authorization API
         registerPlugin(OAuthPlugin.class);
         registerPlugin(AppIconPlugin.class);       // launcher icon switcher (Settings → Appearance)
+        registerPlugin(AppShortcutsPlugin.class);  // long-press launcher shortcuts
         super.onCreate(savedInstanceState);
 
         internalFilesDir = getFilesDir();
@@ -118,6 +119,8 @@ public class MainActivity extends BridgeActivity {
             handleExtbkIntent(getIntent());
             handleThmbkIntent(getIntent());
             handleWidgetDeepLink(getIntent());
+            handleLaunchAction(getIntent());   // widget button / launcher shortcuts
+            handleSharedText(getIntent());     // ACTION_SEND share target
             handleOAuthRedirect(getIntent());  // NEW: catch cold-start OAuth returns
         });
     }
@@ -144,8 +147,52 @@ public class MainActivity extends BridgeActivity {
             handleExtbkIntent(intent);
             handleThmbkIntent(intent);
             handleWidgetDeepLink(intent);
+            handleLaunchAction(intent);        // widget button / launcher shortcuts
+            handleSharedText(intent);          // ACTION_SEND share target
             handleOAuthRedirect(intent);       // NEW: catch warm-start OAuth returns
         });
+    }
+
+    // ── Launch actions (widget Start-writing button, launcher shortcuts) ─────
+    // The intent carries authnoAction=resume|new-book (+ optional authnoBookId).
+    // Forwarded to JS as one event; App.js routes it into the Resume Writing
+    // path or straight into a fresh book.
+
+    private void handleLaunchAction(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getStringExtra("authnoAction");
+        if (action == null || action.isEmpty()) return;
+        intent.removeExtra("authnoAction"); // consume — don't re-fire on config changes
+        String bookId = intent.getStringExtra("authnoBookId");
+
+        String js =
+            "window.dispatchEvent(new CustomEvent('authno-launch-action', {" +
+            "  detail: { action: " + JSONObject.quote(action) + "," +
+            "            bookId: " + (bookId != null ? JSONObject.quote(bookId) : "null") + " }" +
+            "}));";
+        getBridge().getWebView().evaluateJavascript(js, null);
+    }
+
+    // ── Share target (ACTION_SEND text/plain) ────────────────────────────────
+    // Text shared from any app lands in JS as 'authno-shared-text'; the web
+    // side opens the book/chapter picker sheet.
+
+    private void handleSharedText(Intent intent) {
+        if (intent == null) return;
+        if (!Intent.ACTION_SEND.equals(intent.getAction())) return;
+        String type = intent.getType();
+        if (type == null || !type.startsWith("text/")) return;
+        String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (text == null || text.isEmpty()) return;
+        intent.setAction(null); // consume
+        String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+
+        String js =
+            "window.dispatchEvent(new CustomEvent('authno-shared-text', {" +
+            "  detail: { text: " + JSONObject.quote(text) + "," +
+            "            subject: " + (subject != null ? JSONObject.quote(subject) : "null") + " }" +
+            "}));";
+        getBridge().getWebView().evaluateJavascript(js, null);
     }
 
     // ── OAuth redirect handler ────────────────────────────────────────────────

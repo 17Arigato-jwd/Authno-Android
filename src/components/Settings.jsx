@@ -508,7 +508,8 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
 
 function StartupPanel({ settings, onChange, accentHex }) {
   const options = [
-    { id: 'last',  icon: DSIcons.Bookmark, title: 'Reopen last book',  description: 'Pick up exactly where you left off'   },
+    { id: 'resume', icon: DSIcons.Flame,   title: 'Resume writing',    description: 'Straight into the editor, at your last caret position' },
+    { id: 'last',  icon: DSIcons.Bookmark, title: 'Reopen last book',  description: 'Open the book dashboard of your last book' },
     { id: 'blank', icon: DSIcons.FilePlus, title: 'Open a blank book', description: 'Start fresh every time you launch'    },
     { id: 'home',  icon: (p) => <DSIcons.BookOpen {...p} />,   title: 'Show home screen',  description: 'Browse and choose a book on launch'   },
   ];
