@@ -296,6 +296,8 @@ export default function HomeScreen({
   onRefresh,
   onReadAloud = () => {},
   onOpenExtensions = () => {},
+  resumeInfo = null,
+  onResume = () => {},
 }) {
   const { showError } = useError();
   const [activeTab, setActiveTab] = useState('recent');
@@ -373,6 +375,42 @@ export default function HomeScreen({
 
       {/* Content */}
       <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+
+        {/* Continue writing — the zero-resistance path back into the editor.
+            One tap reopens the last book at the recorded chapter and caret. */}
+        {resumeInfo && (
+          <button
+            onClick={onResume}
+            style={{
+              ...theme.glassCard, padding: '16px 20px', width: '100%',
+              display: 'flex', alignItems: 'center', gap: 14,
+              cursor: 'pointer', textAlign: 'left',
+              border: `1px solid ${accentHex}44`,
+            }}
+          >
+            <span style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: `${accentHex}22`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <DSIcons.Flame size={22} color={accentHex} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: accentHex, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                Continue writing
+              </span>
+              <span style={{ display: 'block', fontSize: 16, fontWeight: 700, color: 'var(--text-1)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {resumeInfo.title}
+              </span>
+              {resumeInfo.chapter && (
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--text-4)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {resumeInfo.chapter}
+                </span>
+              )}
+            </span>
+            <DSIcons.ChevronRight size={18} color="var(--text-4)" />
+          </button>
+        )}
 
         {/* Actions card */}
         <div style={{ ...theme.glassCard, padding: '20px' }}>

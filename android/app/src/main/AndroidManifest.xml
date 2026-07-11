@@ -23,6 +23,14 @@
                  toggles which alias is enabled). File-association VIEW filters
                  must stay here: aliases are launcher entry points only. -->
 
+            <!-- Share target: text shared from other apps opens the
+                 book/chapter import picker inside AuthNo. -->
+            <intent-filter android:label="Add to AuthNo">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
             <!-- .authbook -->
             <intent-filter android:label="Open with AuthNo">
                 <action android:name="android.intent.action.VIEW" />

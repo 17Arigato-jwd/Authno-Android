@@ -17,6 +17,9 @@ import { FontCustomizer } from "./components/FontCustomizer";
 import { DEFAULT_FONTS } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ChapterInfoModal from "./components/ChapterInfoModal";
+import ShareImportSheet from "./components/ShareImportSheet";
+import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
+import { updateAppShortcuts } from "./utils/appShortcuts";
 import ThreadsPanel from "./components/ThreadsPanel";
 import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
@@ -76,6 +79,7 @@ function Editor({
   onBack, onPrevChapter, onNextChapter, chapterPosition,
   fullSession, onUpdateSession, onOpenChapter,
   customFonts,
+  resumePoint, onResumeConsumed,
 }) {
   const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
@@ -150,6 +154,56 @@ function Editor({
     editorRef.current?.focus();
     document.execCommand(cmd, false, val);
   };
+
+  // ── Resume Writing: record where the user is ─────────────────────────────
+  // Caret + scroll are saved (debounced) so the widget button, launcher
+  // shortcut, home Continue card and 'resume' startup mode can reopen the
+  // exact spot. current.id is the BOOK id (editorCurrent preserves it).
+  useEffect(() => {
+    if (!current?.id) return undefined;
+    const el = editorRef.current;
+    const main = mainRef.current;
+    let t;
+    const save = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        saveResumePoint(current.id, {
+          chapIdx: current?._editingChap ?? 1,
+          caret: caretOffsetIn(el) ?? undefined,
+          scroll: main?.scrollTop ?? 0,
+        });
+      }, 600);
+    };
+    document.addEventListener('selectionchange', save);
+    main?.addEventListener('scroll', save, { passive: true });
+    save();
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('selectionchange', save);
+      main?.removeEventListener('scroll', save);
+    };
+  }, [current?.id, current?._editingChap]);
+
+  // ── Resume Writing: land back at the recorded spot ───────────────────────
+  // Runs once per resume request, after the innerHTML sync above has put the
+  // chapter content in the DOM.
+  useEffect(() => {
+    if (!resumePoint || resumePoint.bookId !== current?.id) return;
+    const el = editorRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.focus();
+      if (resumePoint.caret != null) restoreCaretIn(el, resumePoint.caret);
+      if (mainRef.current && resumePoint.scroll != null) mainRef.current.scrollTop = resumePoint.scroll;
+      if (android) {
+        import('@capacitor/keyboard')
+          .then(({ Keyboard }) => Keyboard.show().catch(() => {}))
+          .catch(() => {});
+      }
+      onResumeConsumed?.();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumePoint, current?.id, current?._editingChap]);
 
   return (
     <div style={{ flex: 1, display: "flex", minWidth: 0, position: "relative", overflow: "hidden" }}>
@@ -389,6 +443,8 @@ function AppInner({ navigateRef }) {
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [resumePointState, setResumePointState] = useState(null); // pending Resume Writing target
+  const [sharedImport, setSharedImport] = useState(null);         // text shared from another app
   const [showUpdateOnboarding, setShowUpdateOnboarding] = useState(false);
   const [brokenFiles, setBrokenFiles] = useState([]);
 
@@ -531,7 +587,13 @@ function AppInner({ navigateRef }) {
 
     const openBook = (id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); };
 
-    if (behavior === "last") {
+    if (behavior === "resume") {
+      // Straight into the editor at the recorded chapter/caret — the
+      // zero-resistance launch. Falls back to 'last' when nothing is recorded.
+      const last = getLastResume();
+      if (last?.bookId && sessions.some((s) => s.id === last.bookId)) { resumeWriting(last.bookId); return; }
+    }
+    if (behavior === "last" || behavior === "resume") {
       const savedId = localStorage.getItem("offlineWriterCurrentId");
       if (savedId && sessions.some((s) => s.id === savedId)) openBook(savedId);
       else if (sessions.length > 0) openBook(sessions[0].id);
@@ -586,11 +648,22 @@ function AppInner({ navigateRef }) {
   const widgetSyncTimer = useRef(null);
   useEffect(() => {
     clearTimeout(widgetSyncTimer.current);
-    widgetSyncTimer.current = setTimeout(() => syncWidget(sessions, customization.accentHex), 1500);
+    widgetSyncTimer.current = setTimeout(() => {
+      // isDark is read inside syncWidget; listing the theme here is what makes
+      // a theme switch actually reach the widget (it used to keep the old
+      // palette until the next keystroke — the "widget ignores theme" report).
+      syncWidget(sessions, customization.accentHex);
+      // Launcher shortcut label follows the last-written book.
+      const last = getLastResume();
+      const lastBook = sessions.find((s) => s.id === last?.bookId)
+        ?? [...sessions].sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0))[0];
+      updateAppShortcuts(lastBook);
+    }, 1500);
     return () => clearTimeout(widgetSyncTimer.current);
-  }, [sessions, customization.accentHex]);
+  }, [sessions, customization.accentHex, theme?.meta?.isDark]); // eslint-disable-line react-hooks/exhaustive-deps
   useWidgetDeepLink((bookId) => { handleSelect(bookId); });
   useEffect(() => { if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId); }, [currentId]);
+
   useEffect(() => { if (window.electron) { try { localStorage.setItem("openBooks", JSON.stringify(sessions.map(({ coverBase64, ...r }) => r))); } catch { /* quota */ } } }, [sessions]);
 
   useEffect(() => {
@@ -788,6 +861,83 @@ function AppInner({ navigateRef }) {
     if (android) setDrawerOpen(false);
   };
   const handleEditChapter = useCallback((chapIdx) => { hapticSelect(); setCurrentChapterIdx(chapIdx); setView("editor"); }, []);
+
+  // ── Resume Writing: one call drops the user back into the editor at the
+  // recorded book/chapter/caret. Used by the 'resume' startup mode, the home
+  // Continue card, the widget's Start-writing button and launcher shortcuts.
+  const resumeWriting = useCallback((bookId) => {
+    const targetId = bookId ?? getLastResume()?.bookId;
+    const book = sessions.find((s) => s.id === targetId) ?? sessions[0];
+    if (!book) { setView("home"); return; }
+    const point = getResumePoint(book.id) ?? {};
+    const sorted = [...(book.chapters || [])].sort((a, b) => a.order - b.order);
+    const chapIdx = sorted.some((c) => c.chap_idx === point.chapIdx) ? point.chapIdx : (sorted[0]?.chap_idx ?? 1);
+    setResumePointState({ bookId: book.id, ...point, chapIdx });
+    setCurrentId(book.id);
+    setCurrentChapterIdx(chapIdx);
+    setView("editor");
+    if (android) setDrawerOpen(false);
+  }, [sessions, android]);
+
+  // Widget Start-writing button and launcher shortcuts land here (forwarded
+  // by MainActivity as authno-launch-action).
+  useEffect(() => {
+    const onLaunch = (e) => {
+      const { action, bookId } = e.detail || {};
+      if (action === "resume") resumeWriting(bookId || undefined);
+      else if (action === "new-book") newBook();
+    };
+    window.addEventListener("authno-launch-action", onLaunch);
+    return () => window.removeEventListener("authno-launch-action", onLaunch);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeWriting]);
+
+  // Text shared from another app (ACTION_SEND) opens the import sheet.
+  useEffect(() => {
+    const onShared = (e) => {
+      const { text, subject } = e.detail || {};
+      if (text) setSharedImport({ text, subject: subject || "" });
+    };
+    window.addEventListener("authno-shared-text", onShared);
+    return () => window.removeEventListener("authno-shared-text", onShared);
+  }, []);
+
+  const handleSharedImport = ({ mode, bookId, chapIdx }) => {
+    const { text, subject } = sharedImport || {};
+    setSharedImport(null);
+    if (!text) return;
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const html = text.split(/\r?\n/).map((l) => (l.trim() ? `<p>${esc(l)}</p>` : "<p><br></p>")).join("");
+    const now = new Date().toISOString();
+
+    if (mode === "new-book") {
+      const id = Date.now().toString();
+      const title = (subject || text.trim().split(/\r?\n/)[0] || "Imported note").slice(0, 80);
+      const firstChap = { chap_idx: 1, title: "Chapter 1", order: 1, content: html, created: now, updated: now };
+      setSessions((s) => [{ id, title, preview: previewOf(html), content: html, type: "book", created: now, updated: now, chapters: [firstChap], authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "" }, ...s]);
+      setCurrentId(id); setCurrentChapterIdx(1); setView("editor");
+    } else if (mode === "new-chapter") {
+      const cur = sessions.find((s) => s.id === bookId);
+      if (!cur) return;
+      const maxIdx   = cur.chapters?.length ? Math.max(...cur.chapters.map((c) => c.chap_idx)) : 0;
+      const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map((c) => c.order))    : 0;
+      const newIdx = maxIdx + 1;
+      const chap = { chap_idx: newIdx, title: (subject || `Chapter ${newIdx}`).slice(0, 80), order: maxOrder + 1, content: html, created: now, updated: now };
+      setSessions((prev) => prev.map((s) => s.id !== bookId ? s : { ...s, chapters: [...(s.chapters || []), chap], updated: now }));
+      setCurrentId(bookId); setCurrentChapterIdx(newIdx); setView("editor");
+    } else { // append to an existing chapter
+      setSessions((prev) => prev.map((s) => {
+        if (s.id !== bookId) return s;
+        const chapters = (s.chapters || []).map((c) => c.chap_idx === chapIdx ? { ...c, content: (c.content || "") + html, updated: now } : c);
+        const firstIdx = [...chapters].sort((a, b) => a.order - b.order)[0]?.chap_idx ?? 1;
+        if (chapIdx !== firstIdx) return { ...s, chapters, updated: now };
+        const merged = chapters.find((c) => c.chap_idx === chapIdx)?.content ?? "";
+        return { ...s, chapters, content: merged, preview: previewOf(merged), updated: now };
+      }));
+      setCurrentId(bookId); setCurrentChapterIdx(chapIdx); setView("editor");
+    }
+    toast("Added to your book", { variant: "success" });
+  };
   const handleNewChapter = useCallback(() => {
     const cur = sessions.find(s => s.id === currentId);
     if (!cur) return;
@@ -868,6 +1018,21 @@ function AppInner({ navigateRef }) {
     if (!chap) return current;
     return { ...current, content: chap.content, _editingChap: currentChapterIdx };
   }, [current, currentChapterIdx]);
+
+  // ── Auto-save (Android, Arduino-IDE style) ────────────────────────────────
+  // Books without a user-chosen location are silently written to the AuthNo
+  // app folder a few seconds after the last edit. Explicit Save opens the SAF
+  // picker and deletes this copy (storage.js saveBook/deleteAutosave).
+  const autosaveTimer = useRef(null);
+  useEffect(() => {
+    if (!android || !current?.id) return undefined;
+    if (current.filePath?.startsWith("content://")) return undefined;
+    clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      import("./utils/storage").then(({ autoSaveBook }) => autoSaveBook(current)).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(autosaveTimer.current);
+  }, [current, android]);
 
   const currentChapter = React.useMemo(() => {
     if (!current || currentChapterIdx === null) return null;
@@ -979,6 +1144,14 @@ function AppInner({ navigateRef }) {
           }}
           onReadAloud={() => { if (current) setReadAloudSession(current); else toast('Open a book first to read it aloud', { variant: 'info' }); }}
           onOpenExtensions={() => { setDrawerOpen(true); }}
+          resumeInfo={(() => {
+            const last = getLastResume();
+            const b = last && sessions.find((s) => s.id === last.bookId);
+            if (!b) return null;
+            const ch = (b.chapters || []).find((c) => c.chap_idx === last.chapIdx);
+            return { title: b.title || 'Untitled Book', chapter: ch?.title || null };
+          })()}
+          onResume={() => resumeWriting()}
         />
       ) : view === "book-dashboard" ? (
         <BookDashboard
@@ -1009,6 +1182,7 @@ function AppInner({ navigateRef }) {
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
         />
       )}
 
@@ -1024,6 +1198,15 @@ function AppInner({ navigateRef }) {
         onExport={{ txt: handleExportTxt, html: handleExportHtml, epub: handleExportEpub, pdf: handleExportPdf }}
         onReadAloud={() => current && setReadAloudSession(current)}
       />
+
+      {sharedImport && (
+        <ShareImportSheet
+          text={sharedImport.text} subject={sharedImport.subject}
+          sessions={sessions} accentHex={customization.accentHex}
+          onClose={() => setSharedImport(null)}
+          onImport={handleSharedImport}
+        />
+      )}
 
       {chapterInfoOpen && current && (
         <ChapterInfoModal
