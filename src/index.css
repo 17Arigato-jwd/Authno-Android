@@ -118,6 +118,16 @@ textarea {
 html, body, #root { height: 100%; }
 .app-root { height: 100dvh; }
 
+/* ─── Linux desktop: rounded window corners (transparent frameless window) ─── */
+/* The main process makes the Linux window transparent; these radii + the clip
+   on #root give it curved corners. TitleBar rounds its own top corners. */
+.linux-window body { background: transparent !important; }
+.linux-window #root {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.linux-window.linux-window--max #root { border-radius: 0; }
+
 /* Kill double-tap zoom on all interactive elements */
 button, input, select, [contenteditable], [role="button"] {
   touch-action: manipulation;

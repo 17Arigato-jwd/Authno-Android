@@ -282,8 +282,10 @@ function Editor({
         </div>
       </header>
 
-      {/* Chapter navigation bar — only shown when editing a specific chapter */}
-      {chapterPosition && (
+      {/* Chapter navigation bar — only when editing a chapter of a MULTI-chapter
+          book. A one-chapter book has nothing to page between, so the "Ch 1 / 1"
+          bar was pure noise. */}
+      {chapterPosition && chapterPosition.total > 1 && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '7px 16px',
@@ -501,9 +503,24 @@ function AppInner({ navigateRef }) {
     if (!isElectron()) return;
     document.documentElement.classList.add('is-electron');
     document.documentElement.style.setProperty('--titlebar-h', '36px');
+
+    // Linux: the window is transparent (main.js), so round its corners in CSS.
+    // Corners go square while maximised (a maximised window fills the screen,
+    // so rounding would just leak desktop through the gaps).
+    const linux = window.electron?.platform === 'linux';
+    let disposeMax;
+    if (linux) {
+      document.documentElement.classList.add('linux-window');
+      const controls = window.electron?.windowControls;
+      const setMax = (m) => document.documentElement.classList.toggle('linux-window--max', !!m);
+      controls?.isMaximized?.().then(setMax).catch(() => {});
+      if (controls?.onMaximizeChange) disposeMax = controls.onMaximizeChange(setMax);
+    }
     return () => {
       document.documentElement.classList.remove('is-electron');
+      document.documentElement.classList.remove('linux-window', 'linux-window--max');
       document.documentElement.style.setProperty('--titlebar-h', '0px');
+      if (typeof disposeMax === 'function') disposeMax();
     };
   }, []);
 

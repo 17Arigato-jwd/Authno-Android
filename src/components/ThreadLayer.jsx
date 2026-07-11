@@ -125,6 +125,7 @@ export function ThreadSelectionLayer({
   const [sel, setSel] = useState(null);          // { rect, text }
   const [menuOpen, setMenuOpen] = useState(false);
   const [caretOnly, setCaretOnly] = useState(false); // menu opened at a bare caret
+  const [showClipboard, setShowClipboard] = useState(false); // clipboard row (right-click only)
   const [todoMode, setTodoMode] = useState(false);
   const [pinMode, setPinMode] = useState(false);
   const [newName, setNewName] = useState('');
@@ -181,7 +182,9 @@ export function ThreadSelectionLayer({
     };
     const onCtx = (e) => {
       e.preventDefault();
-      if (sel?.text && savedRange.current) { setCaretOnly(false); setMenuOpen(true); }
+      // Right-click = the FULL menu, clipboard row included (this is the menu
+      // that used to appear on highlight; the highlight menu now drops it).
+      if (sel?.text && savedRange.current) { setCaretOnly(false); setShowClipboard(true); setMenuOpen(true); }
       else openAtCaret(e.clientX, e.clientY);
     };
     // Android: long-press at a bare caret (selection long-press is handled by
@@ -215,8 +218,22 @@ export function ThreadSelectionLayer({
 
   const closeAll = useCallback(() => {
     setMenuOpen(false); setSel(null); setTodoMode(false); setPinMode(false);
-    setNewName(''); setNewTypeId(null); setCaretOnly(false);
+    setNewName(''); setNewTypeId(null); setCaretOnly(false); setShowClipboard(false);
   }, []);
+
+  // Close on any outside mousedown instead of a full-screen click-catcher.
+  // The old inset:0 backdrop sat over the toolbar pill and swallowed its
+  // clicks, so the pill was dead whenever a menu was open (author report).
+  // A ref-scoped listener leaves everything outside the menu — pill included —
+  // fully interactive.
+  const menuElRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDown = (e) => { if (!menuElRef.current?.contains(e.target)) closeAll(); };
+    // Defer so the opening click/right-click doesn't immediately close it.
+    const t = setTimeout(() => document.addEventListener('mousedown', onDown, true), 0);
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', onDown, true); };
+  }, [menuOpen, closeAll]);
 
   // PC: finishing a selection opens the full menu directly (Docs/Word style)
   // — the intermediate tag chip is a mobile affordance. Opens on mouse
@@ -232,7 +249,10 @@ export function ThreadSelectionLayer({
         if (!s || s.isCollapsed || !s.rangeCount) return;
         if (!editorEl.contains(s.getRangeAt(0).commonAncestorContainer)) return;
         if (!s.toString().trim()) return;
+        // Highlight menu = full menu MINUS the clipboard row (that lives on
+        // right-click now). setShowClipboard(false).
         setCaretOnly(false);
+        setShowClipboard(false);
         setMenuOpen(true);
       }, 0);
     };
@@ -308,14 +328,18 @@ export function ThreadSelectionLayer({
   const nameish = looksLikeName(sel.text);
 
   // Docs-style placement: above the selection when there's room, else below.
+  // PILL_ZONE reserves the top strip where the editor toolbar pill floats so
+  // the menu is never placed over it (author report: menus covered the pill).
+  const PILL_ZONE = desktop ? 210 : 8;
   const MENU_W = 260;
-  const roomAbove = sel.rect.top - 16;
+  const roomAbove = sel.rect.top - PILL_ZONE - 8;
   const roomBelow = window.innerHeight - (sel.rect.bottom ?? sel.rect.top) - 16;
+  // Only go above if it clears the pill zone AND there's more room there.
   const placeAbove = roomAbove >= 240 && roomAbove >= roomBelow;
   const menuMaxH = Math.min(360, Math.max(180, placeAbove ? roomAbove : roomBelow));
   const menuPos = placeAbove
     ? { bottom: window.innerHeight - sel.rect.top + 8 }
-    : { top: (sel.rect.bottom ?? sel.rect.top) + 8 };
+    : { top: Math.max(PILL_ZONE + 8, (sel.rect.bottom ?? sel.rect.top) + 8) };
   const menuLeft = Math.min(Math.max(8, sel.rect.left + (sel.rect.width || 0) / 2 - MENU_W / 2), window.innerWidth - MENU_W - 8);
 
   return (
@@ -338,11 +362,12 @@ export function ThreadSelectionLayer({
         </button>
       )}
 
-      {/* Action menu */}
+      {/* Action menu — no full-screen backdrop (outside-click handled by a
+          document listener) so the toolbar pill stays clickable. */}
       {menuOpen && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 3001 }} onMouseDown={closeAll} />
           <div
+            ref={menuElRef}
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: 'fixed', zIndex: 3002,
@@ -354,7 +379,9 @@ export function ThreadSelectionLayer({
               boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
             }}
           >
-            {/* Clipboard row — replaces the suppressed native selection toolbar */}
+            {/* Clipboard row — right-click / caret menus only. The highlight
+                (text-selection) menu omits it, per the menu split. */}
+            {(showClipboard || caretOnly) && (
             <div style={{ display: 'flex', gap: 2, paddingBottom: 6, borderBottom: '1px solid var(--border-sm)', marginBottom: 6 }}>
               {[
                 { label: 'Cut',        Icon: DSIcons.Cut,       act: doCut,       disabled: caretOnly },
@@ -377,6 +404,7 @@ export function ThreadSelectionLayer({
                 </button>
               ))}
             </div>
+            )}
 
             {/* Quick format row */}
             {!caretOnly && (

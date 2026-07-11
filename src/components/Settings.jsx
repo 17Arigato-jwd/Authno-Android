@@ -170,7 +170,9 @@ function AppIconPicker({ accentHex }) {
         </div>
       )}
       <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: '8px' }}>
-        Changes the home-screen icon. On a few devices the launcher may briefly close the app to apply it.
+        {isAndroid()
+          ? 'Changes the home-screen icon. On a few devices the launcher may briefly close the app to apply it.'
+          : 'Changes the taskbar and window icon. The installed desktop shortcut keeps its original icon.'}
       </p>
     </div>
   );
@@ -479,12 +481,16 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
         </button>
       </SettingRow>
 
-      <div style={{ height: 16 }} />
-
-      {/* Vibration feedback (B7) */}
-      <SettingRow icon={DSIcons.Bell} title="Vibration feedback" description="Light haptic tick on taps, plus stronger cues for saves, deletes and goals" accentHex={accentHex}>
-        <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
-      </SettingRow>
+      {/* Vibration feedback — Android only. Desktop has no haptics motor, so
+          the toggle did nothing there; hidden on PC. */}
+      {isAndroid() && (
+        <>
+          <div style={{ height: 16 }} />
+          <SettingRow icon={DSIcons.Bell} title="Vibration feedback" description="Light haptic tick on taps, plus stronger cues for saves, deletes and goals" accentHex={accentHex}>
+            <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
+          </SettingRow>
+        </>
+      )}
 
       <div style={{ height: 16 }} />
 
@@ -749,6 +755,64 @@ function AboutPanel({ accentHex, onReplayTour }) {
   );
 }
 
+// ── Error log viewer ─────────────────────────────────────────────────────────
+// The "View Log" button set showErrorLog=true but nothing ever rendered it —
+// the modal simply didn't exist, so the log looked broken (reported on PC).
+function ErrorLogModal({ onClose, accentHex }) {
+  const entries = getErrorHistory();
+  const [copied, setCopied] = useState(false);
+
+  const copyReport = async () => {
+    const text = formatBugReport(20);
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { /* clipboard blocked */ }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.75))', backdropFilter: 'blur(4px)', padding: 16 }}
+      onMouseDown={onClose}>
+      <div onMouseDown={(e) => e.stopPropagation()} style={{ background: 'var(--modal-bg)', border: '1px solid var(--border)', borderRadius: 16, width: 'min(560px, 96vw)', maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 70px rgba(0,0,0,0.55)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border-sm)' }}>
+          <DSIcons.List size={18} color="var(--text-3)" />
+          <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>Error Log</span>
+          <button onClick={copyReport} disabled={!entries.length}
+            style={{ padding: '6px 12px', borderRadius: 7, border: 'none', background: entries.length ? `${accentHex}22` : 'var(--surface)', color: entries.length ? accentHex : 'var(--text-5)', cursor: entries.length ? 'pointer' : 'default', fontSize: 12.5, fontWeight: 600 }}>
+            {copied ? 'Copied ✓' : 'Copy report'}
+          </button>
+          <button onClick={() => { clearErrorHistory(); onClose(); }} disabled={!entries.length}
+            style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: entries.length ? 'var(--color-danger)' : 'var(--text-5)', cursor: entries.length ? 'pointer' : 'default', fontSize: 12.5, fontWeight: 600 }}>
+            Clear
+          </button>
+          <CloseButton onClick={onClose} />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+          {!entries.length ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-4)', fontSize: 13, padding: '40px 0' }}>No errors recorded. 🎉</div>
+          ) : entries.map((e) => (
+            <div key={e.id} style={{ border: '1px solid var(--border-sm)', borderRadius: 10, padding: '10px 12px', marginBottom: 8, background: 'var(--surface)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 14 }}>{e.icon}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-1)' }}>{e.category}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-5)' }}>{new Date(e.timestamp).toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-2)', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)' }}>{e.message}</div>
+              {e.suggestion && <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 4 }}>{e.suggestion}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout }) {
   const { switchTheme } = useTheme();
   const [confirm, setConfirm]           = useState(null);
@@ -884,6 +948,7 @@ function DataPanel({ settings, onChange, accentHex, onClearSessions, onOpenAbout
       </div>
 
       {confirm && <ConfirmModal title={confirm.title} message={confirm.message} type={confirm.type} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
+      {showErrorLog && <ErrorLogModal onClose={() => { setShowErrorLog(false); setErrorCount(getErrorHistory().length); }} accentHex={accentHex} />}
     </div>
   );
 }

@@ -64,6 +64,18 @@ export default function Sidebar({
   });
   const resizing = useRef(false);
 
+  // Collapsible sidebar (desktop). Collapsed → a slim icon rail; more room for
+  // the manuscript. Persisted so it survives restarts. Android uses the drawer.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return !android && localStorage.getItem("sidebarCollapsed") === "true"; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => {
+    const next = !c;
+    try { localStorage.setItem("sidebarCollapsed", String(next)); } catch { /* ignore */ }
+    return next;
+  });
+  const isRail = !android && collapsed;
+
   // ── Close menus on outside click / touch ─────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
@@ -278,7 +290,27 @@ export default function Sidebar({
         paddingLeft:   "env(safe-area-inset-left, 0px)",
         willChange: "transform",
       }
-    : { width: `${width}px` };
+    : { width: isRail ? "56px" : `${width}px` };
+
+  // ── Collapsed rail: logo + expand + new-book, nothing else ────────────────
+  if (isRail) {
+    return (
+      <aside ref={sidebarRef} style={{
+        width: "56px", flexShrink: 0, background: "var(--sidebar-bg)", color: "var(--text-1)",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+        padding: "12px 0", borderRight: "1px solid var(--border-sm)", position: "relative",
+      }}>
+        <button onClick={toggleCollapsed} title="Expand sidebar" aria-label="Expand sidebar"
+          style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <DSIcons.PanelLeft size={18} />
+        </button>
+        <button onClick={onNewBook} title="New book" aria-label="New book"
+          style={{ width: 36, height: 36, borderRadius: 8, border: "none", background: `${accentHex}22`, color: accentHex, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <DSIcons.Plus size={18} />
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside
@@ -302,7 +334,14 @@ export default function Sidebar({
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <img src={Logo} alt="AuthNo" style={{ height: 56, width: 56, objectFit: "contain", filter: "drop-shadow(0 0 6px rgba(255,255,255,0.15))" }} />
-        {android && <CloseButton onClick={onDrawerClose} label="Close drawer" />}
+        {android
+          ? <CloseButton onClick={onDrawerClose} label="Close drawer" />
+          : <button onClick={toggleCollapsed} title="Collapse sidebar" aria-label="Collapse sidebar"
+              style={{ width: 34, height: 34, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+              <DSIcons.PanelLeft size={17} />
+            </button>}
       </div>
 
       {/* ── SEARCH — uses DesignSystem TextInput ────────────────────────── */}

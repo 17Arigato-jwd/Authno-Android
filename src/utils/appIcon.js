@@ -1,14 +1,16 @@
 /**
- * appIcon.js — launcher icon switching (Android only).
+ * appIcon.js — launcher / window icon switching.
  *
- * Thin JS face of AppIconPlugin. The enabled activity-alias is the single
- * source of truth (PackageManager persists it across reboots and updates),
- * so nothing is stored in app settings — read the current pick with
- * getAppIcon() whenever the UI needs it.
+ * Android: thin face of AppIconPlugin; the enabled activity-alias is the
+ *   single source of truth (persisted by PackageManager).
+ * Desktop (Electron): main.js swaps the taskbar/window icon at runtime and
+ *   persists the pick in userData.
+ *
+ * Either way, read the current pick with getAppIcon() when the UI needs it.
  */
 
 import { registerPlugin } from '@capacitor/core';
-import { isAndroid } from './platform';
+import { isAndroid, isElectron } from './platform';
 
 const AppIcon = registerPlugin('AppIcon');
 
@@ -44,22 +46,20 @@ export function familyOf(id) {
 }
 
 export function appIconSupported() {
-  return isAndroid();
+  return isAndroid() || (isElectron() && typeof window.electron?.setAppIcon === 'function');
 }
 
 /** @returns {Promise<string>} one of 'default' | 'light' | 'retro' | 'gold' */
 export async function getAppIcon() {
-  if (!appIconSupported()) return 'default';
   try {
-    const { icon } = await AppIcon.get();
-    return icon || 'default';
-  } catch {
-    return 'default';
-  }
+    if (isAndroid()) { const { icon } = await AppIcon.get(); return icon || 'default'; }
+    if (isElectron() && window.electron?.getAppIcon) return (await window.electron.getAppIcon()) || 'default';
+  } catch { /* fall through */ }
+  return 'default';
 }
 
 /** @param {string} id one of the APP_ICONS ids */
 export async function setAppIcon(id) {
-  if (!appIconSupported()) return;
-  await AppIcon.set({ icon: id });
+  if (isAndroid()) { await AppIcon.set({ icon: id }); return; }
+  if (isElectron() && window.electron?.setAppIcon) { await window.electron.setAppIcon(id); }
 }
