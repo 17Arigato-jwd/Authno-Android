@@ -5,8 +5,10 @@ import { useState, useRef, useCallback } from 'react';
 import { DSIcons, toast } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
+import { motion } from 'framer-motion';
 import { isAndroid } from '../utils/platform';
 import { isSpeechSupported } from '../utils/readAloud';
+import { useMotionEnabled, V, PRESS, HOVER_LIFT, MOBILE, staggerContainer } from '../utils/motion';
 import { hapticSwipeReveal, hapticSave } from '../utils/haptics';
 import Logo from '../logo.svg';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
@@ -219,9 +221,13 @@ function usePullToRefresh(onRefresh) {
 // ─── ActionTile ───────────────────────────────────────────────────────────────
 function ActionTile({ icon, label, onClick, accentHex, comingSoon, theme }) {
   const [hovered, setHovered] = useState(false);
+  const motionOK = useMotionEnabled();
   return (
-    <button onClick={comingSoon ? undefined : onClick}
+    <motion.button onClick={comingSoon ? undefined : onClick}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      variants={V.fadeRise}
+      whileTap={motionOK && !comingSoon ? PRESS : undefined}
+      whileHover={motionOK && !MOBILE && !comingSoon ? HOVER_LIFT : undefined}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         gap: '10px', width: '90px', flexShrink: 0, background: 'none', border: 'none',
@@ -236,7 +242,7 @@ function ActionTile({ icon, label, onClick, accentHex, comingSoon, theme }) {
       }}>
         {label}
       </span>
-    </button>
+    </motion.button>
   );
 }
 
@@ -457,13 +463,14 @@ export default function HomeScreen({
           </h2>
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
             <style>{`.home-actions::-webkit-scrollbar{display:none}`}</style>
-            <div className="home-actions"
+            <motion.div className="home-actions"
+              variants={staggerContainer()} initial="hidden" animate="show"
               style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
               {actions.map((a, i) => (
                 <ActionTile key={i} icon={a.icon} label={a.label} onClick={a.onClick}
                   accentHex={accentHex} comingSoon={a.comingSoon} theme={theme} />
               ))}
-            </div>
+            </motion.div>
           </div>
         </div>
 

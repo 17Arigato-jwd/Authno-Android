@@ -3,6 +3,22 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.17-beta.2
+
+_Animations pass — subtle, snappy motion across the app._
+
+### New
+
+- **Motion everywhere.** Screens slide by navigation direction (forward/back);
+  opening a book or a chapter uses an "expand" transition. Home action tiles
+  cascade in with tap feedback; book stats count up; chapter rows animate their
+  position when reordered; Settings sections cross-fade; the app-icon picker
+  presses and pops. All tuned to be fast and understated — present, never in the
+  way.
+- **"Reduce animations" setting** (Appearance). AuthNo also automatically
+  minimises motion when your device's system "reduce motion" accessibility
+  setting is on. Animations are kept lighter on phones to protect frame rate.
+
 ## 1.1.17-beta.1
 
 _Mobile-focused fixes on top of 1.1.17-beta.0._
