@@ -23,7 +23,7 @@ import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
-import { APP_ICON_FAMILIES, familyOf, appIconSupported, getAppIcon, setAppIcon } from '../utils/appIcon';
+import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
 import { resetOnboarding } from './Onboarding';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
 import { useEntitlement } from '../utils/useEntitlement';
@@ -101,11 +101,23 @@ function SettingRow({ icon: Icon, title, description, children, accentHex }) {
   );
 }
 
-// ── App icon picker (Android only) ───────────────────────────────────────────
-// The enabled launcher alias is the source of truth (see utils/appIcon.js),
-// so the current pick is read from the plugin on mount instead of settings.
+// ── App icon picker ──────────────────────────────────────────────────────────
+// Flat, uniform grid (redesigned — the grouped tiles read as inconsistent).
+// Dark is free; the Light family (Classic/Retro/Space Gold) is a Pro perk.
+// The enabled launcher alias / persisted desktop pref is the source of truth,
+// so the current pick is read on mount rather than from settings.
+const APP_ICON_OPTIONS = APP_ICON_FAMILIES.flatMap((f) =>
+  f.variants.map((v) => ({
+    id: v.id,
+    label: f.id === 'default' ? 'Dark' : v.label,
+    preview: v.preview,
+    premium: f.id !== 'default',
+  }))
+);
+
 function AppIconPicker({ accentHex }) {
   const [selected, setSelected] = useState('default');
+  const { isPro } = useEntitlement();
 
   useEffect(() => {
     let alive = true;
@@ -113,66 +125,74 @@ function AppIconPicker({ accentHex }) {
     return () => { alive = false; };
   }, []);
 
-  const pick = async (id) => {
+  const pick = async (opt) => {
+    if (opt.premium && !isPro) { openBilling(); return; }   // Pro-gated
+    // Desktop: applying the icon relaunches the app so it updates everywhere
+    // (window + taskbar). Confirm first since it restarts AuthNo.
+    if (appIconRelaunches()) {
+      if (opt.id === selected) return;
+      const ok = window.confirm(`Apply the "${opt.label}" icon?\n\nAuthNo will restart so the new icon shows in the taskbar and window.`);
+      if (!ok) return;
+      setSelected(opt.id);
+      try { await setAppIconAndRelaunch(opt.id); } catch { /* app is relaunching */ }
+      return;
+    }
     const prev = selected;
-    setSelected(id);
-    try { await setAppIcon(id); } catch { setSelected(prev); }
+    setSelected(opt.id);
+    try { await setAppIcon(opt.id); } catch { setSelected(prev); }
   };
-
-  const family = familyOf(selected);
-  const lightFamily = APP_ICON_FAMILIES.find((f) => f.id === 'light');
-  // The Light tile previews whichever of its variants is active.
-  const previewFor = (f) =>
-    (f.id === family && f.variants.find((v) => v.id === selected)?.preview) || f.preview;
-
-  const tile = (active, onClick, preview, label, key, size) => (
-    <button
-      key={key}
-      onClick={onClick}
-      style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
-        padding: '10px', borderRadius: '12px', cursor: 'pointer', minWidth: size + 24,
-        background: active ? `${accentHex}18` : 'var(--surface)',
-        border: `2px solid ${active ? accentHex : 'var(--border-sm)'}`,
-        transition: 'border-color 0.15s, background 0.15s',
-      }}
-    >
-      <span style={{
-        width: size, height: size, borderRadius: Math.round(size / 4), overflow: 'hidden',
-        background: '#ffffff', border: '1px solid var(--border-sm)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <img src={preview} alt={label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-      </span>
-      <span style={{ fontSize: '11px', fontWeight: active ? 700 : 500, color: active ? accentHex : 'var(--text-3)' }}>
-        {label}
-      </span>
-    </button>
-  );
 
   return (
     <div>
-      <Label>App icon</Label>
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-        {APP_ICON_FAMILIES.map((f) => tile(
-          family === f.id,
-          () => pick(f.id === 'default' ? 'default' : 'light'),
-          previewFor(f), f.label, f.id, 48,
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <Label>App icon</Label>
+        {!isPro && <span style={{ fontSize: 10, fontWeight: 700, color: accentHex, background: `${accentHex}1e`, padding: '1px 7px', borderRadius: 999, position: 'relative', top: -4 }}>PRO</span>}
       </div>
-      {family === 'light' && (
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px', paddingLeft: '12px', borderLeft: `2px solid ${accentHex}44` }}>
-          {lightFamily.variants.map((v) => tile(
-            selected === v.id,
-            () => pick(v.id),
-            v.preview, v.label, v.id, 36,
-          ))}
-        </div>
-      )}
-      <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: '8px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 10 }}>
+        {APP_ICON_OPTIONS.map((opt) => {
+          const active = selected === opt.id;
+          const locked = opt.premium && !isPro;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => pick(opt)}
+              title={locked ? `${opt.label} — Pro` : opt.label}
+              style={{
+                position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
+                padding: '12px 8px', borderRadius: 14, cursor: 'pointer',
+                background: active ? `${accentHex}14` : 'var(--surface)',
+                border: `1.5px solid ${active ? accentHex : 'var(--border-sm)'}`,
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <span style={{
+                width: 52, height: 52, borderRadius: 13, overflow: 'hidden',
+                border: '1px solid var(--border-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.15)', opacity: locked ? 0.55 : 1,
+              }}>
+                <img src={opt.preview} alt={opt.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </span>
+              <span style={{ fontSize: 11.5, fontWeight: active ? 700 : 500, color: active ? accentHex : 'var(--text-3)' }}>
+                {opt.label}
+              </span>
+              {active && (
+                <span style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DSIcons.Check size={11} color="#fff" />
+                </span>
+              )}
+              {locked && !active && (
+                <span style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: 'var(--surface-md)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DSIcons.Lock size={10} color="var(--text-4)" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: '10px' }}>
         {isAndroid()
           ? 'Changes the home-screen icon. On a few devices the launcher may briefly close the app to apply it.'
-          : 'Changes the taskbar and window icon. The installed desktop shortcut keeps its original icon.'}
+          : 'Changes the taskbar and window icon — AuthNo restarts to apply it everywhere. The installed desktop shortcut keeps its original icon.'}
       </p>
     </div>
   );
@@ -707,18 +727,6 @@ function AboutPanel({ accentHex, onReplayTour }) {
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
 
-      {/* The welcome tour persists as seen after its first run; this is the
-          way back in now that the "don't show again" checkbox is gone. */}
-      <SettingRow icon={DSIcons.BookOpen} title="Welcome tour" description="Replay the first-launch walkthrough" accentHex={accentHex}>
-        <button
-          onClick={replay}
-          style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: `${accentHex}22`, color: accentHex, cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
-        >
-          Replay
-        </button>
-      </SettingRow>
-      <div style={{ height: 16 }} />
-
       {/* Authno Pro (U10) */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
@@ -750,7 +758,7 @@ function AboutPanel({ accentHex, onReplayTour }) {
         </button>
       </div>
 
-      <AboutSection accentHex={accentHex} />
+      <AboutSection accentHex={accentHex} onSeeChanges={replay} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useState, useRef, useCallback } from 'react';
 import { DSIcons, toast } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
+import { isAndroid } from '../utils/platform';
 import { hapticSwipeReveal, hapticSave } from '../utils/haptics';
 import Logo from '../logo.svg';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
@@ -383,11 +384,16 @@ export default function HomeScreen({
       {/* Header */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--app-bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <button onClick={onToggleSidebar}
-            style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', color: 'var(--text-1)' }}
-            aria-label="Sessions">
-            <DSIcons.PanelLeft size={20} color="var(--text-1)" />
-          </button>
+          {/* Sidebar/drawer toggle is Android-only — on desktop the sidebar is
+              always present and has its own collapse control, so this was a
+              second, dead panel-left button. */}
+          {isAndroid() && (
+            <button onClick={onToggleSidebar}
+              style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', color: 'var(--text-1)' }}
+              aria-label="Sessions">
+              <DSIcons.PanelLeft size={20} color="var(--text-1)" />
+            </button>
+          )}
           <span style={{ color: 'var(--text-1)', fontSize: 18, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Welcome Back</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>

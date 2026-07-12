@@ -1,8 +1,8 @@
 // ChapterRow.jsx — Individual chapter list item for BookDashboard
-// Extracted from BookDashboard.jsx (v1.1.12). Zero visible change to the user.
+// Extracted from BookDashboard.jsx (v1.1.12).
 //
 // Props:
-//   chap            — chapter object
+//   chap            — chapter object (title, updated/created, synopsis?)
 //   isLast          — bool, omits bottom border
 //   isPendingDel    — bool, shows inline delete confirmation
 //   canMoveUp       — bool
@@ -16,6 +16,9 @@
 //   onDeleteRequest()  — enter pending-delete state
 //   onDeleteConfirm()  — confirm deletion
 //   onDeleteCancel()   — cancel deletion
+//   onSynopsisChange(text) — persist an edited chapter synopsis (optional)
+
+import { useState } from 'react';
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -50,7 +53,23 @@ export function ChapterRow({
   onDeleteRequest,
   onDeleteConfirm,
   onDeleteCancel,
+  onSynopsisChange,
 }) {
+  const [editingSynopsis, setEditingSynopsis] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const synopsis = (chap.synopsis || '').trim();
+  const canEditSynopsis = typeof onSynopsisChange === 'function';
+
+  const startEdit = () => { setDraft(chap.synopsis || ''); setEditingSynopsis(true); };
+  const commit = () => {
+    setEditingSynopsis(false);
+    if (draft.trim() !== synopsis) onSynopsisChange(draft);
+  };
+  const cancel = () => setEditingSynopsis(false);
+
+  const subtleBorder = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.15)';
+
   return (
     <div style={{
       borderBottom: !isLast
@@ -81,11 +100,11 @@ export function ChapterRow({
       ) : (
         /* ── Normal row ── */
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 0',
+          display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '12px 0',
         }}>
           {/* Reorder buttons */}
           {!showSearch && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0, marginTop: '1px' }}>
               <button
                 onClick={onMoveUp}
                 disabled={!canMoveUp}
@@ -115,29 +134,79 @@ export function ChapterRow({
             </div>
           )}
 
-          {/* Title + timestamp — tappable to open editor */}
-          <button onClick={onEdit} style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
-            minWidth: 0,
-          }}>
-            <span style={{
-              fontSize: '15px', fontWeight: 600, color: 'var(--text-1)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          {/* Title + synopsis column */}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {/* Title + timestamp — tappable to open editor */}
+            <button onClick={onEdit} style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+              minWidth: 0,
             }}>
-              {chap.title}
-            </span>
-            <span style={{ fontSize: '13px', color: 'var(--text-5)', flexShrink: 0, marginLeft: '12px' }}>
-              {timeAgo(chap.updated || chap.created)}
-            </span>
-          </button>
+              <span style={{
+                fontSize: '15px', fontWeight: 600, color: 'var(--text-1)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {chap.title}
+              </span>
+              <span style={{ fontSize: '13px', color: 'var(--text-5)', flexShrink: 0, marginLeft: '12px' }}>
+                {timeAgo(chap.updated || chap.created)}
+              </span>
+            </button>
+
+            {/* Synopsis — inline tap-to-edit */}
+            {canEditSynopsis && (
+              editingSynopsis ? (
+                <textarea
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={commit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+                  }}
+                  placeholder="Write a short synopsis…"
+                  rows={2}
+                  style={{
+                    width: '100%', resize: 'none', boxSizing: 'border-box',
+                    fontSize: '13px', lineHeight: 1.5, color: 'var(--text-2)',
+                    background: light ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${subtleBorder}`, borderRadius: '8px',
+                    padding: '6px 8px', outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+              ) : synopsis ? (
+                <div
+                  onClick={startEdit}
+                  title="Tap to edit synopsis"
+                  style={{
+                    fontSize: '13px', lineHeight: 1.5, color: 'var(--text-4)', cursor: 'text',
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {synopsis}
+                </div>
+              ) : (
+                <button
+                  onClick={startEdit}
+                  style={{
+                    alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
+                    cursor: 'pointer', fontSize: '12.5px', color: 'var(--text-5)', fontStyle: 'italic',
+                  }}
+                >
+                  + Add synopsis
+                </button>
+              )
+            )}
+          </div>
 
           {/* Delete button */}
           {showDelete && (
             <button
               onClick={onDeleteRequest}
               style={{
-                width: '28px', height: '28px', flexShrink: 0,
+                width: '28px', height: '28px', flexShrink: 0, marginTop: '1px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: 'var(--text-5)', borderRadius: '6px', padding: 0,

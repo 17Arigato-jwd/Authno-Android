@@ -26,6 +26,7 @@
 
 import { registerHook }  from './sessionHooks';
 import { logError }      from './ErrorLogger';
+import { isAndroid }     from './platform';
 // OAuth browser helpers — use native OAuthPlugin (Custom Tabs) and
 // GoogleSignInPlugin (Credential Manager) instead of @capacitor/browser.
 // @capacitor/browser hardcodes com.android.chrome which causes a silent hang
@@ -150,6 +151,17 @@ export async function activateExtension(manifest, navigateFn) {
   const { id: extId, version } = manifest;
 
   await deactivateExtension(extId); // clean up any previous run
+
+  // Extensions execute from https://localhost/extensions/*, which only the
+  // Android WebView serves (MainActivity.shouldInterceptRequest). On desktop
+  // there is no such server — the files live in the Filesystem web shim — so
+  // activation can't work yet. Skip fast with a clear log instead of hanging
+  // the install sheet on an import that never resolves.
+  if (!isAndroid()) {
+    console.warn(`[extensionRuntime] ${extId}: extensions run on mobile only for now — skipping activation on desktop.`);
+    return;
+  }
+
   ensureHostAPI();
 
   const storage = makeExtStorage(extId);
@@ -157,10 +169,18 @@ export async function activateExtension(manifest, navigateFn) {
 
   // Dynamic import from the HTTP-served extension URL.
   // Cache-bust with timestamp so reinstalling always picks up fresh code.
+  // EXT_BASE_URL (https://localhost/extensions) is only served by Android's
+  // MainActivity. On Electron/web nothing serves it, and the import can hang
+  // indefinitely instead of rejecting — which froze the install sheet at
+  // "Activating…". Race it against a timeout so activation always settles and
+  // the caller (refresh → InstallSheet) can complete.
   const url = `${EXT_BASE_URL}/${extId}/index.js?_t=${Date.now()}`;
   let mod;
   try {
-    mod = await import(/* webpackIgnore: true */ url);
+    mod = await Promise.race([
+      import(/* webpackIgnore: true */ url),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Extension load timed out — extensions require the mobile runtime')), 8000)),
+    ]);
   } catch (err) {
     logError('extensionRuntime:import', err, { extId, url });
     console.error(`[extensionRuntime] Failed to import ${extId}:`, err.message);

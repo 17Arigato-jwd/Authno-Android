@@ -33,6 +33,14 @@ import { isAndroid } from '../../utils/platform';
 // is capped and the simulation ticks slower.
 const PERF_LITE = isAndroid();
 
+// Desktop still paid for blur(60px) on every blob. Blur cost scales with the
+// radius squared and each blurred layer inflates its GPU texture by ~3×radius
+// on every side, so 60px was ~2× the memory-bandwidth of 42px for a softness
+// difference nobody can see on an already-soft radial gradient. 42px keeps the
+// look and roughly halves the compositor cost — the "hogs a lot of resources
+// on PC" report.
+const BLUR = PERF_LITE ? 'none' : 'blur(42px)';
+
 // ── Keyframes (injected once) ─────────────────────────────────────────────────
 const STYLE_ID = 'ds-blob-keyframes';
 function injectKeyframes() {
@@ -50,14 +58,14 @@ function injectKeyframes() {
 }
 
 // ── BlobItem ──────────────────────────────────────────────────────────────────
-const BlobItem = memo(({ data, fadeTime, fadeInTime }) => (
+const BlobItem = memo(({ data, fadeTime, fadeInTime, paused }) => (
   <div
     style={{
       position: 'absolute', borderRadius: '50%',
       left: `${data.x}%`, top: `${data.y}%`,
       width: `${data.size}px`, height: `${data.size}px`,
       background: `radial-gradient(closest-side, ${data.color}, transparent)`,
-      filter: PERF_LITE ? 'none' : 'blur(60px)',
+      filter: BLUR,
       opacity: data.isDying ? 0 : data.opacity,
       willChange: 'transform, opacity',
       transform: 'translate3d(0,0,0)',
@@ -66,6 +74,9 @@ const BlobItem = memo(({ data, fadeTime, fadeInTime }) => (
       animationTimingFunction: 'ease-in-out',
       animationIterationCount: 'infinite',
       animationDirection: 'alternate',
+      // Freeze the compositor when the window is hidden/minimised so a desktop
+      // app left open in the background stops driving the GPU.
+      animationPlayState: paused ? 'paused' : 'running',
       transition: `opacity ${data.isDying ? fadeTime : fadeInTime}ms ease-in-out`,
     }}
   />
@@ -114,6 +125,7 @@ export function GradientBackground({
   className = '',
 }) {
   const [blobs, setBlobs] = useState([]);
+  const [paused, setPaused] = useState(() => typeof document !== 'undefined' && document.hidden);
   const configRef = useRef(null);
   const palette = paletteProp ?? buildPalette(accentHex);
   configRef.current = { palette, colorRange, blobSizeRange, blobSpeedMultiplier, isDark };
@@ -168,6 +180,12 @@ export function GradientBackground({
   useEffect(() => { injectKeyframes(); }, []);
 
   useEffect(() => {
+    const onVis = () => setPaused(document.hidden);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  useEffect(() => {
     // B4: don't burn battery generating and animating blobs while the layer is
     // invisible — previously the 1s simulation kept running behind a 0-opacity
     // div whenever a theme disabled the gradient.
@@ -208,7 +226,7 @@ export function GradientBackground({
       }} />
       {/* Animated blobs */}
       <div style={{ position: 'absolute', inset: 0, opacity: visible ? backgroundOpacity : 0, transition: 'opacity 2000ms ease-in-out' }}>
-        {blobs.map(blob => <BlobItem key={blob.id} data={blob} fadeTime={FADE_TIME} fadeInTime={FADE_IN_TIME} />)}
+        {blobs.map(blob => <BlobItem key={blob.id} data={blob} fadeTime={FADE_TIME} fadeInTime={FADE_IN_TIME} paused={paused} />)}
       </div>
     </div>
   );

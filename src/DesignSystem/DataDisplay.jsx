@@ -146,7 +146,7 @@ export function EmptyState({ icon, iconBg, accentHex, title, description, action
  *   attribution   ATTRIBUTION-shaped array
  *   accentHex     string
  */
-export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accentHex, style = {} }) {
+export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accentHex, onSeeChanges, style = {} }) {
   const accent = accentHex ?? COLORS.violet;
 
   return (
@@ -165,17 +165,36 @@ export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accen
         }}>
           {meta.name}
         </div>
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px',
-          background: `${accent}14`, border: `1px solid ${accent}33`, borderRadius: RADIUS.full, marginBottom: 10,
-        }}>
-          <span style={{ fontFamily: TYPOGRAPHY.pixel, fontSize: TYPOGRAPHY.pixelSize.xs, color: accent, letterSpacing: TYPOGRAPHY.tracking.pixel, lineHeight: 1.8 }}>
-            v{meta.version}
-          </span>
-          <div style={{ width: 1, height: 10, background: `${accent}44` }} />
-          <span style={{ fontFamily: TYPOGRAPHY.mono, fontSize: TYPOGRAPHY.size.sm, color: COLORS.textSubtle }}>
-            {meta.buildDate}
-          </span>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px',
+            background: `${accent}14`, border: `1px solid ${accent}33`, borderRadius: RADIUS.full,
+          }}>
+            <span style={{ fontFamily: TYPOGRAPHY.pixel, fontSize: TYPOGRAPHY.pixelSize.xs, color: accent, letterSpacing: TYPOGRAPHY.tracking.pixel, lineHeight: 1.8 }}>
+              v{meta.version}
+            </span>
+            <div style={{ width: 1, height: 10, background: `${accent}44` }} />
+            <span style={{ fontFamily: TYPOGRAPHY.mono, fontSize: TYPOGRAPHY.size.sm, color: COLORS.textSubtle }}>
+              {meta.buildDate}
+            </span>
+          </div>
+          {onSeeChanges && (
+            <button
+              type="button"
+              onClick={onSeeChanges}
+              title="Replay the welcome tour"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
+                background: 'transparent', border: `1px solid ${accent}33`, borderRadius: RADIUS.full,
+                color: accent, cursor: 'pointer', fontFamily: TYPOGRAPHY.sans, fontSize: TYPOGRAPHY.size.sm, fontWeight: 600,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+              See changes
+            </button>
+          )}
         </div>
         <span style={{ fontFamily: TYPOGRAPHY.sans, fontSize: TYPOGRAPHY.size.sm, color: COLORS.textSubtle }}>
           {meta.platform} · Built by {meta.author}

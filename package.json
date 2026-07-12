@@ -1,6 +1,6 @@
 {
   "name": "authno",
-  "version": "1.1.16",
+  "version": "1.1.17-beta.0",
   "description": "AuthNo — offline story editor",
   "author": {
     "name": "VCHS Studios",
@@ -149,7 +149,10 @@
       "createStartMenuShortcut": true,
       "license": "LICENSE.txt",
       "displayLanguageSelector": false,
-      "shortcutName": "AuthNo"
+      "shortcutName": "AuthNo",
+      "include": "nsis/installer.nsh",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "AuthNo ${version}"
     },
     "linux": {
       "target": [
