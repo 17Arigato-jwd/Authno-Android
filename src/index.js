@@ -2,8 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 
-// Pixel Icon Library (CC BY 4.0 — attribution in DesignSystem/Fonts.js)
-// Provides the <i class="hn hn-{name}"> icon font used by DSIcons
+// All UI glyphs are lucide-react vectors via DesignSystem/DSIcons — there is no
+// icon web-font. Fonts (Silkscreen / JetBrains Mono) load in injectDesignSystemFonts().
 
 import App from './App';
 import reportWebVitals from './reportWebVitals';

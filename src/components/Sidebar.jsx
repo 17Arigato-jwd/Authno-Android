@@ -329,11 +329,18 @@ export default function Sidebar({
     >
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <div style={{
-        padding: "16px",
+        padding: "14px 16px",
         borderBottom: "1px solid var(--border-sm)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <img src={Logo} alt="AuthNo" style={{ height: 56, width: 56, objectFit: "contain", filter: "drop-shadow(0 0 6px rgba(255,255,255,0.15))" }} />
+        {/* Clean lockup: a small rounded icon tile + wordmark, instead of the
+            56px drop-shadowed logo that read as a black box. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span style={{ width: 34, height: 34, borderRadius: 10, overflow: "hidden", flexShrink: 0, border: "1px solid var(--border-sm)", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)" }}>
+            <img src={Logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </span>
+          <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.4px", color: "var(--text-1)" }}>AuthNo</span>
+        </div>
         {android
           ? <CloseButton onClick={onDrawerClose} label="Close drawer" />
           : <button onClick={toggleCollapsed} title="Collapse sidebar" aria-label="Collapse sidebar"

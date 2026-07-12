@@ -22,6 +22,7 @@
 import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
 import { emitInstall, newInstallId } from './installEvents';
+import { isAndroid }    from './platform';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 const ASSETS_PLUGIN  = 'ExtbkAssets';
@@ -190,12 +191,18 @@ export async function installExtbkFromUri(uri) {
  * using the native ExtbkAssetsPlugin. Idempotent — skips already-installed extensions.
  */
 export async function seedPreinstalledExtensions() {
+  // The seed assets live in the Android APK and the ExtbkAssets native plugin
+  // only exists there. On Electron/web registerPlugin() returns a proxy that
+  // throws "not implemented on web" when called — which used to spam the error
+  // log on every desktop launch. There's nothing to seed off Android, so bail.
+  if (!isAndroid()) return;
+
   let plugin;
   try {
     const { registerPlugin } = await import('@capacitor/core');
     plugin = registerPlugin(ASSETS_PLUGIN);
   } catch {
-    return; // not on Android or plugin not registered
+    return; // plugin not registered
   }
 
   let filenames;
@@ -203,7 +210,8 @@ export async function seedPreinstalledExtensions() {
     const result = await plugin.list();
     filenames = result?.files ?? [];
   } catch (e) {
-    logError('extbkInstaller:seed:list', e);
+    // Non-fatal (no seed assets available) — log at debug, not as an error.
+    if (process.env.NODE_ENV === 'development') console.debug('[extbkInstaller] seed list skipped:', e?.message);
     return;
   }
 

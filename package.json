@@ -149,7 +149,10 @@
       "createStartMenuShortcut": true,
       "license": "LICENSE.txt",
       "displayLanguageSelector": false,
-      "shortcutName": "AuthNo"
+      "shortcutName": "AuthNo",
+      "include": "nsis/installer.nsh",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "AuthNo ${version}"
     },
     "linux": {
       "target": [

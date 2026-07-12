@@ -108,14 +108,25 @@ if (!gotTheLock) {
   ipcMain.handle("window-is-maximized", () => !!(mainWindow && mainWindow.isMaximized()));
 
   // ── App icon switcher IPC ──────────────────────────────────────────────────
-  ipcMain.handle("get-app-icon", () => readIconPref());
-  ipcMain.handle("set-app-icon", (_e, id) => {
+  // nativeImage.createFromPath can't read through an app.asar archive, so in a
+  // packaged build it returned an EMPTY image and setIcon silently no-op'd
+  // (the reported "PC fails to switch app icon"). Read the bytes via fs — which
+  // Electron patches for asar — and build the image from the buffer instead.
+  function iconImage(id) {
     const asset = ICON_ASSETS[id] || ICON_ASSETS.default;
     try {
-      const img = nativeImage.createFromPath(resolveAsset(asset));
-      if (!img.isEmpty() && mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(img);
+      const buf = fs.readFileSync(resolveAsset(asset));
+      const img = nativeImage.createFromBuffer(buf);
+      return img.isEmpty() ? null : img;
+    } catch { return null; }
+  }
+  ipcMain.handle("get-app-icon", () => readIconPref());
+  ipcMain.handle("set-app-icon", (_e, id) => {
+    try {
+      const img = iconImage(id);
+      if (img && mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(img);
       writeIconPref(id in ICON_ASSETS ? id : "default");
-      return { ok: true };
+      return { ok: !!img };
     } catch (err) {
       return { ok: false, error: String(err && err.message || err) };
     }
@@ -173,7 +184,8 @@ if (!gotTheLock) {
     try {
       const savedIcon = readIconPref();
       if (savedIcon && savedIcon !== "default") {
-        const img = nativeImage.createFromPath(resolveAsset(ICON_ASSETS[savedIcon] || ICON_ASSETS.default));
+        const buf = fs.readFileSync(resolveAsset(ICON_ASSETS[savedIcon] || ICON_ASSETS.default));
+        const img = nativeImage.createFromBuffer(buf);
         if (!img.isEmpty()) mainWindow.setIcon(img);
       }
     } catch { /* icon best-effort */ }

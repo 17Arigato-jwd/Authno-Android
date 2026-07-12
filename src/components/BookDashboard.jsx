@@ -25,7 +25,6 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 
 import { FlameButton } from './Streak';
 import { ChapterRow } from './ChapterRow';
-import { FlameIcon, BookIcon, WordsIcon, GlobeIcon } from './GradientIcons';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
 
@@ -175,10 +174,10 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
   };
 
   const formats = [
-    { icon: <WordsIcon size={26} />, label: 'Plain Text (.txt)', sub: 'Raw text, no formatting', action: onExportTxt, ready: true },
-    { icon: <GlobeIcon size={26} />, label: 'HTML (.html)',       sub: 'Styled web document',     action: onExportHtml, ready: true },
-    { icon: <BookIcon  size={26} />, label: 'ePub (.epub)',        sub: 'Standard e-book format',  action: onExportEpub, ready: true },
-    { icon: <BookIcon  size={26} />, label: 'PDF (.pdf)',          sub: 'Paginated print document', action: onExportPdf,  ready: true },
+    { icon: <DSIcons.FileText size={24} color={accentHex} />, label: 'Plain Text (.txt)', sub: 'Raw text, no formatting', action: onExportTxt, ready: true },
+    { icon: <DSIcons.Globe size={24} color={accentHex} />, label: 'HTML (.html)',       sub: 'Styled web document',     action: onExportHtml, ready: true },
+    { icon: <DSIcons.BookOpen size={24} color={accentHex} />, label: 'ePub (.epub)',        sub: 'Standard e-book format',  action: onExportEpub, ready: true },
+    { icon: <DSIcons.FileText size={24} color={accentHex} />, label: 'PDF (.pdf)',          sub: 'Paginated print document', action: onExportPdf,  ready: true },
   ];
 
   return (
@@ -337,7 +336,7 @@ function MetadataPanel({ session, accentHex, onClose, onSave }) {
 }
 
 // ─── CoverPicker ──────────────────────────────────────────────────────────────
-function CoverPicker({ onPick }) {
+function CoverPicker({ onPick, accentHex = 'var(--accent)' }) {
   const inputRef = useRef(null);
 
   const handleChange = async (e) => {
@@ -353,9 +352,13 @@ function CoverPicker({ onPick }) {
     <>
       <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleChange} />
       <button onClick={() => inputRef.current?.click()}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px' }}>
-        <DSIcons.Upload size={28} style={{ opacity: 0.5, color: 'var(--text-4)' }} />
-        <span style={{ fontSize: '12px', color: 'var(--text-5)' }}>Add Cover</span>
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+          padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+          border: `1.5px dashed ${accentHex}66`, background: `${accentHex}0d`, color: accentHex,
+        }}>
+        <DSIcons.Image size={16} />
+        Add cover
       </button>
     </>
   );
@@ -542,50 +545,41 @@ export default function BookDashboard({
 
         <div style={{ padding: '24px 16px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* ── Cover ── */}
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div style={{
-              width: '168px', height: '240px', borderRadius: '14px',
-              overflow: 'hidden', position: 'relative',
-              boxShadow: hasCover
-                ? `0 12px 40px ${accentHex}55, 0 4px 16px rgba(0,0,0,0.4)`
-                : `0 4px 20px rgba(0,0,0,0.2)`,
-              background: 'var(--surface)',
-              border: hasCover ? 'none' : `2px dashed ${accentHex}66`,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}>
-              {hasCover ? (
-                <>
-                  <img
-                    src={`data:${coverMime};base64,${session.coverBase64}`}
-                    alt="Book cover"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                  {/* Edit overlay */}
-                  <div style={{
-                    position: 'absolute', inset: 0, background: 'rgba(0,0,0,0)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'background 0.15s',
-                  }}>
-                    <label style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}>
-                      <input type="file" accept="image/*" style={{ display: 'none' }}
-                        onChange={async e => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            const { base64, mime } = await downscaleCover(file);
-                            onUpdateSession({ coverBase64: base64, coverMime: mime });
-                          } catch (err) { console.error('[cover]', err); }
-                        }} />
-                    </label>
-                  </div>
-                </>
-              ) : (
-                <CoverPicker onPick={handleCoverPick} />
-              )}
+          {/* ── Cover ──
+              Only reserve the full 168×240 thumbnail when a cover EXISTS.
+              With no cover the big dashed placeholder was dead vertical space
+              (author feedback), so the empty state is a compact add button. */}
+          {hasCover ? (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div style={{
+                width: '150px', height: '214px', borderRadius: '14px',
+                overflow: 'hidden', position: 'relative',
+                boxShadow: `0 12px 40px ${accentHex}44, 0 4px 16px rgba(0,0,0,0.35)`,
+                background: 'var(--surface)', cursor: 'pointer', flexShrink: 0,
+              }}>
+                <img
+                  src={`data:${coverMime};base64,${session.coverBase64}`}
+                  alt="Book cover"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+                <label style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}>
+                  <input type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const { base64, mime } = await downscaleCover(file);
+                        onUpdateSession({ coverBase64: base64, coverMime: mime });
+                      } catch (err) { console.error('[cover]', err); }
+                    }} />
+                </label>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <CoverPicker onPick={handleCoverPick} accentHex={accentHex} />
+            </div>
+          )}
 
           {/* ── Info card ── */}
           <div style={card}>
@@ -613,7 +607,7 @@ export default function BookDashboard({
                   ? 'none'
                   : `1px solid var(--border)`,
               }}>
-                {streakActive && <FlameIcon size={15} />}
+                {streakActive && <DSIcons.Flame size={14} color="#fff" />}
                 {streakActive ? 'Streak' : 'Best Streak'} {streakDays} Day{streakDays !== 1 ? 's' : ''}
               </div>
             )}
@@ -664,14 +658,14 @@ export default function BookDashboard({
             }}>
               <div style={{ flex: 1, padding: '14px 16px', ...statDivider }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
-                  <BookIcon size={20} />
+                  <DSIcons.BookOpen size={18} color={accentHex} />
                   <span style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }}>{chapters.length}</span>
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>Chapters</span>
               </div>
               <div style={{ flex: 1, padding: '14px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
-                  <WordsIcon size={20} />
+                  <DSIcons.Text size={18} color={accentHex} />
                   <span style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }}>{formatWords(totalWords)}</span>
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>Words</span>
