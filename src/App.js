@@ -1269,7 +1269,7 @@ function AppInner({ navigateRef }) {
         onOpenFontCustomizer={() => setFontCustomizerOpen(true)}
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
         sessions={sessions} onSessionChange={handleSessionChange}
-        onReplayTour={() => { setSettingsOpen(false); setShowOnboarding(true); }}
+        onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
       />
 
       <CustomizationSlider

@@ -294,7 +294,36 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
     document.execCommand('insertHTML', false, `<a href="${href.replace(/"/g, '%22')}" target="_blank" rel="noopener">${label}</a>`);
   };
 
-  const applyStyle = (styleObj) => { applyInlineStyle(editorRef?.current, styleObj); };
+  // ── Selection survival across toolbar taps ────────────────────────────────
+  // Tapping a toolbar control (the size input, the font dropdown) pulls focus
+  // out of the contentEditable, collapsing the selection applyInlineStyle needs.
+  // On mobile this made font/size do nothing and the size field snap back to the
+  // caret's original value. Capture the editor's range the instant the toolbar is
+  // touched — pointerdown fires before focus moves — and restore it right before
+  // applying, so the change actually lands on the selected text.
+  const savedRange = useRef(null);
+  const captureEditorRange = useCallback(() => {
+    const editor = editorRef?.current;
+    const sel = window.getSelection();
+    if (!editor || !sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    if (editor.contains(r.commonAncestorContainer) && !r.collapsed) {
+      savedRange.current = r.cloneRange();
+    }
+  }, [editorRef]);
+
+  const applyStyle = (styleObj) => {
+    const editor = editorRef?.current;
+    if (!editor) return;
+    const r = savedRange.current;
+    if (r) {
+      editor.focus();
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    applyInlineStyle(editor, styleObj);
+  };
 
   // ── Theme-aware surface (B1) ──────────────────────────────────────────────
   // Dark: keep the tinted frosted pill. Light: accent wash over cream had ~no
@@ -466,27 +495,31 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   // keyboard opens, so bottom:0 already sits on the keyboard's top edge — the
   // pill↔bar morph animates position, width and radius for the Docs feel.
   if (android) {
+    // Idle (keyboard closed): the pill sits at the TOP of the manuscript — it's
+    // sticky in-flow so it stays put as you scroll and doesn't cover the text
+    // you're reading. Editing (keyboard open): it slides down to dock flush
+    // above the keyboard, Docs-style. (Reported: the bottom pill was in the way
+    // when not actively typing.)
+    const dockedSurface = {
+      overflow: 'hidden',
+      backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+      ...surface,
+      zIndex: 30,
+      transition: 'border-radius 0.22s ease, box-shadow 0.22s ease',
+    };
+    const posStyle = kbOpen
+      ? { position: 'fixed', left: 0, right: 0, bottom: 0, borderRadius: '10px 10px 0 0', boxShadow: '0 -4px 20px rgba(0,0,0,0.25)' }
+      : { position: 'sticky', top: 8, margin: '0 0 10px', borderRadius: 16, boxShadow: '0 6px 24px rgba(0,0,0,0.3)' };
     return (
       <>
       {extras}
-      <div style={{
-        position: 'fixed', zIndex: 30,
-        left: kbOpen ? 0 : 10,
-        right: kbOpen ? 0 : 10,
-        bottom: kbOpen ? 0 : 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-        borderRadius: kbOpen ? '10px 10px 0 0' : 16,
-        overflow: 'hidden',
-        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-        ...surface,
-        boxShadow: kbOpen ? '0 -4px 20px rgba(0,0,0,0.25)' : '0 6px 24px rgba(0,0,0,0.3)',
-        transition: 'left 0.22s ease, right 0.22s ease, bottom 0.22s ease, border-radius 0.22s ease',
-      }}>
-        <div className="toolbar-scroll" style={{
+      <div style={{ ...dockedSurface, ...posStyle }}>
+        <div className="toolbar-scroll" onPointerDownCapture={captureEditorRange} style={{
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '6px 10px', overflowX: 'auto',
           msOverflowStyle: 'none', scrollbarWidth: 'none',
         }}>
-          {controls(true)}
+          {controls(kbOpen)}
         </div>
       </div>
       </>
@@ -512,7 +545,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       ...surface,
       boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.3)' : '0 8px 24px rgba(0,0,0,0.12)',
     }}>
-      <div ref={deskRowRef} className="toolbar-scroll" style={{
+      <div ref={deskRowRef} className="toolbar-scroll" onPointerDownCapture={captureEditorRange} style={{
         display: 'flex', alignItems: 'center', gap: 4,
         padding: '6px 12px', maxWidth: '100%', overflowX: 'auto',
         msOverflowStyle: 'none', scrollbarWidth: 'none',

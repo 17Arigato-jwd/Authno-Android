@@ -6,6 +6,7 @@ import { DSIcons, toast } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { folderFromPath } from '../utils/storage';
 import { isAndroid } from '../utils/platform';
+import { isSpeechSupported } from '../utils/readAloud';
 import { hapticSwipeReveal, hapticSave } from '../utils/haptics';
 import Logo from '../logo.svg';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
@@ -359,7 +360,9 @@ export default function HomeScreen({
       onClick: () => navigate(tile._ext, tile.page),
     })),
     // U2: the three placeholder "Coming Soon" tiles are now real actions.
-    { icon: <DSIcons.Volume size={28} color="currentColor" />, label: 'Read Aloud', onClick: onReadAloud },
+    // Read Aloud only shows where speech synthesis actually exists (some
+    // WebViews / devices ship no TTS engine — the tile did nothing there).
+    ...(isSpeechSupported() ? [{ icon: <DSIcons.Volume size={28} color="currentColor" />, label: 'Read Aloud', onClick: onReadAloud }] : []),
     { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleImportBook },
     { icon: <DSIcons.Extension size={28} color="currentColor" />, label: 'Extensions', onClick: onOpenExtensions },
   ];
@@ -381,8 +384,9 @@ export default function HomeScreen({
         onChange={handleImportFile}
       />
 
-      {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--app-bg)' }}>
+      {/* Header — sticky so the burger menu / drawer toggle stay reachable as
+          the home content scrolls (it used to scroll off the top). */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--app-bg)', position: 'sticky', top: 0, zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {/* Sidebar/drawer toggle is Android-only — on desktop the sidebar is
               always present and has its own collapse control, so this was a

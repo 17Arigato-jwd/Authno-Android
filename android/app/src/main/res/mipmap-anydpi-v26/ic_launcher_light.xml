@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "light" alternate launcher icon: the glyph is composed to bleed into the
-     corner and be cropped by the mask (author's intended framing), so the
-     foreground is full-bleed — no inset — over the solid-white background. -->
+<!-- "light" alternate launcher icon. The foreground glyph is centred inside
+     the adaptive safe zone (~60% of the icon) so the mask never crops it — the
+     old art bled into the bottom-right corner and got cut off on rounded/
+     squircle launchers (user report). -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
   <background android:drawable="@color/ic_launcher_background"/>
   <foreground android:drawable="@mipmap/ic_launcher_light_fg"/>

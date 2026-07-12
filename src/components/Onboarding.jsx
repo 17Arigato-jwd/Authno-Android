@@ -7,7 +7,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "4";
+const UPDATE_VERSION = "5";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -536,9 +536,9 @@ const UPDATE_NOTES = [
     body: "The gradient background is bolder and now shows on the book screen too. On desktop, switching your app icon restarts AuthNo so the new icon appears everywhere — window and taskbar.",
   },
   {
-    icon: (p) => <DSIcons.Sparkle {...p} />,
-    title: "A smoother desktop",
-    body: "Fixed the app-icon switch, extension-install hang and the repeated ExtbkAssets error, trimmed background GPU use, tidied the sidebar and cover, and taught the Windows installer to update in place safely.",
+    icon: (p) => <DSIcons.Text {...p} />,
+    title: "A better mobile editor",
+    body: "Fonts and sizes now actually apply to your selection, the toolbar rests at the top until you start typing, and selecting text gives you a tag chip plus working copy/paste. Also fixed a cropped app icon and made deleting chapters easy to find.",
   },
 ];
 

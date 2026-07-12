@@ -3,6 +3,37 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.17-beta.1
+
+_Mobile-focused fixes on top of 1.1.17-beta.0._
+
+### Editor (mobile)
+
+- **Font and size actually apply now.** Picking a size (or typing one) and
+  choosing a font previously did nothing on a selection and the size snapped
+  back — the toolbar was losing the editor's selection when tapped. The
+  selection is now captured and restored, so formatting lands on the selected
+  text.
+- **Toolbar sits at the top when you're not typing** and slides down to dock
+  above the keyboard while editing, instead of floating over the page.
+- **Text selection now shows the tag chip** (below the selection so it isn't
+  hidden behind the system menu), and the selection menu has **working
+  cut / copy / paste / select-all** — the built-ins were unreliable on some
+  devices and there's no right-click on mobile.
+
+### Fixes
+
+- **App icon no longer looks cropped** — the Light / Retro / Space Gold glyphs
+  are re-centred inside the adaptive safe zone so launchers don't clip them.
+- **Chapter delete is easy to find** — a clear, finger-sized delete button on
+  each chapter row.
+- **Read Aloud** uses a proper vector icon and only appears on devices that
+  actually support text-to-speech.
+- **"See changes"** now opens this what's-new list instead of the first-run
+  welcome tour.
+- The home-screen title bar (menu button) **stays pinned** while the page
+  scrolls.
+
 ## 1.1.17-beta.0
 
 _Compared to **v1.1.16-beta-0**._

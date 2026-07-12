@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
+import { isSpeechSupported } from "../utils/readAloud";
 import { hapticSave } from "../utils/haptics";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
@@ -241,7 +242,7 @@ export default function BurgerMenu({
           ))}
         </div>
       )}
-      {onReadAloud && (
+      {onReadAloud && isSpeechSupported() && (
         <>
           <Divider style={{ margin: "2px 0" }} />
           {item({ icon: <DSIcons.Volume size={15} />, disabled: !current, onClick: () => { onClose?.(); onReadAloud(); }, children: "Read aloud" })}
