@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useMotionEnabled, PRESS, SPRING } from '../utils/motion';
 
 
 // ── DesignSystem imports (all shared UI comes from here now) ──────────────────
@@ -117,6 +119,7 @@ const APP_ICON_OPTIONS = APP_ICON_FAMILIES.flatMap((f) =>
 function AppIconPicker({ accentHex }) {
   const [selected, setSelected] = useState('default');
   const { isPro } = useEntitlement();
+  const motionOK = useMotionEnabled();
 
   useEffect(() => {
     let alive = true;
@@ -152,10 +155,11 @@ function AppIconPicker({ accentHex }) {
           const active = selected === opt.id;
           const locked = opt.premium && !isPro;
           return (
-            <button
+            <motion.button
               key={opt.id}
               onClick={() => pick(opt)}
               title={locked ? `${opt.label} — Pro` : opt.label}
+              whileTap={motionOK ? PRESS : undefined}
               style={{
                 position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
                 padding: '12px 8px', borderRadius: 14, cursor: 'pointer',
@@ -175,16 +179,18 @@ function AppIconPicker({ accentHex }) {
                 {opt.label}
               </span>
               {active && (
-                <span style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <motion.span
+                  initial={motionOK ? { scale: 0 } : false} animate={{ scale: 1 }} transition={SPRING}
+                  style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <DSIcons.Check size={11} color="#fff" />
-                </span>
+                </motion.span>
               )}
               {locked && !active && (
                 <span style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: 'var(--surface-md)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <DSIcons.Lock size={10} color="var(--text-4)" />
                 </span>
               )}
-            </button>
+            </motion.button>
           );
         })}
       </div>
@@ -1075,6 +1081,11 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             </div>
             {/* Content */}
             <div className="settings-content" style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : { flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}>
+              <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={activeSection}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
               {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
@@ -1084,6 +1095,8 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
               ))}
+              </motion.div>
+              </AnimatePresence>
             </div>
           </>
         ) : (

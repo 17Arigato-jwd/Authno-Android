@@ -24,7 +24,10 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 
 import { FlameButton } from './Streak';
+import { motion } from 'framer-motion';
 import { ChapterRow } from './ChapterRow';
+import { CountUp } from './Motion';
+import { V, staggerContainer } from '../utils/motion';
 import { isSpeechSupported } from '../utils/readAloud';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
@@ -678,14 +681,14 @@ export default function BookDashboard({
               <div style={{ flex: 1, padding: '14px 16px', ...statDivider }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
                   <DSIcons.BookOpen size={18} color={accentHex} />
-                  <span style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }}>{chapters.length}</span>
+                  <CountUp value={chapters.length} style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }} />
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>Chapters</span>
               </div>
               <div style={{ flex: 1, padding: '14px 16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
                   <DSIcons.Text size={18} color={accentHex} />
-                  <span style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }}>{formatWords(totalWords)}</span>
+                  <CountUp value={totalWords} format={formatWords} style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-1)' }} />
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-5)', fontWeight: 500 }}>Words</span>
               </div>
@@ -885,7 +888,8 @@ export default function BookDashboard({
             </div>
 
             {/* Rows */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <motion.div style={{ display: 'flex', flexDirection: 'column' }}
+              variants={staggerContainer()} initial="hidden" animate="show">
               {visibleChapters.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-5)', fontSize: '14px' }}>
                   {chapterSearch ? 'No chapters match your search.' : 'No chapters yet — create your first one!'}
@@ -898,8 +902,8 @@ export default function BookDashboard({
                 const downDir = sortOrder === 'newest' ? -1 : 1;
 
                 return (
+                  <motion.div key={chap.chap_idx} layout variants={V.fadeRise}>
                   <ChapterRow
-                    key={chap.chap_idx}
                     chap={chap}
                     isLast={isLast}
                     isPendingDel={deleteConfirm === chap.chap_idx}
@@ -915,9 +919,10 @@ export default function BookDashboard({
                     onDeleteConfirm={() => { onDeleteChapter?.(chap.chap_idx); setDeleteConfirm(null); }}
                     onDeleteCancel={() => setDeleteConfirm(null)}
                   />
+                  </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
 
             </>
             )}{/* end activeExtTab conditional */}
