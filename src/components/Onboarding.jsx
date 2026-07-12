@@ -7,7 +7,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "5";
+const UPDATE_VERSION = "6";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -525,6 +525,11 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 // markUpdateSeen() persists the flag so it never shows again for that version.
 
 const UPDATE_NOTES = [
+  {
+    icon: (p) => <DSIcons.Sparkle {...p} />,
+    title: "AuthNo moves now",
+    body: "Screens slide as you navigate, opening a book or chapter expands into place, lists cascade in, stats count up and buttons respond to your touch. Prefer calm? Turn it off under Settings → Appearance → Reduce animations (it also follows your device's accessibility setting).",
+  },
   {
     icon: (p) => <DSIcons.FileText {...p} />,
     title: "Chapter synopses",
