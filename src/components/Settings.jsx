@@ -513,6 +513,14 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
 
       <div style={{ height: 16 }} />
 
+      {/* Reduce animations — also auto-on when the OS "reduce motion" setting is
+          enabled (see MotionProvider). */}
+      <SettingRow icon={DSIcons.Lightning} title="Reduce animations" description="Minimise transitions and motion effects across the app" accentHex={accentHex}>
+        <Toggle on={settings.reduceMotion ?? false} onChange={(v) => onChange({ reduceMotion: v })} accentHex={accentHex} />
+      </SettingRow>
+
+      <div style={{ height: 16 }} />
+
       {/* Background Effect dropdown */}
       <BackgroundEffectPicker
         value={settings.backgroundEffect ?? (settings.enableGradient ? 'gradient' : 'none')}
@@ -970,6 +978,7 @@ export const DEFAULT_SETTINGS = {
   restoreOpenBooks: true,
   dailyWordGoal: 500,
   hapticsEnabled: true,
+  reduceMotion: false,         // when true (or OS reduce-motion), animations are minimised
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges }) {

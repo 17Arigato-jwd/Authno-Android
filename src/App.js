@@ -29,6 +29,8 @@ import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, che
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
+import { motion, AnimatePresence } from "framer-motion";
+import { MotionProvider, screenVariants, T } from "./utils/motion";
 import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
 import InstallSheet from "./components/InstallSheet";
@@ -1104,8 +1106,22 @@ function AppInner({ navigateRef }) {
     setMenuOpen((v) => !v);
   };
 
+  // ── Screen-transition direction ───────────────────────────────────────────
+  // Depth orders the main screens; moving deeper slides forward, shallower slides
+  // back. Book/chapter open/close (transitions among home↔book↔editor) use the
+  // "expand" variant (magnitude 2) — the hero feel — while extension pages slide.
+  const VIEW_DEPTH = { home: 0, "book-dashboard": 1, editor: 2, "extension-page": 1 };
+  const HERO_VIEWS = ["home", "book-dashboard", "editor"];
+  const prevViewRef = React.useRef(view);
+  const prevView = prevViewRef.current;
+  const depthDelta = (VIEW_DEPTH[view] ?? 0) - (VIEW_DEPTH[prevView] ?? 0);
+  const dirSign = depthDelta === 0 ? 1 : Math.sign(depthDelta);
+  const isHero = view !== prevView && HERO_VIEWS.includes(view) && HERO_VIEWS.includes(prevView);
+  const screenDir = dirSign * (isHero ? 2 : 1);
+  React.useEffect(() => { prevViewRef.current = view; }, [view]);
+
   return (
-    <>
+    <MotionProvider reduce={!!settings.reduceMotion}>
     <TitleBar />
     <div className="app-root flex relative" style={{ color: "var(--text-1)" }}>
       {/* Light/dark is owned entirely by the active theme (applyTheme toggles
@@ -1173,6 +1189,14 @@ function AppInner({ navigateRef }) {
         }}
       />
 
+      <AnimatePresence mode="wait" custom={screenDir} initial={false}>
+      <motion.div
+        key={view}
+        custom={screenDir}
+        variants={screenVariants}
+        initial="initial" animate="animate" exit="exit"
+        style={{ flex: 1, display: "flex", minWidth: 0, height: "100%", position: "relative", willChange: "transform, opacity" }}
+      >
       {view === "extension-page" && extPageState ? (
         <ExtensionPage extension={extPageState.extension} pageId={extPageState.pageId} session={extPageState.session ?? editorCurrent ?? current} accentHex={customization.accentHex} onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }} />
       ) : view === "home" ? (
@@ -1230,6 +1254,8 @@ function AppInner({ navigateRef }) {
           resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
         />
       )}
+      </motion.div>
+      </AnimatePresence>
 
       <BurgerMenu
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
@@ -1284,10 +1310,20 @@ function AppInner({ navigateRef }) {
       />
 
       <div style={{ position: "fixed", bottom: 16, right: 16, display: "flex", alignItems: "center", gap: 12, color: "var(--text-4)", fontSize: 14, userSelect: "none", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        {lastSaved && <span style={{ opacity: 0.8 }}>Saved ✓ ({lastSaved})</span>}
+        <AnimatePresence>
+          {lastSaved && (
+            <motion.span
+              key={lastSaved}
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 0.8, y: 0 }} exit={{ opacity: 0 }}
+              transition={T.base}
+            >
+              Saved ✓ ({lastSaved})
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
     </div>
-    </>
+    </MotionProvider>
   );
 }
 
