@@ -109,14 +109,15 @@ export function GrainGradientBackground({
       {/* Layer 1: base colour */}
       <div style={{ position: 'absolute', inset: 0, background: baseColor }} />
 
-      {/* Layer 2: bottom-left bloom (theme colorFrom) */}
-      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 55% 70% at -5% 80%, ${hexToRgba(colorFrom, 0.30)} 0%, transparent 65%)` }} />
+      {/* Layer 2: bottom-left bloom (theme colorFrom) — larger + stronger so the
+          diagonal gradient reads clearly instead of a faint tint (user report). */}
+      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 78% 92% at -5% 82%, ${hexToRgba(colorFrom, 0.55)} 0%, transparent 72%)` }} />
 
       {/* Layer 3: top-right bloom (theme colorTo) */}
-      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 50% 55% at 105% 10%, ${hexToRgba(colorTo, 0.24)} 0%, transparent 65%)` }} />
+      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 72% 78% at 105% 8%, ${hexToRgba(colorTo, 0.46)} 0%, transparent 72%)` }} />
 
       {/* Layer 4: bottom-centre blend of both */}
-      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 60% 30% at 50% 100%, ${hexToRgba(colorTo, 0.16)} 0%, transparent 70%)` }} />
+      <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse 82% 46% at 50% 102%, ${hexToRgba(colorTo, 0.32)} 0%, transparent 74%)` }} />
 
       {/* Layer 5: canvas grain (multiply — darkens on light base) */}
       <canvas

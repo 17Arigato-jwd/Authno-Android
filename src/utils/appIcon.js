@@ -63,3 +63,23 @@ export async function setAppIcon(id) {
   if (isAndroid()) { await AppIcon.set({ icon: id }); return; }
   if (isElectron() && window.electron?.setAppIcon) { await window.electron.setAppIcon(id); }
 }
+
+/**
+ * True when applying an icon requires an app relaunch. Desktop only — Windows
+ * doesn't reliably refresh the taskbar/running icon from a live swap, so the
+ * main process persists the pick and relaunches with the icon baked in.
+ */
+export function appIconRelaunches() {
+  return isElectron() && typeof window.electron?.setAppIconRelaunch === 'function';
+}
+
+/**
+ * Desktop: persist the pick and relaunch (the app process exits and comes back
+ * with the new icon everywhere). On Android this falls back to setAppIcon,
+ * whose activity-alias swap already applies live.
+ * @param {string} id one of the APP_ICONS ids
+ */
+export async function setAppIconAndRelaunch(id) {
+  if (appIconRelaunches()) { await window.electron.setAppIconRelaunch(id); return; }
+  await setAppIcon(id);
+}

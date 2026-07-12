@@ -202,6 +202,9 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
       word_count: _wordCount(c.content || ''),
       created:    c.created || now,
       updated:    c.updated || now,
+      // Short per-chapter synopsis (optional) — lives in MNFT so it rides along
+      // with the chapter metadata and its RS parity. Omitted when empty.
+      ...(c.synopsis ? { synopsis: c.synopsis } : {}),
     })),
   };
 
@@ -477,6 +480,7 @@ export async function unpackSession(bytes) {
     content:  sections['CHAP']?.[ch.chap_idx] ?? '',
     created:  ch.created  || new Date().toISOString(),
     updated:  ch.updated  || new Date().toISOString(),
+    ...(ch.synopsis ? { synopsis: ch.synopsis } : {}),
   })).sort((a, b) => a.order - b.order);
 
   return { meta: cleanMeta, chapters, streak, notes, cover, coverMime, rsLevel, warnings: warn, rsRecovered: rsRec, status };

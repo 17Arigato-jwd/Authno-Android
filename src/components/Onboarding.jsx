@@ -7,7 +7,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "3";
+const UPDATE_VERSION = "4";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -526,19 +526,19 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
 const UPDATE_NOTES = [
   {
-    icon: (p) => <DSIcons.Pin {...p} />,
-    title: "Threads",
-    body: "Track plotlines, character arcs and TODOs alongside your prose. Select text (or long-press) to anchor a note, then follow every beat from the Threads panel — it scrolls with your manuscript.",
-  },
-  {
-    icon: (p) => <DSIcons.Text {...p} />,
-    title: "A proper writing toolbar",
-    body: "The toolbar now docks above your keyboard like a real editor, with way more fonts, sizes, colors and formatting — plus a custom selection menu with tagging built in.",
+    icon: (p) => <DSIcons.FileText {...p} />,
+    title: "Chapter synopses",
+    body: "Every chapter row now has an inline synopsis. Tap “Add synopsis”, jot down what happens, and it’s saved right in your book — a quick map of your story without opening each chapter.",
   },
   {
     icon: (p) => <DSIcons.Palette {...p} />,
-    title: "App icons & smoother everything",
-    body: "Pick a launcher icon under Settings → Appearance (Dark, or Light with Retro and Space Gold variants). Menus, pages and the gradient background are also much faster on phones.",
+    title: "Backgrounds & app icons",
+    body: "The gradient background is bolder and now shows on the book screen too. On desktop, switching your app icon restarts AuthNo so the new icon appears everywhere — window and taskbar.",
+  },
+  {
+    icon: (p) => <DSIcons.Sparkle {...p} />,
+    title: "A smoother desktop",
+    body: "Fixed the app-icon switch, extension-install hang and the repeated ExtbkAssets error, trimmed background GPU use, tidied the sidebar and cover, and taught the Windows installer to update in place safely.",
   },
 ];
 

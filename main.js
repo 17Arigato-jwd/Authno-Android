@@ -120,6 +120,18 @@ if (!gotTheLock) {
       return img.isEmpty() ? null : img;
     } catch { return null; }
   }
+  // Icon to bake into the window at creation. A live setIcon() doesn't reliably
+  // refresh the Windows taskbar / running icon, so the chosen icon is applied by
+  // relaunching (see set-app-icon-relaunch) — and on that fresh launch the window
+  // is created WITH the icon here, so it shows up everywhere from the start.
+  function startupIconOption() {
+    const id = readIconPref();
+    if (id && id !== "default") {
+      const img = iconImage(id);
+      if (img) return img;
+    }
+    return resolveAsset("authno.ico");
+  }
   ipcMain.handle("get-app-icon", () => readIconPref());
   ipcMain.handle("set-app-icon", (_e, id) => {
     try {
@@ -127,6 +139,19 @@ if (!gotTheLock) {
       if (img && mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(img);
       writeIconPref(id in ICON_ASSETS ? id : "default");
       return { ok: !!img };
+    } catch (err) {
+      return { ok: false, error: String(err && err.message || err) };
+    }
+  });
+  // Persist the pick and relaunch so the new icon takes effect everywhere
+  // (window + taskbar + running icon). This is the desktop path the renderer
+  // uses — a live swap looked flaky on Windows (reported).
+  ipcMain.handle("set-app-icon-relaunch", (_e, id) => {
+    try {
+      writeIconPref(id in ICON_ASSETS ? id : "default");
+      app.relaunch();
+      app.exit(0);
+      return { ok: true };
     } catch (err) {
       return { ok: false, error: String(err && err.message || err) };
     }
@@ -166,7 +191,9 @@ if (!gotTheLock) {
       // window". Still resizable; dragging is handled via -webkit-app-region.
       frame: false,
       titleBarStyle: "hidden",
-      icon: resolveAsset("authno.ico"),
+      // Bake the user's chosen icon in at creation so it shows in the taskbar
+      // and window from the first frame (esp. after an icon-change relaunch).
+      icon: startupIconOption(),
       // Linux: a transparent frameless window lets the renderer paint rounded
       // corners (the app root has border-radius). Windows 11 already rounds
       // frameless windows via DWM, and transparency there disables the drop
@@ -180,15 +207,8 @@ if (!gotTheLock) {
       },
     });
 
-    // Re-apply the user's chosen launcher icon at startup (desktop switcher).
-    try {
-      const savedIcon = readIconPref();
-      if (savedIcon && savedIcon !== "default") {
-        const buf = fs.readFileSync(resolveAsset(ICON_ASSETS[savedIcon] || ICON_ASSETS.default));
-        const img = nativeImage.createFromBuffer(buf);
-        if (!img.isEmpty()) mainWindow.setIcon(img);
-      }
-    } catch { /* icon best-effort */ }
+    // (The chosen icon is baked in via the `icon` option above — no post-create
+    // setIcon needed, which also avoids the flaky Windows taskbar refresh.)
 
     // Notify the renderer's title bar when the maximise state changes so it can
     // swap the maximise/restore glyph.

@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('electron', {
   // ── App icon switcher (desktop) — swaps the taskbar/window icon at runtime ──
   setAppIcon: (id) => ipcRenderer.invoke('set-app-icon', id),
   getAppIcon: ()   => ipcRenderer.invoke('get-app-icon'),
+  // Persist + relaunch so the icon applies everywhere (window/taskbar) — the
+  // reliable path on Windows where a live swap doesn't refresh the taskbar.
+  setAppIconRelaunch: (id) => ipcRenderer.invoke('set-app-icon-relaunch', id),
 
   // ── Binary file operations (VCHS-ECS, used by storage.js) ────────────────
   saveBookBytes:   (data) => ipcRenderer.invoke('save-book-bytes',    data),

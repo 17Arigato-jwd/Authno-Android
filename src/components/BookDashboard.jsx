@@ -454,6 +454,21 @@ export default function BookDashboard({
     onUpdateSession(updates);
   };
 
+  // ── Chapter synopsis (inline tap-to-edit) ─────────────────────────────────────
+  // Persists chap.synopsis into the .authbook chapter model via onUpdateSession.
+  // Trims and drops the field entirely when cleared so empty synopses don't
+  // bloat the file.
+  const handleSynopsisChange = (chapIdx, text) => {
+    const next = (text ?? '').trim();
+    const chaps = (session?.chapters || []).map((c) => {
+      if (c.chap_idx !== chapIdx) return c;
+      if (!next) { const { synopsis, ...rest } = c; return rest; }
+      if (c.synopsis === next) return c;
+      return { ...c, synopsis: next };
+    });
+    onUpdateSession({ chapters: chaps });
+  };
+
   // ── Styles ──────────────────────────────────────────────────────────────────
   const card = {
     background: 'var(--sidebar-card-bg)',
@@ -511,8 +526,11 @@ export default function BookDashboard({
         ref={scrollRef}
         onScroll={handleScroll}
         style={{
+          // Transparent (not --app-bg) so the fixed gradient/grain background
+          // shows through here too, matching the Home screen. position:relative
+          // keeps this content painting above the fixed z-index:0 background.
           flex: 1, height: '100%', overflowY: 'auto', overflowX: 'hidden',
-          background: 'var(--app-bg)', position: 'relative', display: 'flex', flexDirection: 'column',
+          background: 'transparent', position: 'relative', display: 'flex', flexDirection: 'column',
         }}
       >
         {/* ── Sticky header ── */}
@@ -886,6 +904,7 @@ export default function BookDashboard({
                     canMoveDown={canMoveDown}
                     showSearch={!!chapterSearch}
                     showDelete={chapters.length > 1}
+                    onSynopsisChange={(text) => handleSynopsisChange(chap.chap_idx, text)}
                               onEdit={() => onEditChapter(chap.chap_idx)}
                     onMoveUp={() => onMoveChapter?.(chap.chap_idx, upDir)}
                     onMoveDown={() => onMoveChapter?.(chap.chap_idx, downDir)}

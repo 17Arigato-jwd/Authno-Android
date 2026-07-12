@@ -23,7 +23,7 @@ import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
-import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon } from '../utils/appIcon';
+import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
 import { resetOnboarding } from './Onboarding';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
 import { useEntitlement } from '../utils/useEntitlement';
@@ -127,6 +127,16 @@ function AppIconPicker({ accentHex }) {
 
   const pick = async (opt) => {
     if (opt.premium && !isPro) { openBilling(); return; }   // Pro-gated
+    // Desktop: applying the icon relaunches the app so it updates everywhere
+    // (window + taskbar). Confirm first since it restarts AuthNo.
+    if (appIconRelaunches()) {
+      if (opt.id === selected) return;
+      const ok = window.confirm(`Apply the "${opt.label}" icon?\n\nAuthNo will restart so the new icon shows in the taskbar and window.`);
+      if (!ok) return;
+      setSelected(opt.id);
+      try { await setAppIconAndRelaunch(opt.id); } catch { /* app is relaunching */ }
+      return;
+    }
     const prev = selected;
     setSelected(opt.id);
     try { await setAppIcon(opt.id); } catch { setSelected(prev); }
@@ -182,7 +192,7 @@ function AppIconPicker({ accentHex }) {
       <p style={{ fontSize: '11px', color: 'var(--text-4)', marginTop: '10px' }}>
         {isAndroid()
           ? 'Changes the home-screen icon. On a few devices the launcher may briefly close the app to apply it.'
-          : 'Changes the taskbar and window icon. The installed desktop shortcut keeps its original icon.'}
+          : 'Changes the taskbar and window icon — AuthNo restarts to apply it everywhere. The installed desktop shortcut keeps its original icon.'}
       </p>
     </div>
   );
