@@ -322,7 +322,15 @@ export function ThreadSelectionLayer({
 
   if (!sel) return null;
 
-  const chipTop = Math.max(8, sel.rect.top - 38);
+  // Chip sits BELOW the selection on mobile. Native selection toolbars (esp.
+  // Samsung's, which ignores our ActionMode suppression) are native overlays
+  // painted above the WebView and always appear ABOVE the selection — so a chip
+  // above would be hidden behind them. Below the selection it stays visible
+  // "at the same time" as the native menu (user report). Desktop keeps it above.
+  const selBottom = sel.rect.bottom ?? (sel.rect.top + (sel.rect.height || 0));
+  const chipTop = desktop
+    ? Math.max(8, sel.rect.top - 38)
+    : Math.min(selBottom + 10, window.innerHeight - 44);
   const chipLeft = Math.min(Math.max(8, sel.rect.left + sel.rect.width / 2 - 16), window.innerWidth - 48);
   const types = getAllTypes(data);
   const nameish = looksLikeName(sel.text);
@@ -379,9 +387,10 @@ export function ThreadSelectionLayer({
               boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
             }}
           >
-            {/* Clipboard row — right-click / caret menus only. The highlight
-                (text-selection) menu omits it, per the menu split. */}
-            {(showClipboard || caretOnly) && (
+            {/* Clipboard row — shown on right-click / caret menus, and ALWAYS on
+                mobile: there's no right-click there and the native cut/copy is
+                broken/suppressed, so this menu is the only working clipboard. */}
+            {(showClipboard || caretOnly || !desktop) && (
             <div style={{ display: 'flex', gap: 2, paddingBottom: 6, borderBottom: '1px solid var(--border-sm)', marginBottom: 6 }}>
               {[
                 { label: 'Cut',        Icon: DSIcons.Cut,       act: doCut,       disabled: caretOnly },

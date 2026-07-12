@@ -201,18 +201,22 @@ export function ChapterRow({
             )}
           </div>
 
-          {/* Delete button */}
+          {/* Delete button — a tinted, finger-sized target so it's actually
+              discoverable/tappable on mobile (the faint 28px icon was missed). */}
           {showDelete && (
             <button
               onClick={onDeleteRequest}
+              aria-label={`Delete ${chap.title}`}
+              title="Delete chapter"
               style={{
-                width: '28px', height: '28px', flexShrink: 0, marginTop: '1px',
+                width: '36px', height: '36px', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--text-5)', borderRadius: '6px', padding: 0,
-                transition: 'color 0.12s',
+                background: light ? 'rgba(224,60,60,0.08)' : 'rgba(224,60,60,0.14)',
+                border: `1px solid ${light ? 'rgba(224,60,60,0.20)' : 'rgba(224,60,60,0.28)'}`,
+                cursor: 'pointer', color: '#e5484d', borderRadius: '9px', padding: 0,
+                transition: 'background 0.12s',
               }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>

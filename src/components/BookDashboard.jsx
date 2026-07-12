@@ -25,6 +25,7 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 
 import { FlameButton } from './Streak';
 import { ChapterRow } from './ChapterRow';
+import { isSpeechSupported } from '../utils/readAloud';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
 
@@ -703,7 +704,8 @@ export default function BookDashboard({
               Export Options
             </button>
 
-            {/* Read Aloud (U2) */}
+            {/* Read Aloud (U2) — only where the device actually has TTS. */}
+            {isSpeechSupported() && (
             <button onClick={onReadAloud} style={{
               width: '100%', padding: '13px', borderRadius: '14px',
               border: '1px solid var(--border)', background: 'var(--surface)',
@@ -711,9 +713,10 @@ export default function BookDashboard({
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: '9px', marginBottom: '12px', transition: 'background 0.12s',
             }}>
-              <span style={{ fontSize: 15, lineHeight: 1 }}>🔊</span>
+              <DSIcons.Volume size={16} color="currentColor" />
               Read Aloud
             </button>
+            )}
 
             {/* Extension action buttons — rendered only when extensions are installed */}
             {extActions.length > 0 && (

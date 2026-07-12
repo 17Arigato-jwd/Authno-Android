@@ -24,7 +24,6 @@ import { useExtensionContributions, useExtensions } from '../utils/ExtensionCont
 import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
 import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
-import { resetOnboarding } from './Onboarding';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
@@ -716,12 +715,8 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
 }
 
 
-function AboutPanel({ accentHex, onReplayTour }) {
+function AboutPanel({ accentHex, onSeeChanges }) {
   const { isPro } = useEntitlement();
-  const replay = async () => {
-    try { await resetOnboarding(); } catch { /* best-effort */ }
-    onReplayTour?.();
-  };
   return (
     <div>
       <SectionTitle>About</SectionTitle>
@@ -758,7 +753,7 @@ function AboutPanel({ accentHex, onReplayTour }) {
         </button>
       </div>
 
-      <AboutSection accentHex={accentHex} onSeeChanges={replay} />
+      <AboutSection accentHex={accentHex} onSeeChanges={onSeeChanges} />
     </div>
   );
 }
@@ -977,7 +972,7 @@ export const DEFAULT_SETTINGS = {
   hapticsEnabled: true,
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onReplayTour }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('profile');
   const isPortrait = useIsPortrait();
@@ -1075,7 +1070,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onReplayTour={onReplayTour} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
@@ -1117,7 +1112,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onReplayTour={onReplayTour} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
