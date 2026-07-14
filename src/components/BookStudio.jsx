@@ -251,7 +251,7 @@ export default function BookStudio({
             )}
           </AnimatePresence>
 
-          <motion.div variants={staggerContainer()} initial="hidden" animate="show" style={{ flex: 1, overflowY: 'auto', padding: 6 }}>
+          <motion.div variants={staggerContainer(visible.length)} initial="hidden" animate="show" style={{ flex: 1, overflowY: 'auto', padding: 6 }}>
             {visible.length === 0 && (
               <div style={{ textAlign: 'center', padding: '36px 12px', color: 'var(--text-5)', fontSize: 12.5 }}>
                 {search ? 'No chapters match.' : 'No chapters yet.'}

@@ -27,7 +27,7 @@ import { FlameButton } from './Streak';
 import { motion } from 'framer-motion';
 import { ChapterRow } from './ChapterRow';
 import { CountUp } from './Motion';
-import { V, staggerContainer } from '../utils/motion';
+import { V, staggerContainer, MOBILE } from '../utils/motion';
 import { isSpeechSupported } from '../utils/readAloud';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
@@ -899,7 +899,7 @@ export default function BookDashboard({
 
             {/* Rows */}
             <motion.div style={{ display: 'flex', flexDirection: 'column' }}
-              variants={staggerContainer()} initial="hidden" animate="show">
+              variants={staggerContainer(visibleChapters.length)} initial="hidden" animate="show">
               {visibleChapters.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-5)', fontSize: '14px' }}>
                   {chapterSearch ? 'No chapters match your search.' : 'No chapters yet — create your first one!'}
@@ -912,7 +912,7 @@ export default function BookDashboard({
                 const downDir = sortOrder === 'newest' ? -1 : 1;
 
                 return (
-                  <motion.div key={chap.chap_idx} layout variants={V.fadeRise}>
+                  <motion.div key={chap.chap_idx} layout={!MOBILE} variants={V.fadeRise}>
                   <ChapterRow
                     chap={chap}
                     isLast={isLast}

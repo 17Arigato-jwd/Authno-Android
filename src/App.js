@@ -513,9 +513,14 @@ function AppInner({ navigateRef }) {
         .catch(() => { if (alive) setSystemAccent(null); });
     };
     fetchAccent(false);
-    const onResume = () => fetchAccent(true);
-    document.addEventListener('resume', onResume); // Capacitor app-resume event
-    return () => { alive = false; document.removeEventListener('resume', onResume); };
+    // Re-check on app resume via @capacitor/app — the document-level 'resume'
+    // event is a Cordova convention Capacitor doesn't reliably emit.
+    let sub = null;
+    import('@capacitor/app')
+      .then(({ App: CapApp }) => CapApp.addListener('resume', () => fetchAccent(true)))
+      .then((s) => { if (alive) sub = s; else s?.remove?.(); })
+      .catch(() => { /* plugin unavailable — startup fetch already ran */ });
+    return () => { alive = false; sub?.remove?.(); };
   }, [settings.materialYou, android]);
 
   // Keep var(--accent) in sync with the user's chosen accent colour (see

@@ -205,7 +205,7 @@ export default function HomeDesktop({
             </div>
           ) : (
             <motion.div
-              variants={staggerContainer()} initial="hidden" animate="show"
+              variants={staggerContainer(recent.length)} initial="hidden" animate="show"
               style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))', gap: 12 }}
             >
               {recent.map((book) => (

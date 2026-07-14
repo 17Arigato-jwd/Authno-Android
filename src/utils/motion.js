@@ -87,8 +87,15 @@ export const screenVariants = {
     : { opacity: 0, x: -SLIDE_X * Math.sign(dir || 1), transition: { duration: DUR.fast, ease: EASE_INOUT } }),
 };
 
-/** Stagger container — children with variants "hidden"/"show" cascade in. */
-export function staggerContainer(stagger = MOBILE ? 0.03 : 0.045, delayChildren = 0) {
+/**
+ * Stagger container — children with variants "hidden"/"show" cascade in.
+ * Pass the child `count` when the list can be long: the per-child stagger is
+ * shrunk so the WHOLE cascade never exceeds ~0.5s — without the cap, a
+ * 100-chapter list made the last row fade in after 3–4 seconds.
+ */
+export function staggerContainer(count = 0, delayChildren = 0) {
+  const base = MOBILE ? 0.03 : 0.045;
+  const stagger = count > 0 ? Math.min(base, 0.5 / count) : base;
   return { hidden: {}, show: { transition: { staggerChildren: stagger, delayChildren } } };
 }
 

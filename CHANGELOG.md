@@ -3,6 +3,25 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.17-beta.4
+
+_QA round — this release also carries everything listed under 1.1.17-beta.3
+below, which was never published on its own._
+
+- **`.authbook` persistence is now covered by automated tests** — chapter
+  synopses, threads, streak history, notes, covers and extended metadata are
+  verified to round-trip byte-for-byte, including recovery from a corrupted
+  byte via the Reed–Solomon parity and loading of old single-chapter files.
+- **Material You reliability** — the wallpaper-colour refresh on app resume now
+  uses the proper Capacitor lifecycle event (the old hook never fired on most
+  devices; the colour only updated on a full restart).
+- **Smoother animations on long lists** — the cascade of list items is capped
+  at half a second total. Previously a 100-chapter book spent 3–4 seconds
+  fading its rows in, one by one.
+- **Lighter animations on Android** — chapter rows no longer run layout
+  animations on phones (a per-frame measurement cost on exactly the list that
+  gets long); entrances stay, using GPU-cheap transform/opacity only.
+
 ## 1.1.17-beta.3
 
 _Desktop grows up: a PC-grade layout, plus Material You on Android._
