@@ -3,6 +3,15 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## Unreleased
+
+- **More motion** — the animations pass now also covers: the burger menu
+  (bottom-sheet spring + backdrop fade on mobile, scale-fade dropdown on
+  desktop, with proper closing animations), editor-toolbar popovers, the
+  selection tag chip (springs in) and selection menu, onboarding / what's-new
+  page transitions, book cards (tap feedback), the drawer backdrop, and the
+  Export / Metadata sheets.
+
 ## 1.1.17-beta.2
 
 _Animations pass — subtle, snappy motion across the app._

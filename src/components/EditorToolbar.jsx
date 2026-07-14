@@ -20,6 +20,8 @@
 
 import React, { useReducer, useEffect, useCallback, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { motion } from 'framer-motion';
+import { T } from '../utils/motion';
 
 import FontSelector from './FontSelector';
 import SizeSelector from './SizeSelector';
@@ -116,17 +118,21 @@ function Popover({ open, onClose, children, up = false, anchorRef, width = 168 }
   return createPortal(
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 60 }} onMouseDown={onClose} />
-      <div
+      <motion.div
         onMouseDown={(e) => e.preventDefault()}
+        initial={{ opacity: 0, scale: 0.95, y: up ? 4 : -4 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={T.fast}
         style={{
           position: 'fixed', zIndex: 61, ...pos,
           background: 'var(--modal-bg)', border: '1px solid var(--border)',
           borderRadius: 10, padding: 8, boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
           display: 'flex', gap: 6, flexWrap: 'wrap', width,
+          transformOrigin: up ? 'bottom left' : 'top left',
         }}
       >
         {children}
-      </div>
+      </motion.div>
     </>,
     document.body
   );

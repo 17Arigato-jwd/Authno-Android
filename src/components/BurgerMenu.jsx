@@ -9,6 +9,8 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { V, T } from "../utils/motion";
 
 import { saveBook, saveAsBook, openBook } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
@@ -172,7 +174,8 @@ export default function BurgerMenu({
     return () => document.removeEventListener("triggerSave", handler);
   }, [current, busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!open) return null;
+  // (No early `return null` — AnimatePresence below needs to stay mounted so
+  // the close/exit animation can play.)
 
   // ── Derive Save button state ───────────────────────────────────────────────
   const saveColor =
@@ -273,51 +276,65 @@ export default function BurgerMenu({
   // unreadable. Now it follows the active theme's modal surface.
   const bg = `linear-gradient(to bottom right, var(--accent-a08), transparent), var(--modal-bg)`;
 
+  // Enter/exit through framer-motion (replaces the one-way CSS keyframes so
+  // closing animates too): mobile = backdrop fade + bottom-sheet spring,
+  // desktop = anchored scale-fade dropdown.
   return android
     ? createPortal(
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "var(--scrim, rgba(0,0,0,0.5))" }}
-            onClick={onClose}
-            onTouchStart={onClose}
-          />
-          <div
-            ref={menuRef}
-            style={{
-              position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999,
-              borderRadius: "20px 20px 0 0", padding: "20px 20px",
-              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
-              background: bg,
-              border: "1px solid var(--border)",
-              borderBottom: "none",
-              animation: "dsBurgerSlideUp 0.22s cubic-bezier(0.32,0.72,0,1)",
-            }}
-          >
-            <style>{`@keyframes dsBurgerSlideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
-            {/* Drag handle */}
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 20px" }} />
-            {menuContent}
-          </div>
-        </>,
+        <AnimatePresence>
+          {open && (
+            <React.Fragment key="burger-sheet">
+              <motion.div
+                variants={V.fade} initial="hidden" animate="show" exit="exit" transition={T.fast}
+                style={{ position: "fixed", inset: 0, zIndex: 9998, background: "var(--scrim, rgba(0,0,0,0.5))" }}
+                onClick={onClose}
+                onTouchStart={onClose}
+              />
+              <motion.div
+                ref={menuRef}
+                variants={V.sheet} initial="hidden" animate="show" exit="exit"
+                style={{
+                  position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999,
+                  borderRadius: "20px 20px 0 0", padding: "20px 20px",
+                  paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
+                  background: bg,
+                  border: "1px solid var(--border)",
+                  borderBottom: "none",
+                }}
+              >
+                {/* Drag handle */}
+                <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border)", margin: "0 auto 20px" }} />
+                {menuContent}
+              </motion.div>
+            </React.Fragment>
+          )}
+        </AnimatePresence>,
         document.body
       )
     : createPortal(
-        <div
-          ref={menuRef}
-          style={{
-            position: "fixed", top: pos.top, right: pos.right,
-            zIndex: 9999, width: 200,
-            borderRadius: 14, padding: 12,
-            background: bg,
-            border: "1px solid var(--border)",
-            backdropFilter: "blur(14px)",
-            boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
-            animation: "dsBurgerFadeIn 0.15s ease",
-          }}
-        >
-          <style>{`@keyframes dsBurgerFadeIn{from{opacity:0;transform:scale(0.96) translateY(-4px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
-          {menuContent}
-        </div>,
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              key="burger-dropdown"
+              ref={menuRef}
+              initial={{ opacity: 0, scale: 0.96, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0, transition: T.fast }}
+              exit={{ opacity: 0, scale: 0.97, y: -2, transition: { duration: 0.1 } }}
+              style={{
+                position: "fixed", top: pos.top, right: pos.right,
+                zIndex: 9999, width: 200,
+                borderRadius: 14, padding: 12,
+                background: bg,
+                border: "1px solid var(--border)",
+                backdropFilter: "blur(14px)",
+                boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+                transformOrigin: "top right",
+              }}
+            >
+              {menuContent}
+            </motion.div>
+          )}
+        </AnimatePresence>,
         document.body
       );
 }

@@ -16,6 +16,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { SPRING, T } from '../utils/motion';
 import { DSIcons } from '../DesignSystem';
 import {
   getAllTypes, typeById, threadColor, addThread, addEntry, tid,
@@ -354,10 +356,13 @@ export function ThreadSelectionLayer({
     <>
       {/* Floating chip (mobile only — PC opens the menu directly) */}
       {!menuOpen && !desktop && (
-        <button
+        <motion.button
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
           onClick={(e) => { e.stopPropagation(); setMenuOpen(true); }}
           title="Add to a thread…"
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={SPRING}
           style={{
             position: 'fixed', top: chipTop, left: chipLeft, zIndex: 3000,
             width: 32, height: 32, borderRadius: 16,
@@ -367,16 +372,19 @@ export function ThreadSelectionLayer({
           }}
         >
           <DSIcons.Tag size={15} color="currentColor" />
-        </button>
+        </motion.button>
       )}
 
       {/* Action menu — no full-screen backdrop (outside-click handled by a
           document listener) so the toolbar pill stays clickable. */}
       {menuOpen && (
         <>
-          <div
+          <motion.div
             ref={menuElRef}
             onMouseDown={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.96, y: placeAbove ? 4 : -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={T.fast}
             style={{
               position: 'fixed', zIndex: 3002,
               ...menuPos,
@@ -385,6 +393,7 @@ export function ThreadSelectionLayer({
               background: 'var(--modal-bg)', border: '1px solid var(--border)',
               borderRadius: 12, padding: 8,
               boxShadow: '0 16px 48px rgba(0,0,0,0.45)',
+              transformOrigin: placeAbove ? 'bottom center' : 'top center',
             }}
           >
             {/* Clipboard row — shown on right-click / caret menus, and ALWAYS on
@@ -523,7 +532,7 @@ export function ThreadSelectionLayer({
               ))}
             </div>
             )}
-          </div>
+          </motion.div>
         </>
       )}
     </>

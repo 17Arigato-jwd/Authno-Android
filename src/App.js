@@ -1169,10 +1169,18 @@ function AppInner({ navigateRef }) {
         theme={theme}
       />
 
-      {/* Android drawer backdrop */}
-      {android && drawerOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "var(--scrim, rgba(0,0,0,0.6))", zIndex: 40 }} onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)} />
-      )}
+      {/* Android drawer backdrop — fades with the drawer slide */}
+      <AnimatePresence>
+        {android && drawerOpen && (
+          <motion.div
+            key="drawer-backdrop"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={T.fast}
+            style={{ position: "fixed", inset: 0, background: "var(--scrim, rgba(0,0,0,0.6))", zIndex: 40 }}
+            onClick={() => setDrawerOpen(false)} onTouchStart={() => setDrawerOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       <Sidebar
         sessions={filtered} onNewBook={newBook} onNewStoryboard={newStoryboard}

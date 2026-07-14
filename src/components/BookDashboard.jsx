@@ -185,12 +185,17 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
   ];
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'var(--modal-overlay-bg, rgba(0,0,0,0.55))', display: 'flex',
-      alignItems: 'flex-end', justifyContent: 'center',
-    }} onClick={onClose}>
-      <div style={{ ...glass, width: '100%', maxWidth: '480px', padding: '24px', marginBottom: '0', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.13 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'var(--modal-overlay-bg, rgba(0,0,0,0.55))', display: 'flex',
+        alignItems: 'flex-end', justifyContent: 'center',
+      }} onClick={onClose}>
+      <motion.div
+        initial={{ y: '30%', opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+        style={{ ...glass, width: '100%', maxWidth: '480px', padding: '24px', marginBottom: '0', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }}
         onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-1)' }}>Export Options</h2>
@@ -217,8 +222,8 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
           ))}
         </div>
         <div style={{ height: 'env(safe-area-inset-bottom, 16px)' }} />
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -290,19 +295,24 @@ function MetadataPanel({ session, accentHex, onClose, onSave }) {
   );
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'var(--modal-overlay-bg, rgba(0,0,0,0.55))',
-      overflowY: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      paddingTop: '24px',
-    }} onClick={onClose}>
-      <div style={{
-        width: '100%', maxWidth: '480px',
-        background: 'var(--modal-bg)',
-        borderRadius: '20px', padding: '24px',
-        margin: '0 0 40px',
-        border: `1px solid var(--border)`,
-      }} onClick={e => e.stopPropagation()}>
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.13 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'var(--modal-overlay-bg, rgba(0,0,0,0.55))',
+        overflowY: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        paddingTop: '24px',
+      }} onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+        style={{
+          width: '100%', maxWidth: '480px',
+          background: 'var(--modal-bg)',
+          borderRadius: '20px', padding: '24px',
+          margin: '0 0 40px',
+          border: `1px solid var(--border)`,
+        }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-1)' }}>Book Metadata</h2>
           <CloseButton onClick={onClose} />
@@ -334,8 +344,8 @@ function MetadataPanel({ session, accentHex, onClose, onSave }) {
             color: '#fff', fontSize: '14px', fontWeight: 700,
           }}>Save</button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 

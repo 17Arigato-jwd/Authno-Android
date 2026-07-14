@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Flame } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { T } from "../utils/motion";
 import { DSIcons } from "../DesignSystem";
 import { requestFullStoragePermission } from "../utils/storage";
 
@@ -425,6 +427,15 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                 touchAction: "pan-y",
               }}
             >
+              {/* Page content slides between steps (forward from the right,
+                  back from the left); nav buttons below stay put. */}
+              <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={page}
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0, transition: T.base }}
+                exit={{ opacity: 0, x: -14, transition: { duration: 0.1 } }}
+              >
               <div className="mb-5 flex items-center justify-center">
                 <div
                   className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10"
@@ -468,6 +479,8 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                   </button>
                 )}
               </div>
+              </motion.div>
+              </AnimatePresence>
 
               <div className="mt-6 flex gap-3">
                 <button
@@ -636,6 +649,14 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
               className="overflow-y-auto px-5 py-6 sm:px-6 sm:py-7"
               style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
             >
+              {/* Page content slides between what's-new steps */}
+              <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={page}
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0, transition: T.base }}
+                exit={{ opacity: 0, x: -14, transition: { duration: 0.1 } }}
+              >
               {/* Icon */}
               <div className="mb-5 flex items-center justify-center">
                 <div
@@ -663,6 +684,8 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
                   Grant All Files Access
                 </button>
               )}
+              </motion.div>
+              </AnimatePresence>
 
               {/* Navigation */}
               <div className="mt-8 flex gap-3">
