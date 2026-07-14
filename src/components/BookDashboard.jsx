@@ -73,12 +73,12 @@ function stripHtml(html) {
   return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function wordCount(html) {
+export function wordCount(html) {
   const t = stripHtml(html);
   return t ? t.split(' ').length : 0;
 }
 
-function formatWords(n) {
+export function formatWords(n) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000)    return `${(n / 1000).toFixed(1)}K`;
   return String(n);
@@ -168,7 +168,7 @@ function analyseStreak(streak) {
 */
 
 // ─── ExportPanel (inline sub-panel) ──────────────────────────────────────────
-function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, onExportEpub, onExportPdf }) {
+export function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, onExportEpub, onExportPdf }) {
   const glass = {
     background: 'var(--modal-bg)',
     backdropFilter: 'blur(24px)',
@@ -228,7 +228,7 @@ function ExportPanel({ session, accentHex, onClose, onExportTxt, onExportHtml, o
 }
 
 // ─── MetadataPanel (inline sub-panel) ────────────────────────────────────────
-function MetadataPanel({ session, accentHex, onClose, onSave }) {
+export function MetadataPanel({ session, accentHex, onClose, onSave }) {
   const [form, setForm] = useState({
     title:       session?.title       || '',
     description: session?.description || '',
@@ -350,7 +350,7 @@ function MetadataPanel({ session, accentHex, onClose, onSave }) {
 }
 
 // ─── CoverPicker ──────────────────────────────────────────────────────────────
-function CoverPicker({ onPick, accentHex = 'var(--accent)' }) {
+export function CoverPicker({ onPick, accentHex = 'var(--accent)' }) {
   const inputRef = useRef(null);
 
   const handleChange = async (e) => {

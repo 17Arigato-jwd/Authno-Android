@@ -3,7 +3,32 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
-## Unreleased
+## 1.1.17-beta.3
+
+_Desktop grows up: a PC-grade layout, plus Material You on Android._
+
+### New — desktop layout
+
+- **Writer's dashboard home** — a "Continue writing" hero, live stats
+  (books / chapters / words), a compact action row, and your library as a
+  cover grid with hover lift and right-click menus. No more phone list on a
+  24" monitor.
+- **Three-pane book studio** — Ulysses/Scrivener style: book info & actions on
+  the left, a dense searchable chapter list in the middle (Ctrl/Shift-click
+  multi-select with bulk delete, right-click menus, double-click to write),
+  and the selected chapter's synopsis + prose preview on the right.
+- **Full nav sidebar** — Home and Settings shortcuts at the top, and every book
+  can expand to show its chapters — click one to jump straight into the editor.
+- **Ctrl+K quick switcher** — jump to any book or chapter, or run actions
+  (new book, settings, home) from one palette.
+
+### New — Android
+
+- **Material You** (Android 12+) — turn it on under Settings → Appearance and
+  AuthNo's accent follows your wallpaper's system colour, updating when your
+  wallpaper changes. Shown only on devices that support dynamic colour.
+
+### Also in this release
 
 - **More motion** — the animations pass now also covers: the burger menu
   (bottom-sheet spring + backdrop fade on mobile, scale-fade dropdown on

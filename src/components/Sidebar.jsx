@@ -42,6 +42,9 @@ export default function Sidebar({
   accentHex,
   setView,
   session,         // current book session (forwarded to ExtensionTab)
+  // desktop full-nav (v1.1.17-beta.3 PC layout)
+  onOpenSettings,
+  onOpenChapter,   // (bookId, chapIdx) → open that chapter in the editor
   // mobile
   isDrawerOpen,
   onDrawerClose,
@@ -50,6 +53,7 @@ export default function Sidebar({
   const [editMode,     setEditMode]     = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeTab,    setActiveTab]    = useState("sessions");
+  const [expanded,     setExpanded]     = useState(() => new Set()); // desktop: books with chapters shown
   const sidebarRef       = useRef(null);
   const listRef          = useRef(null);   // the actual scrolling sessions list
   const contextRef       = useRef(null);
@@ -351,6 +355,28 @@ export default function Sidebar({
             </button>}
       </div>
 
+      {/* ── NAV (desktop full-nav, Notion-style): app sections above the books ── */}
+      {!android && (
+        <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border-sm)", display: "flex", flexDirection: "column", gap: 1 }}>
+          {[
+            { label: "Home",     Icon: DSIcons.Home,     onClick: () => setView("home") },
+            { label: "Settings", Icon: DSIcons.Settings, onClick: () => onOpenSettings?.() },
+          ].map(({ label, Icon, onClick }) => (
+            <button key={label} onClick={onClick}
+              style={{
+                display: "flex", alignItems: "center", gap: 9, width: "100%",
+                padding: "7px 10px", borderRadius: 7, border: "none", background: "transparent",
+                color: "var(--text-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", textAlign: "left",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+              <Icon size={14} color="var(--text-3)" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── SEARCH — uses DesignSystem TextInput ────────────────────────── */}
       <div style={{ padding: "12px", borderBottom: "1px solid var(--border-sm)" }}>
         <TextInput
@@ -500,7 +526,45 @@ export default function Sidebar({
                           {s.type === "book" ? "Book" : "Storyboard"} — {s.preview}
                         </div>
                       </div>
+                      {/* Desktop full-nav: expand to the book's chapters */}
+                      {!android && !editMode && (s.chapters?.length ?? 0) > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpanded((prev) => {
+                              const next = new Set(prev);
+                              next.has(s.id) ? next.delete(s.id) : next.add(s.id);
+                              return next;
+                            });
+                          }}
+                          title={expanded.has(s.id) ? "Hide chapters" : "Show chapters"}
+                          style={{ flexShrink: 0, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent", color: "var(--text-4)", cursor: "pointer", borderRadius: 6 }}
+                        >
+                          {expanded.has(s.id) ? <DSIcons.ChevronDown size={13} /> : <DSIcons.ChevronRight size={13} />}
+                        </button>
+                      )}
                     </div>
+                    {/* Chapter sublist (desktop) */}
+                    {!android && expanded.has(s.id) && (
+                      <div style={{ marginTop: 6, paddingLeft: 46, display: "flex", flexDirection: "column", gap: 1 }}>
+                        {[...(s.chapters || [])].sort((a, b) => a.order - b.order).map((c) => (
+                          <button
+                            key={c.chap_idx}
+                            onClick={(e) => { e.stopPropagation(); onOpenChapter?.(s.id, c.chap_idx); }}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left",
+                              padding: "4px 8px", borderRadius: 6, border: "none", background: "transparent",
+                              color: "var(--text-3)", fontSize: 12, cursor: "pointer",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-md)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                          >
+                            {c.title || "Untitled"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
