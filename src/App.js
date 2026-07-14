@@ -494,10 +494,31 @@ function AppInner({ navigateRef }) {
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
 
+  // ── Material You (Android 12+) ────────────────────────────────────────────
+  // When the setting is on and the device supports dynamic colour, the system
+  // (wallpaper-derived) accent wins over the custom accent. Re-fetched on app
+  // resume so a wallpaper change lands without a restart.
+  const [systemAccent, setSystemAccent] = useState(null);
+  useEffect(() => {
+    if (!settings.materialYou || !android) { setSystemAccent(null); return undefined; }
+    let alive = true;
+    const fetchAccent = (fresh) => {
+      import('./utils/materialYou')
+        .then(({ getMaterialYouAccent }) => getMaterialYouAccent(fresh))
+        .then((hex) => { if (alive) setSystemAccent(hex); })
+        .catch(() => { if (alive) setSystemAccent(null); });
+    };
+    fetchAccent(false);
+    const onResume = () => fetchAccent(true);
+    document.addEventListener('resume', onResume); // Capacitor app-resume event
+    return () => { alive = false; document.removeEventListener('resume', onResume); };
+  }, [settings.materialYou, android]);
+
   // Keep var(--accent) in sync with the user's chosen accent colour (see
   // ThemeBase.applyAccent). Without this, every var()-reading component showed
   // the theme's default accent while prop-reading ones showed the custom one.
-  useEffect(() => { applyAccent(customization.accentHex); }, [customization.accentHex]);
+  // Material You's system accent (when active) outranks the custom pick.
+  useEffect(() => { applyAccent(systemAccent ?? customization.accentHex); }, [customization.accentHex, systemAccent]);
 
   // Desktop shell: flag Electron so the custom title bar shows and the app-root
   // height accounts for it (see index.css .is-electron / TitleBar.jsx).
