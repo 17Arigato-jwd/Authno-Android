@@ -249,9 +249,11 @@ function ActionTile({ icon, label, onClick, accentHex, comingSoon, theme }) {
 // ─── BookCard ─────────────────────────────────────────────────────────────────
 function BookCard({ title, meta, onClick, accentHex, theme, cover, coverMime }) {
   const [hovered, setHovered] = useState(false);
+  const motionOK = useMotionEnabled();
   return (
-    <div onClick={onClick}
+    <motion.div onClick={onClick}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      whileTap={motionOK ? { scale: 0.98 } : undefined}
       style={theme.bookCard(hovered)}>
       <div style={theme.bookThumb}>
         {cover ? (
@@ -288,7 +290,7 @@ function BookCard({ title, meta, onClick, accentHex, theme, cover, coverMime }) 
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
