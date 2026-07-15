@@ -9,6 +9,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
@@ -279,7 +280,10 @@ export default function Sidebar({
   // ── Collapsed rail: logo + expand + new-book, nothing else ────────────────
   if (isRail) {
     return (
-      <aside ref={sidebarRef} style={{
+      <motion.aside ref={sidebarRef}
+        initial={{ opacity: 0.4, x: -10 }} animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.2, ease: [0.22, 0.61, 0.36, 1] }}
+        style={{
         width: "56px", flexShrink: 0, background: "var(--sidebar-bg)", color: "var(--text-1)",
         display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
         padding: "12px 0", borderRight: "1px solid var(--border-sm)", position: "relative",
@@ -292,13 +296,20 @@ export default function Sidebar({
           style={{ width: 36, height: 36, borderRadius: 8, border: "none", background: `${accentHex}22`, color: accentHex, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <DSIcons.Plus size={18} />
         </button>
-      </aside>
+      </motion.aside>
     );
   }
 
   return (
-    <aside
+    <motion.aside
       ref={sidebarRef}
+      // Desktop expand slides/fades in (the rail↔full swap used to snap —
+      // beta.1 QA). Android keeps its CSS transform drawer untouched.
+      {...(!android ? {
+        initial: { opacity: 0.4, x: -14 },
+        animate: { opacity: 1, x: 0 },
+        transition: { duration: 0.2, ease: [0.22, 0.61, 0.36, 1] },
+      } : {})}
       style={{
         ...asideStyle,
         background: "var(--sidebar-bg)",
@@ -660,6 +671,6 @@ export default function Sidebar({
           setDeleteTarget(null);
         }}
       />
-    </aside>
+    </motion.aside>
   );
 }

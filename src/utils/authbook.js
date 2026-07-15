@@ -16,6 +16,7 @@
 
 import { deflate, inflate } from 'pako';
 import { getDeviceId, getPlatform } from './deviceId';
+import { persistableHistory } from './history';
 import {
   rsEncodeChunked as _rsEncChunked,
   rsDecodeChunked as _rsDecChunked,
@@ -547,10 +548,11 @@ export function sessionToBook(session) {
         // inside META: JSON, RS-parity-protected, ignored by older readers, and
         // bookToSession's `...book.meta` spread restores it on load for free.
         threads:     session.threads     || null,
-        // Change history (undo/redo panel): the book keeps the 10 most recent
+        // Change history (History panel): the book keeps the 10 most recent
         // entries; the in-memory session may hold up to 50 while writing.
-        // Omitted entirely when there's no history (old files stay byte-clean).
-        ...(session.history?.length ? { history: session.history.slice(0, 10) } : {}),
+        // Working-state fields (baseline snapshots, provisional accumulators)
+        // are stripped; omitted entirely when empty so old files stay byte-clean.
+        ...(persistableHistory(session.history).length ? { history: persistableHistory(session.history) } : {}),
       },
       chapters,
       streak:  session.streak || {},

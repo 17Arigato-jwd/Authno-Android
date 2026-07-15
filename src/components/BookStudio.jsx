@@ -48,6 +48,7 @@ export default function BookStudio({
   onExportTxt, onExportHtml, onExportEpub, onExportPdf,
   onReadAloud, onToggleMenu, burgerBtnRef,
   goalWords, onStreakUpdate, streakEnabled,
+  onChapterInfo,   // (chapIdx) → chapter info modal (beta.1)
 }) {
   const motionOK = useMotionEnabled();
   const [showExport, setShowExport] = useState(false);
@@ -138,14 +139,16 @@ export default function BookStudio({
     setSynopsisDraft(null);
   };
 
-  const smallBtn = (label, icon, onClick, primary = false) => (
-    <motion.button key={label} onClick={onClick} whileTap={motionOK ? PRESS : undefined}
+  const smallBtn = (label, icon, onClick, primary = false, { disabled = false, title } = {}) => (
+    <motion.button key={label} onClick={disabled ? undefined : onClick} whileTap={motionOK && !disabled ? PRESS : undefined}
+      disabled={disabled} title={title}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, width: '100%',
-        padding: '9px 12px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+        padding: '9px 12px', borderRadius: 9, cursor: disabled ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600,
         background: primary ? accentHex : 'var(--surface)',
         border: primary ? 'none' : '1px solid var(--border)',
         color: primary ? '#fff' : 'var(--text-2)',
+        opacity: disabled ? 0.45 : 1,
       }}>
       {icon}{label}
     </motion.button>
@@ -178,9 +181,9 @@ export default function BookStudio({
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {streakEnabled && <FlameButton current={session} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />}
-          <button ref={burgerBtnRef} onClick={onToggleMenu}
-            style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', display: 'flex' }}>
-            <DSIcons.MoreVertical size={17} color="var(--text-1)" />
+          <button ref={burgerBtnRef} onClick={onToggleMenu} aria-label="Menu"
+            style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', display: 'flex' }}>
+            <DSIcons.MoreVertical size={20} color="var(--text-1)" />
           </button>
         </div>
       </header>
@@ -226,7 +229,11 @@ export default function BookStudio({
             {smallBtn('New chapter', <DSIcons.Plus size={13} color="#fff" />, onNewChapter, true)}
             {smallBtn('Edit metadata', <DSIcons.Edit size={13} />, () => setShowMetadata(true))}
             {smallBtn('Export…', <DSIcons.Upload size={13} />, () => setShowExport(true))}
-            {isSpeechSupported() && smallBtn('Read aloud', <DSIcons.Volume size={13} />, onReadAloud)}
+            {/* Greyed until a chapter is picked — it reads from that chapter on. */}
+            {isSpeechSupported() && smallBtn('Read aloud', <DSIcons.Volume size={13} />, () => onReadAloud?.(selectedIdx), false, {
+              disabled: selectedIdx == null,
+              title: selectedIdx == null ? 'Select a chapter first — reading starts there' : 'Read aloud from the selected chapter (Ctrl+Shift+R)',
+            })}
           </div>
         </div>
 
@@ -324,6 +331,13 @@ export default function BookStudio({
                       {formatWords(wordCount(selected.content))} words · updated {timeAgo(selected.updated || selected.created)}
                     </div>
                   </div>
+                  {onChapterInfo && (
+                    <motion.button whileTap={motionOK ? PRESS : undefined} onClick={() => onChapterInfo(selected.chap_idx)}
+                      title="Chapter info (Ctrl+Alt+I)" aria-label="Chapter info"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 9, borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0 }}>
+                      <DSIcons.Info size={15} color="currentColor" />
+                    </motion.button>
+                  )}
                   <motion.button whileTap={motionOK ? PRESS : undefined} onClick={() => onEditChapter(selected.chap_idx)}
                     style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 9, border: 'none', background: accentHex, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
                     <DSIcons.Edit size={14} color="#fff" /> Open in editor
@@ -361,6 +375,24 @@ export default function BookStudio({
                   ) : (
                     <div style={{ fontSize: 13, color: 'var(--text-5)', fontStyle: 'italic' }}>This chapter is empty — open it in the editor to start writing.</div>
                   )}
+                </div>
+
+                {/* Basic details (author request: quick facts under the preview) */}
+                <div style={{ marginTop: 26 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-4)', marginBottom: 8 }}>Details</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+                    {[
+                      ['Words', formatWords(wordCount(selected.content))],
+                      ['Position', `${visible.findIndex((c) => c.chap_idx === selected.chap_idx) + 1} of ${(session?.chapters || []).length}`],
+                      ['Created', selected.created ? new Date(selected.created).toLocaleDateString() : '—'],
+                      ['Updated', selected.updated ? new Date(selected.updated).toLocaleDateString() : '—'],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border-sm)', borderRadius: 9, padding: '8px 11px' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{value}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-5)', marginTop: 1 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </motion.div>
             </AnimatePresence>

@@ -18,6 +18,7 @@ import {
   DSIcons,
   buildPalette,
   CloseButton,
+  APP_META,
 } from '../DesignSystem';
 
 import { useTheme, ALL_THEMES, getAllThemes, subscribeThemes, injectThemeFonts } from '../theme';
@@ -51,13 +52,18 @@ const ACCENT_PRESETS = [
   { label: 'Gold',   hex: '#f59e0b' },
 ];
 
+// v1.1.18-beta.1 regroup: General absorbs Profile (+ device preferences),
+// Editor / Shortcuts / Developer are new, Data & About stay put.
 const NAV_ITEMS = [
-  { id: 'profile',    label: 'Profile',         icon: (p) => <DSIcons.User {...p} />,     group: 'User' },
-  { id: 'appearance', label: 'Appearance',       icon: (p) => <DSIcons.Palette {...p} />,  group: 'User' },
-  { id: 'writing',    label: 'Writing Goal',     icon: (p) => <DSIcons.Target {...p} />,   group: 'User' },
-  { id: 'startup',    label: 'Startup Behavior', icon: (p) => <DSIcons.BookOpen {...p} />, group: 'App'  },
-  { id: 'data',       label: 'Data Management',  icon: (p) => <DSIcons.Package {...p} />, group: 'App'  },
-  { id: 'about',      label: 'About',            icon: (p) => <DSIcons.Info {...p} />,     group: 'App'  },
+  { id: 'general',    label: 'General',          icon: (p) => <DSIcons.User {...p} />,      group: 'User' },
+  { id: 'appearance', label: 'Appearance',       icon: (p) => <DSIcons.Palette {...p} />,   group: 'User' },
+  { id: 'editor',     label: 'Editor',           icon: (p) => <DSIcons.Edit {...p} />,      group: 'User' },
+  { id: 'writing',    label: 'Writing Goal',     icon: (p) => <DSIcons.Target {...p} />,    group: 'User' },
+  { id: 'startup',    label: 'Startup',          icon: (p) => <DSIcons.BookOpen {...p} />,  group: 'App'  },
+  { id: 'shortcuts',  label: 'Shortcuts',        icon: (p) => <DSIcons.Lightning {...p} />, group: 'App'  },
+  { id: 'data',       label: 'Data & Storage',   icon: (p) => <DSIcons.Package {...p} />,   group: 'App'  },
+  { id: 'developer',  label: 'Developer',        icon: (p) => <DSIcons.Terminal {...p} />,  group: 'App'  },
+  { id: 'about',      label: 'About',            icon: (p) => <DSIcons.Info {...p} />,      group: 'App'  },
 ];
 
 // ─── Local-only primitives (settings-specific layout, not shared UI) ──────────
@@ -320,7 +326,7 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
               onClick={() => onChange(effect.id)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 14,
-                padding: '11px 14px', borderRadius: 10, border: 'none',
+                padding: '11px 14px', borderRadius: 10,
                 cursor: 'pointer', textAlign: 'left',
                 background: active ? `${accentHex}18` : 'var(--surface)',
                 border: `1px solid ${active ? accentHex + '55' : 'var(--border)'}`,
@@ -518,16 +524,8 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
         </button>
       </SettingRow>
 
-      {/* Vibration feedback — Android only. Desktop has no haptics motor, so
-          the toggle did nothing there; hidden on PC. */}
-      {isAndroid() && (
-        <>
-          <div style={{ height: 16 }} />
-          <SettingRow icon={DSIcons.Bell} title="Vibration feedback" description="Light haptic tick on taps, plus stronger cues for saves, deletes and goals" accentHex={accentHex}>
-            <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
-          </SettingRow>
-        </>
-      )}
+      {/* Vibration feedback moved to Settings → General (beta.1 regroup) —
+          it's a device preference, not a look. */}
 
       <div style={{ height: 16 }} />
 
@@ -564,6 +562,221 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
           <AppIconPicker accentHex={accentHex} />
         </>
       )}
+    </div>
+  );
+}
+
+// ── General: profile + device preferences (v1.1.18-beta.1) ──────────────────
+function GeneralPanel(props) {
+  const { settings, onChange, accentHex } = props;
+  return (
+    <div>
+      <ProfilePanel {...props} />
+      <SettingsDivider />
+      <SectionTitle>Preferences</SectionTitle>
+      <SectionSubtitle>How the app behaves on this device.</SectionSubtitle>
+      {isAndroid() ? (
+        <SettingRow icon={DSIcons.Bell} title="Vibration feedback" description="Light haptic tick on taps, plus stronger cues for saves, deletes and goals" accentHex={accentHex}>
+          <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
+        </SettingRow>
+      ) : (
+        <div style={{ fontSize: 12.5, color: 'var(--text-5)', lineHeight: 1.6 }}>
+          Device preferences (vibration feedback) appear here on Android. Editor behaviour lives under <b>Editor</b>, and keyboard shortcuts under <b>Shortcuts</b>.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Editor settings (v1.1.18-beta.1) — all three are live-wired ─────────────
+function EditorPanel({ settings, onChange, accentHex }) {
+  const android = isAndroid();
+  const widths = [
+    ['full', 'Full width', 'The manuscript uses the whole window'],
+    ['focused', 'Focused column', 'A centred ~72-character column, like a page'],
+  ];
+  const delays = [[2, '2 s'], [4, '4 s'], [10, '10 s'], [30, '30 s']];
+  return (
+    <div>
+      <SectionTitle>Editor</SectionTitle>
+      <SectionSubtitle>How writing feels and behaves.</SectionSubtitle>
+
+      <SettingRow icon={DSIcons.Check} title="Spell check" description="Underline possible misspellings while you type (device dictionary)" accentHex={accentHex}>
+        <Toggle on={settings.spellcheck ?? true} onChange={(v) => onChange({ spellcheck: v })} accentHex={accentHex} />
+      </SettingRow>
+
+      {!android && (
+        <>
+          <SettingsDivider />
+          <Label>Manuscript width</Label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+            {widths.map(([id, label, desc]) => {
+              const active = (settings.editorWidth ?? 'full') === id;
+              return (
+                <button key={id} onClick={() => onChange({ editorWidth: id })}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: active ? `${accentHex}18` : 'var(--surface)', border: `1px solid ${active ? accentHex + '55' : 'var(--border)'}`, transition: 'all 0.15s' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? accentHex : 'var(--text-2)' }}>{label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-5)', marginTop: 2 }}>{desc}</div>
+                  </div>
+                  {active && <DSIcons.Check size={14} color={accentHex} />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {android && (
+        <>
+          <SettingsDivider />
+          <SettingRow icon={DSIcons.Save} title="Auto-save delay" description="How long after you stop typing the silent auto-save runs" accentHex={accentHex}>
+            <select
+              value={settings.autosaveDelaySec ?? 4}
+              onChange={(e) => onChange({ autosaveDelaySec: Number(e.target.value) })}
+              style={{ padding: '7px 10px', borderRadius: 7, background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text-1)', fontSize: 13, outline: 'none' }}>
+              {delays.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+          </SettingRow>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Shortcuts reference (v1.1.18-beta.1, "Standard set") ────────────────────
+const SHORTCUTS = [
+  ['App', [
+    ['Search books, chapters & actions', 'Ctrl+K'],
+    ['Settings', 'Ctrl+,'],
+    ['New book', 'Ctrl+N'],
+    ['Open a book file', 'Ctrl+O'],
+  ]],
+  ['Book', [
+    ['Save', 'Ctrl+S'],
+    ['New chapter', 'Ctrl+Shift+N'],
+    ['Export…', 'Ctrl+Shift+E'],
+    ['Read aloud', 'Ctrl+Shift+R'],
+    ['History panel', 'Ctrl+Shift+Z'],
+  ]],
+  ['Editor', [
+    ['Chapter info', 'Ctrl+Alt+I'],
+    ['Threads panel', 'Ctrl+Shift+T'],
+    ['Bold / Italic / Underline', 'Ctrl+B / I / U'],
+    ['Undo / Redo typing', 'Ctrl+Z / Ctrl+Y'],
+  ]],
+];
+
+function Kbd({ children }) {
+  return (
+    <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 5, padding: '2px 7px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>
+      {children}
+    </span>
+  );
+}
+
+function ShortcutsPanel({ accentHex }) {
+  return (
+    <div>
+      <SectionTitle>Keyboard shortcuts</SectionTitle>
+      <SectionSubtitle>The same hints appear faded next to buttons and menu items around the app.</SectionSubtitle>
+      {SHORTCUTS.map(([group, rows]) => (
+        <div key={group} style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: accentHex, textTransform: 'uppercase', letterSpacing: '0.7px', margin: '4px 0 6px' }}>{group}</div>
+          {rows.map(([label, keys]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 2px', borderBottom: '1px solid var(--border-sm)' }}>
+              <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{label}</span>
+              <Kbd>{keys}</Kbd>
+            </div>
+          ))}
+        </div>
+      ))}
+      <div style={{ fontSize: 11.5, color: 'var(--text-5)', lineHeight: 1.6 }}>
+        Shortcuts need a keyboard, so they apply on desktop (and tablets with one attached).
+      </div>
+    </div>
+  );
+}
+
+// ── Developer options (v1.1.18-beta.1) ──────────────────────────────────────
+function DeveloperPanel({ settings, accentHex, sessions = [], onSeeChanges, onStartTour, onReplayWelcome }) {
+  const [showErrorLog, setShowErrorLog] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyDiagnostics = async () => {
+    const { avatarDataUrl, ...safeSettings } = settings || {};
+    const diag = {
+      version: APP_META.version,
+      platform: isAndroid() ? 'android' : (window.electron ? `electron-${window.electron.platform}` : 'web'),
+      userAgent: navigator.userAgent,
+      books: sessions.length,
+      chapters: sessions.reduce((n, s) => n + (s.chapters || []).length, 0),
+      settings: safeSettings,
+      errors: getErrorHistory().length,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diag, null, 2));
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  };
+
+  const resetSettings = () => {
+    try { localStorage.removeItem('writerSettings'); localStorage.removeItem('writerCustomization'); } catch { /* ignore */ }
+    window.location.reload();
+  };
+
+  const devBtn = (label, onClick, { danger = false, icon: Icon } = {}) => (
+    <button onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 8, border: `1px solid ${danger ? 'rgba(237,66,69,0.4)' : 'var(--border)'}`, background: danger ? 'rgba(237,66,69,0.12)' : 'var(--surface-md)', color: danger ? '#ed4245' : 'var(--text-2)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+      {Icon && <Icon size={14} color="currentColor" />}{label}
+    </button>
+  );
+
+  return (
+    <div>
+      <SectionTitle>Developer</SectionTitle>
+      <SectionSubtitle>Diagnostics and under-the-hood tools. Nothing here touches your books.</SectionSubtitle>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+        {[['Version', `v${APP_META.version}`],
+          ['Platform', isAndroid() ? 'Android' : (window.electron ? `Desktop (${window.electron.platform})` : 'Web')],
+          ['Books in memory', String(sessions.length)]].map(([label, value]) => (
+          <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border-sm)', borderRadius: 9, padding: '8px 12px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{value}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-5)', marginTop: 1 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <SettingsDivider />
+      <Label>Diagnostics</Label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+        {devBtn('View error log', () => setShowErrorLog(true), { icon: DSIcons.Bug })}
+        {devBtn(copied ? 'Copied ✓' : 'Copy diagnostics', copyDiagnostics, { icon: DSIcons.Copy })}
+      </div>
+
+      <SettingsDivider />
+      <Label>Tours & guides</Label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+        {onReplayWelcome && devBtn('Replay welcome slides', onReplayWelcome, { icon: DSIcons.Rocket })}
+        {onStartTour && devBtn('Guided tour', onStartTour, { icon: DSIcons.Sparkle })}
+        {onSeeChanges && devBtn("What's new", onSeeChanges, { icon: DSIcons.Info })}
+      </div>
+
+      <SettingsDivider />
+      <Label>Danger zone</Label>
+      {!confirmReset ? (
+        devBtn('Reset all settings…', () => setConfirmReset(true), { danger: true, icon: DSIcons.Warning })
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>Settings and customisation reset to defaults (books are untouched). The app reloads.</span>
+          {devBtn('Reset & reload', resetSettings, { danger: true })}
+          {devBtn('Cancel', () => setConfirmReset(false))}
+        </div>
+      )}
+
+      {showErrorLog && <ErrorLogModal onClose={() => setShowErrorLog(false)} accentHex={accentHex} />}
     </div>
   );
 }
@@ -1009,11 +1222,15 @@ export const DEFAULT_SETTINGS = {
   hapticsEnabled: true,
   reduceMotion: false,         // when true (or OS reduce-motion), animations are minimised
   materialYou: false,          // Android 12+: use the wallpaper's system colour as accent
+  // Editor tab (v1.1.18-beta.1) — all live-wired:
+  spellcheck: true,            // contentEditable spellCheck attribute
+  editorWidth: 'full',         // 'full' | 'focused' (desktop manuscript column)
+  autosaveDelaySec: 4,         // Android silent auto-save debounce
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome }) {
   const { theme, switchTheme } = useTheme();
-  const [activeSection, setActiveSection] = useState('profile');
+  const [activeSection, setActiveSection] = useState('general');
   const isPortrait = useIsPortrait();
 
   const extSettingsItems = useExtensionContributions('settings');
@@ -1029,8 +1246,6 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   }, [isOpen, onClose]);
 
   const handleChange = useCallback((patch) => { onSave?.({ ...settings, ...patch }); }, [settings, onSave]);
-
-  if (!isOpen) return null;
 
   const accentHex = settings.accentHex || '#3b82f6';
 
@@ -1058,13 +1273,15 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   const panelProps = { settings, onChange: handleChange, accentHex, sessions, onSessionChange };
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.75))', backdropFilter: 'blur(6px)', animation: 'settingsFadeIn 0.15s ease', padding: isPortrait ? '0' : '16px' }}
+    <AnimatePresence>
+    {isOpen && (
+    <motion.div
+      key="settings-overlay"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.75))', backdropFilter: 'blur(6px)', padding: isPortrait ? '0' : '16px' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <style>{`
-        @keyframes settingsFadeIn  { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes settingsPanelIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .settings-nav-item:hover { background: var(--surface) !important; color: var(--text-2) !important; }
         .settings-tab:hover { background: var(--surface) !important; }
         .settings-content::-webkit-scrollbar { width: 4px; }
@@ -1072,14 +1289,16 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
         .settings-tabs::-webkit-scrollbar { display: none; }
       `}</style>
 
-      <div style={{
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 6 }} transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+        style={{
         width: isPortrait ? '100vw' : '90vw', maxWidth: isPortrait ? '100vw' : '860px',
         height: isPortrait ? '100dvh' : '80vh', maxHeight: isPortrait ? '100dvh' : '680px',
         display: 'flex', flexDirection: isPortrait ? 'column' : 'row',
         borderRadius: isPortrait ? '0' : '16px', overflow: 'hidden',
         background: 'var(--modal-bg)',
         border: isPortrait ? 'none' : '1px solid var(--border)',
-        boxShadow: '0 32px 80px rgba(0,0,0,0.7)', animation: 'settingsPanelIn 0.2s ease',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
       }}>
 
         {isPortrait ? (
@@ -1110,9 +1329,12 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
                 style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
-              {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
+              {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
+              {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
+              {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
+              {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
@@ -1154,9 +1376,12 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
                 <CloseButton onClick={onClose} style={{ position: 'absolute', top: '0px', right: '0px' }} />
               </div>
-              {activeSection === 'profile'    && <ProfilePanel    {...panelProps} />}
+              {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
+              {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
+              {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
+              {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
               {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
@@ -1166,7 +1391,9 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
             </div>
           </>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }

@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { DSIcons, toast, CloseButton } from '../DesignSystem';
 import {
   getAllTypes, typeById, threadColor, sortedEntries, todoCount, allOpenTodos,
@@ -506,22 +507,27 @@ export default function ThreadsPanel({
   );
 
   if (android) {
-    // Mobile: bottom sheet covering ~5/8 of the screen (spec).
+    // Mobile: bottom sheet covering ~5/8 of the screen (spec). Enter AND exit
+    // animate via the parent's AnimatePresence (the CSS keyframe only covered
+    // opening — closing snapped, per the beta.1 QA notes).
     return (
       <>
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2380, background: 'var(--modal-overlay-bg, rgba(0,0,0,0.5))' }} onClick={onClose} />
-        <div style={{
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2380, background: 'var(--modal-overlay-bg, rgba(0,0,0,0.5))' }} onClick={onClose} />
+        <motion.div
+          initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+          transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+          style={{
           position: 'fixed', left: 0, right: 0, bottom: 0, height: '62.5dvh', zIndex: 2390,
           display: 'flex', flexDirection: 'column',
           background: 'var(--modal-bg)', borderTop: '1px solid var(--border)',
           borderRadius: '18px 18px 0 0', overflow: 'hidden',
-          animation: 'threadsSheetUp 0.22s cubic-bezier(0.32,0.72,0,1)',
         }}>
-          <style>{`@keyframes threadsSheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
           <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--border)', margin: '8px auto 0', flexShrink: 0 }} />
           {header}
           {body}
-        </div>
+        </motion.div>
       </>
     );
   }

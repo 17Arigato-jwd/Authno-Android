@@ -11,6 +11,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Flame } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
 import { MinimalButton, COLORS, DSIcons, CloseButton } from '../DesignSystem';
@@ -227,15 +228,17 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
   const streakLabel = currentStreak === 0 ? 'No streak yet — start writing!' : currentStreak === 1 ? '1 day streak 🔥' : `${currentStreak} day streak 🔥`;
 
   return createPortal(
-    <div ref={popRef} style={{
+    <motion.div ref={popRef}
+      initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.98 }}
+      transition={{ duration: 0.15, ease: [0.22, 0.61, 0.36, 1] }}
+      style={{
       position: 'fixed', top: pos.top, left: pos.left,
       width: 308, zIndex: 9999,
       background: COLORS.surface1,
       border: `1px solid ${COLORS.border}`,
       borderRadius: 16, boxShadow: `0 16px 48px rgba(0,0,0,0.8), 0 0 40px ${accentHex}18`,
-      padding: 20, animation: 'streakFadeIn 0.15s ease',
+      padding: 20,
     }}>
-      <style>{`@keyframes streakFadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
       <div style={{ position: 'absolute', top: 10, right: 10 }}>
         <CloseButton onClick={onClose} />
@@ -298,7 +301,7 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
         <DSIcons.Target size={11} color={COLORS.textDisabled} />
         Current goal: {goalWords.toLocaleString()} words/day
       </div>
-    </div>,
+    </motion.div>,
     document.body
   );
 }
@@ -381,9 +384,11 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
           </div>
         )}
       </button>
-      {calendarOpen && (
-        <StreakCalendar currentStreak={currentStreak} log={log} wordsToday={wordsToday} goalWords={effectiveGoal} accentHex={accentHex} anchorRef={buttonRef} onClose={() => setCalendarOpen(false)} />
-      )}
+      <AnimatePresence>
+        {calendarOpen && (
+          <StreakCalendar key="streak-cal" currentStreak={currentStreak} log={log} wordsToday={wordsToday} goalWords={effectiveGoal} accentHex={accentHex} anchorRef={buttonRef} onClose={() => setCalendarOpen(false)} />
+        )}
+      </AnimatePresence>
     </>
   );
 }

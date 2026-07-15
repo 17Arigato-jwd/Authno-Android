@@ -5,6 +5,7 @@
  */
 
 import { useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { DSIcons, CloseButton } from '../DesignSystem';
 import { textStats, formatReadingTime } from '../utils/editorFormat';
 
@@ -36,11 +37,14 @@ export default function ChapterInfoModal({ session, chapterIdx, onClose, accentH
   const n = (v) => v.toLocaleString();
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
       style={{ position: 'fixed', inset: 0, zIndex: 2700, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.6))', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 6 }} transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+        style={{
         width: 'min(92vw, 400px)', maxHeight: '84vh', overflowY: 'auto',
         background: 'var(--modal-bg)', border: '1px solid var(--border)',
         borderRadius: 16, padding: '18px 20px', boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
@@ -77,7 +81,7 @@ export default function ChapterInfoModal({ session, chapterIdx, onClose, accentH
         <StatRow label="Characters" value={n(bookStats.charsWithSpaces)} />
         <StatRow label="Sentences" value={n(bookStats.sentences)} />
         <StatRow label="Reading time" value={formatReadingTime(bookStats.readingMins)} />
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
