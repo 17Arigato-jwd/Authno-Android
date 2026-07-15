@@ -19,7 +19,7 @@ import { isSpeechSupported } from "../utils/readAloud";
 import { hapticSave } from "../utils/haptics";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
-import { MinimalButton, Divider, COLORS, DSIcons } from "../DesignSystem";
+import { Divider, COLORS, DSIcons } from "../DesignSystem";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function BurgerMenu({
@@ -191,14 +191,36 @@ export default function BurgerMenu({
     : status === "error"  ? "Failed ✗"
     : "Save";
 
-  // ── Shared menu content — context-aware (B6) ──────────────────────────────
-  const item = (props) => (
-    <MinimalButton
-      variant="smooth" size="md" color="var(--text-1)"
-      style={{ width: "100%", justifyContent: "center" }}
-      {...props}
-    />
+  // ── Shared menu content — context-aware (B6; redesigned v1.1.18-beta.1) ───
+  // Rows are left-aligned (icon · label · faded shortcut hint on the right),
+  // Docs-style — the old centred pills truncated the shortcut hints and read
+  // as buttons rather than a menu. Hints only show where keyboards exist.
+  const row = ({ icon, label, hint, onClick, disabled = false, color, trailing = null }) => (
+    <button
+      key={label}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      style={{
+        display: "flex", alignItems: "center", gap: 10, width: "100%",
+        padding: android ? "12px 12px" : "9px 12px", borderRadius: 9,
+        border: "none", background: "transparent", textAlign: "left",
+        color: color || "var(--text-1)", fontSize: 13.5, fontWeight: 500,
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1,
+        transition: "background 0.12s",
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--surface)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+    >
+      <span style={{ display: "flex", width: 18, justifyContent: "center", flexShrink: 0, color: "inherit" }}>{icon}</span>
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      {trailing}
+      {hint && !android && (
+        <span style={{ opacity: 0.4, fontSize: 11, fontWeight: 500, letterSpacing: 0.3, flexShrink: 0 }}>{hint}</span>
+      )}
+    </button>
   );
+
+  const divider = (key) => <Divider key={key} style={{ margin: "4px 8px" }} />;
 
   const bookItems = renaming ? (
     <div style={{ display: "flex", gap: 6 }}>
@@ -221,68 +243,58 @@ export default function BurgerMenu({
     </div>
   ) : (
     <>
-      {item({ color: saveColor, icon: <DSIcons.Save size={15} />, disabled: busy || !current, onClick: handleSave, children: saveLabel })}
-      <Divider style={{ margin: "2px 0" }} />
-      {item({ icon: <DSIcons.Archive size={15} />, disabled: busy || !current, onClick: handleSaveAs, children: "Save As…" })}
-      <Divider style={{ margin: "2px 0" }} />
-      {item({ icon: <DSIcons.Edit size={15} />, disabled: !current, onClick: () => { setRenameVal(current?.title ?? ""); setRenaming(true); }, children: "Rename…" })}
-      {onHistory && (
-        <>
-          <Divider style={{ margin: "2px 0" }} />
-          {item({ icon: <DSIcons.History size={15} />, disabled: !current, onClick: () => { onClose?.(); onHistory(); }, children: (
-            <>
-              History
-              {/* Docs-style faded shortcut hint (keyboards only exist on desktop) */}
-              {!android && (
-                <span style={{ opacity: 0.45, fontSize: 11, fontWeight: 500, marginLeft: 8, letterSpacing: 0.4 }}>
-                  Ctrl+Shift+Z
-                </span>
-              )}
-            </>
-          ) })}
-        </>
-      )}
-      {onChapterInfo && (
-        <>
-          <Divider style={{ margin: "2px 0" }} />
-          {item({ icon: <DSIcons.Info size={15} />, onClick: () => { onClose?.(); onChapterInfo(); }, children: "Chapter info" })}
-        </>
-      )}
-      <Divider style={{ margin: "2px 0" }} />
-      {item({ icon: <DSIcons.Upload size={15} />, disabled: !current, onClick: () => setExportOpen(v => !v), children: (
-        <>Export {exportOpen ? <DSIcons.ChevronUp size={12} style={{ marginLeft: 4 }} /> : <DSIcons.ChevronDown size={12} style={{ marginLeft: 4 }} />}</>
-      ) })}
+      {/* File */}
+      {row({ icon: <DSIcons.Save size={15} />, label: saveLabel, hint: "Ctrl+S", color: saveColor, disabled: busy || !current, onClick: handleSave })}
+      {row({ icon: <DSIcons.Archive size={15} />, label: "Save As…", disabled: busy || !current, onClick: handleSaveAs })}
+      {row({ icon: <DSIcons.Edit size={15} />, label: "Rename…", disabled: !current, onClick: () => { setRenameVal(current?.title ?? ""); setRenaming(true); } })}
+      {divider("d1")}
+      {/* Book */}
+      {onHistory && row({ icon: <DSIcons.History size={15} />, label: "History", hint: "Ctrl+Shift+Z", disabled: !current, onClick: () => { onClose?.(); onHistory(); } })}
+      {onChapterInfo && row({ icon: <DSIcons.Info size={15} />, label: "Chapter info", hint: "Ctrl+Alt+I", onClick: () => { onClose?.(); onChapterInfo(); } })}
+      {row({
+        icon: <DSIcons.Upload size={15} />, label: "Export", hint: "Ctrl+Shift+E", disabled: !current,
+        onClick: () => setExportOpen((v) => !v),
+        trailing: exportOpen
+          ? <DSIcons.ChevronUp size={12} color="var(--text-4)" />
+          : <DSIcons.ChevronDown size={12} color="var(--text-4)" />,
+      })}
       {exportOpen && onExport && (
-        <div style={{ display: "flex", gap: 6, padding: "2px 4px" }}>
+        <div style={{ display: "flex", gap: 6, padding: "2px 4px 4px 32px" }}>
           {[["TXT", onExport.txt], ["HTML", onExport.html], ["EPUB", onExport.epub], ["PDF", onExport.pdf]].map(([label, fn]) => (
             <button key={label} onClick={() => { onClose?.(); fn?.(); }}
-              style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+              style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
               {label}
             </button>
           ))}
         </div>
       )}
-      {onReadAloud && isSpeechSupported() && (
+      {onReadAloud && isSpeechSupported() &&
+        row({ icon: <DSIcons.Volume size={15} />, label: "Read aloud", hint: "Ctrl+Shift+R", disabled: !current, onClick: () => { onClose?.(); onReadAloud(); } })}
+      {/* Settings lives here only on Android — the desktop sidebar already has
+          it, and three entry points from one screen was two too many. */}
+      {android && (
         <>
-          <Divider style={{ margin: "2px 0" }} />
-          {item({ icon: <DSIcons.Volume size={15} />, disabled: !current, onClick: () => { onClose?.(); onReadAloud(); }, children: "Read aloud" })}
+          {divider("d2")}
+          {row({ icon: <DSIcons.Settings size={15} />, label: "Settings", onClick: onOpenSettings })}
         </>
       )}
-      <Divider style={{ margin: "2px 0" }} />
-      {item({ icon: <DSIcons.Settings size={15} />, onClick: onOpenSettings, children: "Settings" })}
     </>
   );
 
   const homeItems = (
     <>
-      {item({ icon: <DSIcons.FolderOpen size={15} />, disabled: busy, onClick: handleOpen, children: "Open…" })}
-      <Divider style={{ margin: "2px 0" }} />
-      {item({ icon: <DSIcons.Settings size={15} />, onClick: onOpenSettings, children: "Settings" })}
+      {row({ icon: <DSIcons.FolderOpen size={15} />, label: "Open…", hint: "Ctrl+O", disabled: busy, onClick: handleOpen })}
+      {android && (
+        <>
+          {divider("dh")}
+          {row({ icon: <DSIcons.Settings size={15} />, label: "Settings", onClick: onOpenSettings })}
+        </>
+      )}
     </>
   );
 
   const menuContent = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: android ? undefined : 236 }}>
       {context === "home" ? homeItems : bookItems}
     </div>
   );

@@ -41,7 +41,7 @@ const card = {
 export default function HomeDesktop({
   sessions = [], accentHex, onNewBook, onSelect, onDelete,
   onToggleMenu, burgerBtnRef,
-  resumeInfo, onResume, onReadAloud, onOpenSettings,
+  resumeInfo, onResume, onReadAloud, onOpenSettings, onOpenSearch,
 }) {
   const { showError } = useError();
   const motionOK = useMotionEnabled();
@@ -134,11 +134,18 @@ export default function HomeDesktop({
       }}>
         <span style={{ color: 'var(--text-1)', fontSize: 16, fontWeight: 700 }}>Welcome back</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, color: 'var(--text-5)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', userSelect: 'none' }}
-            title="Quick switcher">Ctrl K</span>
-          <button ref={burgerBtnRef} onClick={onToggleMenu}
-            style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', display: 'flex' }}>
-            <DSIcons.MoreVertical size={18} color="var(--text-1)" />
+          {/* A real search button (the old passive "Ctrl K" chip looked like a
+              label, not a control) — opens the quick switcher. */}
+          <button onClick={onOpenSearch} title="Search books, chapters and actions"
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', color: 'var(--text-3)', fontSize: 12.5 }}>
+            <DSIcons.Search size={14} color="currentColor" />
+            Search
+            <span style={{ opacity: 0.45, fontSize: 10.5, letterSpacing: 0.3, marginLeft: 2 }}>Ctrl+K</span>
+          </button>
+          {/* Burger sized to match the flame/streak button (padding 8, icon 20). */}
+          <button ref={burgerBtnRef} onClick={onToggleMenu} aria-label="Menu"
+            style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', display: 'flex' }}>
+            <DSIcons.MoreVertical size={20} color="var(--text-1)" />
           </button>
         </div>
       </header>
@@ -191,7 +198,8 @@ export default function HomeDesktop({
           {actionBtn(<DSIcons.FolderOpen size={14} />, 'Open…', openExisting)}
           {actionBtn(<DSIcons.Download size={14} />, 'Import a book', () => importInputRef.current?.click())}
           {isSpeechSupported() && actionBtn(<DSIcons.Volume size={14} />, 'Read aloud', onReadAloud)}
-          {actionBtn(<DSIcons.Settings size={14} />, 'Settings', onOpenSettings)}
+          {/* Settings intentionally absent — the sidebar (always visible on
+              desktop) and Ctrl+, cover it; three entry points was clutter. */}
         </div>
 
         {/* Library grid */}

@@ -3,6 +3,74 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.1
+
+_The QA round on beta.0, shaped by the author's feedback — history that shows
+real changes, shortcuts everywhere, a settings overhaul, and the missing
+close animations._
+
+### History v2 — real changes, not just states
+
+- Entries are now **paragraph-level changes** — a rewritten paragraph, a
+  deleted line, an added passage — each with a **before → after preview**
+  (removed text struck through, added text highlighted). Tiny tweaks under
+  ~10 words don't clutter the list; they accumulate silently until they
+  amount to something. Typing in the same paragraph keeps extending one
+  entry; moving elsewhere starts a new one.
+- **Click to preview, then choose**: *Revert this change* surgically undoes
+  just that edit while keeping everything written since (it politely refuses
+  when the passage has drifted too far), or *Restore to here* jumps the
+  chapter back. Restores and reverts are recorded too.
+- The panel now **closes on outside click** (desktop), and the History button
+  no longer overflows its row.
+
+### Shortcuts (the "Standard set")
+
+- **Ctrl+,** Settings · **Ctrl+N** New book · **Ctrl+O** Open ·
+  **Ctrl+Shift+N** New chapter · **Ctrl+Alt+I** Chapter info ·
+  **Ctrl+Shift+T** Threads · **Ctrl+Shift+R** Read aloud ·
+  **Ctrl+Shift+E** Export — joining Ctrl+K, Ctrl+S and Ctrl+Shift+Z.
+  Faded hints appear next to buttons and menu items, tooltips name their
+  keys, and **Settings → Shortcuts** lists everything.
+- The desktop home's passive "Ctrl K" chip is now a real **Search button**,
+  and the quick switcher shows its shortcut while open.
+
+### Menus & screens
+
+- **Burger menu redesigned**: left-aligned rows with icons and right-aligned
+  faded shortcut hints (no more overflow), grouped sections, and
+  context-aware items — Chapter info only when a chapter is open in the
+  editor, History in the menu only where the editor's own button isn't
+  available, Settings only on Android (the desktop sidebar covers it — one
+  entry point instead of three). Burger buttons now match the streak flame's
+  size.
+- **Book screen (desktop)**: an info button next to "Open in editor" opens the
+  chapter's stats, and a Details block under the preview shows words,
+  position, created and updated dates.
+- **Read aloud** is greyed on the book screen until a chapter is selected —
+  and then reads from that chapter on. On Home it opens a **book & chapter
+  picker** instead of guessing.
+
+### Settings overhaul
+
+- Regrouped into **General** (profile + device preferences), Appearance,
+  **Editor** (new), Writing Goal, Startup, **Shortcuts** (new), Data &
+  Storage, **Developer** (new) and About.
+- New wired settings: **spell check** toggle, **manuscript width**
+  (full / focused column, desktop) and **auto-save delay** (Android).
+- **Developer tab**: version/platform info, the error log, one-tap
+  **copy diagnostics**, replay any tour (welcome slides / guided tour /
+  what's-new), and a reset-all-settings escape hatch.
+
+### The missing animations
+
+- Close animations for Settings, the gradient customizer, the font
+  customizer, chapter info, the streak calendar, and Threads (both the mobile
+  sheet and the desktop pane, which now slides its width).
+- The desktop sidebar's collapse/expand transitions instead of snapping;
+  switching chapters crossfades the manuscript; and **changing theme or
+  fonts soft-crossfades** the whole app instead of hard-cutting.
+
 ## 1.1.18-beta.0
 
 _The safety-net release: change history, safer deletes, faster typing, and a

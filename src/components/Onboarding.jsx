@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "8";
+const UPDATE_VERSION = "9";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -555,23 +555,23 @@ export function Onboarding({ accentHex = "#5a00d9", onDone, onStartTour }) {
 const UPDATE_NOTES = [
   {
     icon: (p) => <DSIcons.History {...p} />,
-    title: "Change history",
-    body: "Press Ctrl+Shift+Z (or menu → History) to see your book's recent changes — typing bursts, renames, added and deleted chapters — and click any of them to go back. The last 10 changes are saved inside the book itself; a writing session keeps up to 50.",
+    title: "History shows real changes now",
+    body: "The History panel (Ctrl+Shift+Z) lists actual edits — a rewritten paragraph, a deleted line, a new passage — each with a before/after preview. Click one to preview, then either revert just that change (keeping everything since) or restore the chapter to that point.",
   },
   {
     icon: (p) => <DSIcons.Lightning {...p} />,
-    title: "Faster typing",
-    body: "Keystrokes no longer redraw the whole app — the editor now batches changes quietly in the background. Long chapters feel noticeably snappier, especially on phones.",
+    title: "Shortcuts everywhere",
+    body: "Ctrl+K search, Ctrl+, settings, Ctrl+N new book, Ctrl+O open, Ctrl+Shift+N new chapter, Ctrl+Shift+T threads, Ctrl+Shift+E export, Ctrl+Shift+R read aloud. Hints sit faded next to buttons, and the full list lives in Settings → Shortcuts.",
   },
   {
-    icon: (p) => <DSIcons.Trash {...p} />,
-    title: "Safer deletes",
-    body: "Deleting a chapter asks first — and the text stays recoverable from History. Removing a book now clearly separates \"remove from AuthNo\" from \"permanently delete the file\", with a checkbox for the latter.",
+    icon: (p) => <DSIcons.Settings {...p} />,
+    title: "Settings, reorganised",
+    body: "New Editor tab (spell check, manuscript width, auto-save delay), a Shortcuts reference, and a Developer tab (error log, diagnostics, replay any tour, reset settings). Vibration feedback moved to General; duplicate Settings buttons were pruned.",
   },
   {
-    icon: (p) => <DSIcons.Rocket {...p} />,
-    title: "A proper guided tour",
-    body: "New here, or curious what you've missed? Settings → About → Guided tour walks you through the real app: creating a book, chapters, writing, threads, streaks, saving and exporting.",
+    icon: (p) => <DSIcons.Volume {...p} />,
+    title: "Read aloud, aimed better",
+    body: "Read aloud from Home now asks which book and chapter to start from, and the book screen reads from your selected chapter. Plus: menus redesigned, chapter details on the book screen, and closing animations for every panel — with a soft crossfade on theme switches.",
   },
 ];
 

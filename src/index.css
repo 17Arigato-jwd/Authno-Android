@@ -181,3 +181,17 @@ input, textarea, [contenteditable], .selectable, .selectable * {
 .is-electron .app-root { height: calc(100dvh - var(--titlebar-h, 36px)); }
 .authno-titlebar { -webkit-app-region: drag; app-region: drag; }
 .authno-titlebar button, .authno-titlebar .no-drag { -webkit-app-region: no-drag; app-region: no-drag; }
+
+/* Theme / global-font crossfade (v1.1.18-beta.1): App.js stamps .theme-anim on
+   <html> for ~450ms around a theme or font switch so colours and text blend
+   instead of hard-cutting. Scoped to a transient class — steady-state renders
+   pay nothing. */
+html.theme-anim body,
+html.theme-anim body * {
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    fill 0.3s ease,
+    font-family 0.3s ease !important;
+}

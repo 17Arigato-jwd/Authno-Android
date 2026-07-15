@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { DSIcons, CloseButton } from '../DesignSystem';
 import {
   FONT_LIBRARY, DEFAULT_FONTS, resolveFontStack, loadGoogleFont, readCustomFontFile,
@@ -135,24 +136,22 @@ export function FontCustomizer({ isOpen, onClose, fonts = DEFAULT_FONTS, onSave,
 
   const resetDefaults = () => onSave?.({ ...DEFAULT_FONTS, custom: fonts.custom || [] });
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.8))', backdropFilter: 'blur(8px)', animation: 'fcFadeIn 0.15s ease' }}
+    <AnimatePresence>
+    {isOpen && (
+    <motion.div
+      key="fc-overlay"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--modal-overlay-bg, rgba(0,0,0,0.8))', backdropFilter: 'blur(8px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <style>{`
-        @keyframes fcFadeIn  { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fcPanelIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-      `}</style>
-
-      <div style={{
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 6 }} transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+        style={{
         width: '92vw', maxWidth: 780, height: '82vh', maxHeight: 680,
         display: 'flex', flexDirection: 'column', borderRadius: 16, overflow: 'hidden',
         background: 'var(--modal-bg)', border: '1px solid var(--border)',
         boxShadow: `0 32px 80px rgba(0,0,0,0.6), 0 0 80px ${accentHex}18`,
-        animation: 'fcPanelIn 0.2s ease',
       }}>
         {/* Sticky header — stays put while the font grid scrolls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'var(--nav-bg)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
@@ -206,8 +205,10 @@ export function FontCustomizer({ isOpen, onClose, fonts = DEFAULT_FONTS, onSave,
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }
 

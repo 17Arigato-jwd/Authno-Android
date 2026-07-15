@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { DSIcons, CloseButton } from '../DesignSystem';
 import { DEFAULT_FONTS } from '../utils/fontManager';
 
@@ -329,36 +330,36 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
     onSave?.({ ...customization, ...patch });
   }, [customization, onSave]);
 
-  if (!isOpen) return null;
-
   const accentHex = customization.accentHex || '#3b82f6';
   const groups = [...new Set(NAV.map(i => i.group))];
   const panelProps = { customization, onChange: handleChange, accentHex };
 
   return (
-    <div
+    <AnimatePresence>
+    {isOpen && (
+    <motion.div
+      key="cs-overlay"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
       style={{
         position: 'fixed', inset: 0, zIndex: 110,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'var(--modal-overlay-bg, rgba(0,0,0,0.8))', backdropFilter: 'blur(8px)',
-        animation: 'csFadeIn 0.15s ease',
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <style>{`
-        @keyframes csFadeIn  { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes csPanelIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .cs-nav-btn:hover { background: var(--surface-md) !important; color: var(--text-2) !important; }
       `}</style>
 
-      <div style={{
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 6 }} transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+        style={{
         width: '90vw', maxWidth: '820px',
         height: '80vh', maxHeight: '640px',
         display: 'flex', borderRadius: '16px', overflow: 'hidden',
         background: 'var(--modal-bg)',
         border: '1px solid var(--border)',
         boxShadow: `0 32px 80px rgba(0,0,0,0.6), 0 0 80px ${accentHex}18`,
-        animation: 'csPanelIn 0.2s ease',
       }}>
 
         {/* ── Left nav ── */}
@@ -431,7 +432,9 @@ export function CustomizationSlider({ isOpen, onClose, customization = DEFAULT_C
           {activeSection === 'background' && <BackgroundPanel {...panelProps} />}
           {activeSection === 'gradient'   && <GradientPanel   {...panelProps} />}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 }

@@ -25,17 +25,18 @@ import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/Th
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
 import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
-import { recordEdit, recordOp, restorePatch } from "./utils/history";
+import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
 import GuidedTour from "./components/GuidedTour";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
 import { MotionProvider, screenVariants, T } from "./utils/motion";
 import HomeScreen from "./components/HomeScreen";
-import BookDashboard from "./components/BookDashboard";
+import BookDashboard, { ExportPanel } from "./components/BookDashboard";
+import ReadAloudPicker from "./components/ReadAloudPicker";
 // v1.1.17-beta.3 PC layout: desktop-grade screens (mobile keeps the ones above)
 import HomeDesktop from "./components/HomeDesktop";
 import BookStudio from "./components/BookStudio";
@@ -84,6 +85,7 @@ function Editor({
   customFonts,
   resumePoint, onResumeConsumed,
   syncNonce, onOpenHistory,
+  spellcheckOn = true, editorWidth = "full",
 }) {
   const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
@@ -161,6 +163,14 @@ function Editor({
     openThread(threadId, entryId ?? null);
   }, [openThread]);
 
+  // Ctrl+Shift+T (App-level shortcut) toggles the Threads panel here, where
+  // the state lives.
+  useEffect(() => {
+    const h = () => { if (current) setThreadsOpen((v) => !v); };
+    document.addEventListener("authno-toggle-threads", h);
+    return () => document.removeEventListener("authno-toggle-threads", h);
+  }, [current]);
+
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
   useEffect(() => {
     // Only overwrite the DOM when the incoming content actually differs from
@@ -206,6 +216,15 @@ function Editor({
   };
   // Flush before the editor moves to another book/chapter, and on unmount.
   useEffect(() => () => flushPendingEdit(), [current?.id, current?._editingChap, flushPendingEdit]);
+
+  // Chapter switches crossfade the manuscript area (beta.1 QA: switching
+  // snapped). Animation controls, not a keyed remount — remounting the
+  // contentEditable would wipe the caret and re-run every layer effect.
+  const mainAnim = useAnimationControls();
+  useEffect(() => {
+    mainAnim.set({ opacity: 0.25, y: 6 });
+    mainAnim.start({ opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.22, 0.61, 0.36, 1] } });
+  }, [current?.id, current?._editingChap, mainAnim]);
 
   // A history restore replaced the chapter content in state while this
   // chapter is open: overwrite the DOM (and discard any stale pending flush
@@ -319,6 +338,7 @@ function Editor({
           </span>
           {current && !android && onOpenHistory && (
             <button
+              data-history-opener
               onClick={() => { flushPendingEdit(); onOpenHistory(); }}
               title="History — recent changes (Ctrl+Shift+Z)"
               aria-label="History"
@@ -331,7 +351,7 @@ function Editor({
             <button
               data-tour="threads"
               onClick={() => setThreadsOpen((v) => !v)}
-              title="Threads — plotlines & character arcs"
+              title="Threads — plotlines & character arcs (Ctrl+Shift+T)"
               aria-label="Threads"
               style={{ padding: 8, border: `1px solid ${threadsOpen ? accentHex : "var(--border)"}`, borderRadius: 6, background: threadsOpen ? `${accentHex}15` : "none", cursor: "pointer", transition: "all 0.15s", color: threadsOpen ? accentHex : "var(--text-1)", display: "flex", alignItems: "center" }}
             >
@@ -396,7 +416,7 @@ function Editor({
         </div>
       )}
       {/* Android: extra bottom padding clears the floating/docked toolbar */}
-      <main ref={mainRef} style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem 0.75rem 96px" : "1.5rem" }}>
+      <motion.main ref={mainRef} animate={mainAnim} style={{ position: "relative", flex: 1, overflowY: "auto", padding: android ? "0.75rem 0.75rem 96px" : "1.5rem" }}>
         {current ? (
           <>
             {/* Colored gutter markers for thread anchors (prose stays unstyled) */}
@@ -412,6 +432,7 @@ function Editor({
               data-tour="editor"
               contentEditable
               suppressContentEditableWarning
+              spellCheck={spellcheckOn}
               style={{
                 width: "100%", minHeight: 400, padding: 16, borderRadius: 8,
                 boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none", lineHeight: 1.7,
@@ -419,6 +440,9 @@ function Editor({
                 fontFamily: 'var(--font-editor)',
                 marginTop: android ? "0.25rem" : "5rem",
                 WebkitUserSelect: "text", userSelect: "text",
+                // Settings → Editor → Manuscript width: "focused" centres a
+                // page-like ~72ch column on desktop; "full" is the classic look.
+                ...(!android && editorWidth === "focused" ? { maxWidth: 760, marginLeft: "auto", marginRight: "auto" } : {}),
               }}
               onInput={(e) => queueEditContent(e.currentTarget.innerHTML)}
               onBlur={flushPendingEdit}
@@ -443,7 +467,7 @@ function Editor({
             {android ? "Tap the menu above to open your sessions." : "Select or create a session to begin."}
           </div>
         )}
-      </main>
+      </motion.main>
     </div>
 
     {/* Selection chip + action menu (fixed-positioned; renders only with a selection) */}
@@ -463,9 +487,13 @@ function Editor({
       />
     )}
 
-    {/* Threads — Android 5⁄8 bottom sheet / desktop tiling (2 windows + tabs) */}
+    {/* Threads — Android 5⁄8 bottom sheet / desktop tiling (2 windows + tabs).
+        AnimatePresence gives open AND close animations (the pane used to snap
+        away — beta.1 QA). Desktop slides its width; mobile springs its sheet. */}
+    <AnimatePresence>
     {threadsOpen && current && (android ? (
       <ThreadsPanel
+        key="threads-sheet"
         session={fullSession ?? current}
         data={threadsData}
         onChangeData={handleChangeThreads}
@@ -479,22 +507,30 @@ function Editor({
         onClose={() => { setThreadsOpen(false); openThread(null); }}
       />
     ) : (
-      <ThreadsTilesDesktop
-        session={fullSession ?? current}
-        data={threadsData}
-        onChangeData={handleChangeThreads}
-        onStripAnchors={handleStripAnchors}
-        onJump={handleJumpToAnchor}
-        openThreadIds={openThreadIds}
-        activeTabId={activeTabId}
-        focusEntryId={focusEntryId}
-        onOpenThread={openThread}
-        onCloseThread={closeThread}
-        onActivateTab={setActiveTabId}
-        accentHex={accentHex}
-        onClose={() => { setThreadsOpen(false); openThread(null); }}
-      />
+      <motion.div
+        key="threads-tiles"
+        initial={{ width: 0, opacity: 0 }} animate={{ width: "auto", opacity: 1 }} exit={{ width: 0, opacity: 0 }}
+        transition={T.base}
+        style={{ display: "flex", flexShrink: 0, overflow: "hidden" }}
+      >
+        <ThreadsTilesDesktop
+          session={fullSession ?? current}
+          data={threadsData}
+          onChangeData={handleChangeThreads}
+          onStripAnchors={handleStripAnchors}
+          onJump={handleJumpToAnchor}
+          openThreadIds={openThreadIds}
+          activeTabId={activeTabId}
+          focusEntryId={focusEntryId}
+          onOpenThread={openThread}
+          onCloseThread={closeThread}
+          onActivateTab={setActiveTabId}
+          accentHex={accentHex}
+          onClose={() => { setThreadsOpen(false); openThread(null); }}
+        />
+      </motion.div>
     ))}
+    </AnimatePresence>
     </div>
   );
 }
@@ -560,6 +596,9 @@ function AppInner({ navigateRef }) {
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
   const [tourActive, setTourActive] = useState(false);             // guided tour (v1.1.18)
+  const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
+  const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
+  const [chapterInfoIdx, setChapterInfoIdx] = useState(null);      // explicit chapter for ChapterInfoModal (BookStudio info button)
   const [readAloudSession, setReadAloudSession] = useState(null);
   const [chapterInfoOpen, setChapterInfoOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
@@ -633,6 +672,23 @@ function AppInner({ navigateRef }) {
   // Like applyAccent, this writes a CSS-var override that outranks the theme's
   // default fonts and is re-asserted after every theme switch.
   useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts]);
+
+  // ── Theme / global-font crossfade (beta.1) ────────────────────────────────
+  // Switching used to hard-cut every colour and glyph at once. A short-lived
+  // html class turns on background/color/border transitions app-wide for the
+  // moment of the swap (desktop only — a whole-tree transition is per-node
+  // work Android doesn't need to pay).
+  const themeAnimReady = useRef(false);
+  const themeAnimTimer = useRef(null);
+  useEffect(() => {
+    if (android) return undefined;
+    if (!themeAnimReady.current) { themeAnimReady.current = true; return undefined; } // skip startup
+    const el = document.documentElement;
+    el.classList.add("theme-anim");
+    clearTimeout(themeAnimTimer.current);
+    themeAnimTimer.current = setTimeout(() => el.classList.remove("theme-anim"), 450);
+    return () => clearTimeout(themeAnimTimer.current);
+  }, [theme?.meta?.id, customization.fonts, android]);
 
   // ── Global tap haptics (B7) ───────────────────────────────────────────────
   // Every button/menu tap gives a light tick (author: "vibrations don't really
@@ -780,11 +836,11 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     if (sessions.length === 0) return;
     // History snapshots are also slimmed to the book-persisted 10 — the full
-    // 50-entry session history only ever lives in memory.
-    const slimForMirror = sessions.map(({ coverBase64, history, ...rest }) => ({
-      ...rest,
-      ...(history?.length ? { history: history.slice(0, 10) } : {}),
-    }));
+    // 50-entry session history (and its working baselines) only lives in memory.
+    const slimForMirror = sessions.map(({ coverBase64, history, ...rest }) => {
+      const slim = persistableHistory(history);
+      return { ...rest, ...(slim.length ? { history: slim } : {}) };
+    });
     try {
       localStorage.setItem("offlineWriterSessions", JSON.stringify(slimForMirror));
     } catch (e) {
@@ -1239,9 +1295,9 @@ function AppInner({ navigateRef }) {
     clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       import("./utils/storage").then(({ autoSaveBook }) => autoSaveBook(current)).catch(() => {});
-    }, 4000);
+    }, (settings.autosaveDelaySec ?? 4) * 1000);
     return () => clearTimeout(autosaveTimer.current);
-  }, [current, android]);
+  }, [current, android, settings.autosaveDelaySec]);
 
   const currentChapter = React.useMemo(() => {
     if (!current || currentChapterIdx === null) return null;
@@ -1331,6 +1387,65 @@ function AppInner({ navigateRef }) {
     }
   }, [sessions, currentId]);
 
+  // ── Read aloud (beta.1): start at a specific chapter ───────────────────────
+  // ReadAloudBar reads a session's chapters in order, so "start at chapter X"
+  // is a session view whose chapter list begins there (and runs to the end).
+  const startReadAloud = useCallback((bookId, chapIdx = null) => {
+    const book = sessions.find((s) => s.id === bookId);
+    if (!book) return;
+    if (chapIdx == null) { setReadAloudSession(book); return; }
+    const sorted = [...(book.chapters || [])].sort((a, b) => a.order - b.order);
+    const pos = sorted.findIndex((c) => c.chap_idx === chapIdx);
+    setReadAloudSession(pos > 0 ? { ...book, chapters: sorted.slice(pos) } : book);
+  }, [sessions]);
+
+  // ── Open an existing .authbook (Ctrl+O / burger "Open…") ──────────────────
+  const handleOpenExisting = useCallback(async () => {
+    try {
+      const { openBook } = await import("./utils/storage");
+      const session = await openBook();
+      if (!session) return;
+      setSessions((prev) => {
+        const idx = prev.findIndex((s) => s.id === session.id || (session.filePath && s.filePath === session.filePath));
+        if (idx === -1) return [session, ...prev];
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...session };
+        return next;
+      });
+      setCurrentId(session.id); setCurrentChapterIdx(null); setView("book-dashboard");
+    } catch (e) { showError("openBook", e); }
+  }, [showError]);
+
+  // ── App-wide shortcuts (beta.1, "Standard set" per the author's pick) ─────
+  // Ctrl+, Settings · Ctrl+N New book · Ctrl+O Open · Ctrl+Shift+N New chapter
+  // Ctrl+Alt+I Chapter info · Ctrl+Shift+T Threads · Ctrl+Shift+R Read aloud
+  // Ctrl+Shift+E Export. (Ctrl+K/S/Shift+Z live in their own handlers; Ctrl+I
+  // stays italic and Ctrl+E stays centre-align inside the editor.)
+  useEffect(() => {
+    const down = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key?.toLowerCase?.();
+      if (k === ",") { e.preventDefault(); setSettingsOpen(true); }
+      else if (k === "n" && !e.shiftKey && !e.altKey) { e.preventDefault(); newBook(); }
+      else if (k === "n" && e.shiftKey) { e.preventDefault(); if (currentId) handleNewChapter(); }
+      else if (k === "o" && !e.shiftKey && !e.altKey) { e.preventDefault(); handleOpenExisting(); }
+      else if (k === "i" && e.altKey) {
+        e.preventDefault();
+        if (view === "editor" && currentChapterIdx != null) { setChapterInfoIdx(null); setChapterInfoOpen(true); }
+      }
+      else if (k === "t" && e.shiftKey) { e.preventDefault(); document.dispatchEvent(new CustomEvent("authno-toggle-threads")); }
+      else if (k === "r" && e.shiftKey) {
+        e.preventDefault();
+        if (view === "home" || !currentId) setReadAloudPickerOpen(true);
+        else startReadAloud(currentId, view === "editor" ? currentChapterIdx : null);
+      }
+      else if (k === "e" && e.shiftKey) { e.preventDefault(); if (currentId) setExportPanelOpen(true); }
+    };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, currentChapterIdx, view, handleNewChapter, handleOpenExisting, startReadAloud]);
+
   const handleRestoreHistory = useCallback((entryId) => {
     const cur = sessions.find((s) => s.id === currentId);
     if (!cur) return;
@@ -1342,6 +1457,19 @@ function AppInner({ navigateRef }) {
     setEditorSyncNonce((n) => n + 1);
     hapticSelect();
     toast(res.label, { variant: "success" });
+  }, [sessions, currentId]);
+
+  // Surgical revert: undoes just one entry's paragraph changes, keeping every
+  // other edit made since ("Revert this change" in the History panel).
+  const handleRevertHistory = useCallback((entryId) => {
+    const cur = sessions.find((s) => s.id === currentId);
+    if (!cur) return;
+    const res = revertChangePatch(cur, entryId, previewOf);
+    if (!res) { toast("That passage has changed too much to revert on its own — use Restore instead", { variant: "info" }); return; }
+    setSessions((prev) => prev.map((s) => (s.id === currentId ? { ...s, ...res.patch, updated: new Date().toISOString() } : s)));
+    setEditorSyncNonce((n) => n + 1);
+    hapticSelect();
+    toast(res.partial ? `${res.label} (partially — some of it had changed since)` : res.label, { variant: "success" });
   }, [sessions, currentId]);
 
   // ── Screen-transition direction ───────────────────────────────────────────
@@ -1461,7 +1589,7 @@ function AppInner({ navigateRef }) {
             try { const { listSavedBooks } = await import('./utils/storage'); const books = await listSavedBooks(); if (books.length) setSessions(prev => { const ids = new Set(prev.map(s => s.id)); return [...prev, ...books.filter(b => !ids.has(b.id))]; }); }
             catch (e) { showError('refresh', e); }
           }}
-          onReadAloud={() => { if (current) setReadAloudSession(current); else toast('Open a book first to read it aloud', { variant: 'info' }); }}
+          onReadAloud={() => setReadAloudPickerOpen(true)}
           onOpenExtensions={() => { setDrawerOpen(true); }}
           resumeInfo={(() => {
             const last = getLastResume();
@@ -1478,8 +1606,9 @@ function AppInner({ navigateRef }) {
           onNewBook={newBook} onSelect={handleSelect}
           onDelete={handleDeleteBook}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
-          onReadAloud={() => { if (current) setReadAloudSession(current); else toast('Open a book first to read it aloud', { variant: 'info' }); }}
+          onReadAloud={() => setReadAloudPickerOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSearch={() => setSwitcherOpen(true)}
           resumeInfo={(() => {
             const last = getLastResume();
             const b = last && sessions.find((s) => s.id === last.bookId);
@@ -1511,7 +1640,8 @@ function AppInner({ navigateRef }) {
           onNewChapter={handleNewChapter} onUpdateSession={handleUpdateSession}
           onDeleteChapter={handleDeleteChapter} onMoveChapter={handleMoveChapter}
           onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
-          onReadAloud={() => current && setReadAloudSession(current)}
+          onReadAloud={(chapIdx) => current && startReadAloud(current.id, chapIdx ?? null)}
+          onChapterInfo={(chapIdx) => { setChapterInfoIdx(chapIdx); setChapterInfoOpen(true); }}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
@@ -1535,6 +1665,7 @@ function AppInner({ navigateRef }) {
           burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
           resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
           syncNonce={editorSyncNonce} onOpenHistory={() => setHistoryOpen(true)}
+          spellcheckOn={settings.spellcheck ?? true} editorWidth={settings.editorWidth ?? "full"}
         />
       )}
       </motion.div>
@@ -1561,11 +1692,29 @@ function AppInner({ navigateRef }) {
         onDone={() => setTourActive(false)}
       />
 
+      {/* Read aloud — book & chapter picker (home screens + Ctrl+Shift+R) */}
+      <ReadAloudPicker
+        open={readAloudPickerOpen} onClose={() => setReadAloudPickerOpen(false)}
+        sessions={sessions} accentHex={customization.accentHex}
+        onPick={(bookId, chapIdx) => startReadAloud(bookId, chapIdx)}
+      />
+
+      {/* Export sheet (Ctrl+Shift+E) — same panel BookStudio/BookDashboard use */}
+      {exportPanelOpen && current && (
+        <ExportPanel
+          session={current} accentHex={customization.accentHex}
+          onClose={() => setExportPanelOpen(false)}
+          onExportTxt={handleExportTxt} onExportHtml={handleExportHtml}
+          onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
+        />
+      )}
+
       {/* Change history — Docs-style version panel (desktop side panel / mobile sheet) */}
       <HistoryPanel
         open={historyOpen} onClose={() => setHistoryOpen(false)}
         session={current} accentHex={customization.accentHex}
         onRestore={handleRestoreHistory}
+        onRevert={handleRevertHistory}
       />
 
       <BurgerMenu
@@ -1575,9 +1724,9 @@ function AppInner({ navigateRef }) {
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
         context={view === "home" ? "home" : "book"}
-        onHistory={current ? () => { setMenuOpen(false); setHistoryOpen(true); } : null}
+        onHistory={current && (android || view !== "editor") ? () => { setMenuOpen(false); setHistoryOpen(true); } : null}
         onRename={(t) => handleUpdateSession({ title: t })}
-        onChapterInfo={current ? () => setChapterInfoOpen(true) : null}
+        onChapterInfo={current && view === "editor" && currentChapterIdx != null ? () => setChapterInfoOpen(true) : null}
         onExport={{ txt: handleExportTxt, html: handleExportHtml, epub: handleExportEpub, pdf: handleExportPdf }}
         onReadAloud={() => current && setReadAloudSession(current)}
       />
@@ -1591,14 +1740,17 @@ function AppInner({ navigateRef }) {
         />
       )}
 
-      {chapterInfoOpen && current && (
-        <ChapterInfoModal
-          session={current}
-          chapterIdx={currentChapterIdx ?? 1}
-          accentHex={customization.accentHex}
-          onClose={() => setChapterInfoOpen(false)}
-        />
-      )}
+      <AnimatePresence>
+        {chapterInfoOpen && current && (
+          <ChapterInfoModal
+            key="chapter-info"
+            session={current}
+            chapterIdx={chapterInfoIdx ?? currentChapterIdx ?? 1}
+            accentHex={customization.accentHex}
+            onClose={() => { setChapterInfoOpen(false); setChapterInfoIdx(null); }}
+          />
+        )}
+      </AnimatePresence>
 
       <Settings
         isOpen={settingsOpen} onClose={() => setSettingsOpen(false)}
@@ -1609,6 +1761,7 @@ function AppInner({ navigateRef }) {
         sessions={sessions} onSessionChange={handleSessionChange}
         onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
         onStartTour={() => { setSettingsOpen(false); setTourActive(true); }}
+        onReplayWelcome={() => { setSettingsOpen(false); setShowOnboarding(true); }}
       />
 
       <CustomizationSlider

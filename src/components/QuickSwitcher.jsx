@@ -94,6 +94,8 @@ export default function QuickSwitcher({ open, onClose, sessions = [], accentHex,
                 placeholder="Jump to a book or chapter, or run an action…"
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text-1)', fontSize: 14.5 }}
               />
+              {/* Shortcut reminder while search is active (author request) */}
+              <span style={{ fontSize: 10.5, color: 'var(--text-5)', opacity: 0.75, letterSpacing: 0.3, flexShrink: 0, userSelect: 'none' }}>Ctrl+K</span>
               <span style={{ fontSize: 10.5, color: 'var(--text-5)', border: '1px solid var(--border)', borderRadius: 5, padding: '2px 6px', flexShrink: 0 }}>ESC</span>
             </div>
             <div ref={listRef} style={{ maxHeight: 330, overflowY: 'auto', padding: 6 }}>
