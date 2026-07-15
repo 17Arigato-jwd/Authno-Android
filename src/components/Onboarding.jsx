@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "6";
+const UPDATE_VERSION = "7";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -539,24 +539,19 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
 const UPDATE_NOTES = [
   {
-    icon: (p) => <DSIcons.Sparkle {...p} />,
-    title: "AuthNo moves now",
-    body: "Screens slide as you navigate, opening a book or chapter expands into place, lists cascade in, stats count up and buttons respond to your touch. Prefer calm? Turn it off under Settings → Appearance → Reduce animations (it also follows your device's accessibility setting).",
-  },
-  {
-    icon: (p) => <DSIcons.FileText {...p} />,
-    title: "Chapter synopses",
-    body: "Every chapter row now has an inline synopsis. Tap “Add synopsis”, jot down what happens, and it’s saved right in your book — a quick map of your story without opening each chapter.",
-  },
-  {
     icon: (p) => <DSIcons.Palette {...p} />,
-    title: "Backgrounds & app icons",
-    body: "The gradient background is bolder and now shows on the book screen too. On desktop, switching your app icon restarts AuthNo so the new icon appears everywhere — window and taskbar.",
+    title: "Material You",
+    body: "On Android 12+, AuthNo can follow your wallpaper: turn on Settings → Appearance → Material You colour and the app's accent matches your system palette — and updates when your wallpaper changes.",
   },
   {
-    icon: (p) => <DSIcons.Text {...p} />,
-    title: "A better mobile editor",
-    body: "Fonts and sizes now actually apply to your selection, the toolbar rests at the top until you start typing, and selecting text gives you a tag chip plus working copy/paste. Also fixed a cropped app icon and made deleting chapters easy to find.",
+    icon: (p) => <DSIcons.PanelLeft {...p} />,
+    title: "A real desktop app",
+    body: "On PC, AuthNo has a whole new layout: a writer's dashboard home with your library as a cover grid, a three-pane book studio (info · chapters · preview), a sidebar with expandable chapters, right-click menus, multi-select, and a Ctrl+K quick switcher.",
+  },
+  {
+    icon: (p) => <DSIcons.Sparkle {...p} />,
+    title: "Even more motion",
+    body: "Menus, sheets, popovers, the selection chip and these very pages now animate — fast and subtle. Prefer calm? Settings → Appearance → Reduce animations (it also follows your device's accessibility setting).",
   },
 ];
 

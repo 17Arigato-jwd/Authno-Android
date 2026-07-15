@@ -3,7 +3,51 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
-## Unreleased
+## 1.1.17-beta.4
+
+_QA round — this release also carries everything listed under 1.1.17-beta.3
+below, which was never published on its own._
+
+- **`.authbook` persistence is now covered by automated tests** — chapter
+  synopses, threads, streak history, notes, covers and extended metadata are
+  verified to round-trip byte-for-byte, including recovery from a corrupted
+  byte via the Reed–Solomon parity and loading of old single-chapter files.
+- **Material You reliability** — the wallpaper-colour refresh on app resume now
+  uses the proper Capacitor lifecycle event (the old hook never fired on most
+  devices; the colour only updated on a full restart).
+- **Smoother animations on long lists** — the cascade of list items is capped
+  at half a second total. Previously a 100-chapter book spent 3–4 seconds
+  fading its rows in, one by one.
+- **Lighter animations on Android** — chapter rows no longer run layout
+  animations on phones (a per-frame measurement cost on exactly the list that
+  gets long); entrances stay, using GPU-cheap transform/opacity only.
+
+## 1.1.17-beta.3
+
+_Desktop grows up: a PC-grade layout, plus Material You on Android._
+
+### New — desktop layout
+
+- **Writer's dashboard home** — a "Continue writing" hero, live stats
+  (books / chapters / words), a compact action row, and your library as a
+  cover grid with hover lift and right-click menus. No more phone list on a
+  24" monitor.
+- **Three-pane book studio** — Ulysses/Scrivener style: book info & actions on
+  the left, a dense searchable chapter list in the middle (Ctrl/Shift-click
+  multi-select with bulk delete, right-click menus, double-click to write),
+  and the selected chapter's synopsis + prose preview on the right.
+- **Full nav sidebar** — Home and Settings shortcuts at the top, and every book
+  can expand to show its chapters — click one to jump straight into the editor.
+- **Ctrl+K quick switcher** — jump to any book or chapter, or run actions
+  (new book, settings, home) from one palette.
+
+### New — Android
+
+- **Material You** (Android 12+) — turn it on under Settings → Appearance and
+  AuthNo's accent follows your wallpaper's system colour, updating when your
+  wallpaper changes. Shown only on devices that support dynamic colour.
+
+### Also in this release
 
 - **More motion** — the animations pass now also covers: the burger menu
   (bottom-sheet spring + backdrop fade on mobile, scale-fade dropdown on

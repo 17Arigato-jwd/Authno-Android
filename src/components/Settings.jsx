@@ -373,6 +373,18 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
     return subscribeThemes((all) => setThemes(all.slice()));
   }, []);
 
+  // Material You availability (Android 12+ only; the row is hidden elsewhere).
+  const [materialYouSupported, setMaterialYouSupported] = useState(false);
+  useEffect(() => {
+    if (!isAndroid()) return undefined;
+    let alive = true;
+    import('../utils/materialYou')
+      .then(({ getMaterialYouColors }) => getMaterialYouColors())
+      .then((c) => { if (alive) setMaterialYouSupported(!!c.supported); })
+      .catch(() => { /* plugin missing (old APK) — keep hidden */ });
+    return () => { alive = false; };
+  }, []);
+
   const handleInstallTheme = useCallback(async () => {
     try {
       const { pickAndInstallThemeFile } = await import('../utils/themePicker');
@@ -524,6 +536,17 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
       <SettingRow icon={DSIcons.Lightning} title="Reduce animations" description="Minimise transitions and motion effects across the app" accentHex={accentHex}>
         <Toggle on={settings.reduceMotion ?? false} onChange={(v) => onChange({ reduceMotion: v })} accentHex={accentHex} />
       </SettingRow>
+
+      {/* Material You (Android 12+ only — row hidden where dynamic colour
+          doesn't exist). System wallpaper accent overrides the custom accent. */}
+      {materialYouSupported && (
+        <>
+          <div style={{ height: 16 }} />
+          <SettingRow icon={DSIcons.Palette} title="Material You colour" description="Use your wallpaper's system colour as the app accent (Android 12+)" accentHex={accentHex}>
+            <Toggle on={settings.materialYou ?? false} onChange={(v) => onChange({ materialYou: v })} accentHex={accentHex} />
+          </SettingRow>
+        </>
+      )}
 
       <div style={{ height: 16 }} />
 
@@ -985,6 +1008,7 @@ export const DEFAULT_SETTINGS = {
   dailyWordGoal: 500,
   hapticsEnabled: true,
   reduceMotion: false,         // when true (or OS reduce-motion), animations are minimised
+  materialYou: false,          // Android 12+: use the wallpaper's system colour as accent
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges }) {

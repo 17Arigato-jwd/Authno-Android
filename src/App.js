@@ -33,6 +33,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MotionProvider, screenVariants, T } from "./utils/motion";
 import HomeScreen from "./components/HomeScreen";
 import BookDashboard from "./components/BookDashboard";
+// v1.1.17-beta.3 PC layout: desktop-grade screens (mobile keeps the ones above)
+import HomeDesktop from "./components/HomeDesktop";
+import BookStudio from "./components/BookStudio";
+import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import BillingPage from "./components/BillingPage";
@@ -494,10 +498,36 @@ function AppInner({ navigateRef }) {
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
 
+  // ── Material You (Android 12+) ────────────────────────────────────────────
+  // When the setting is on and the device supports dynamic colour, the system
+  // (wallpaper-derived) accent wins over the custom accent. Re-fetched on app
+  // resume so a wallpaper change lands without a restart.
+  const [systemAccent, setSystemAccent] = useState(null);
+  useEffect(() => {
+    if (!settings.materialYou || !android) { setSystemAccent(null); return undefined; }
+    let alive = true;
+    const fetchAccent = (fresh) => {
+      import('./utils/materialYou')
+        .then(({ getMaterialYouAccent }) => getMaterialYouAccent(fresh))
+        .then((hex) => { if (alive) setSystemAccent(hex); })
+        .catch(() => { if (alive) setSystemAccent(null); });
+    };
+    fetchAccent(false);
+    // Re-check on app resume via @capacitor/app — the document-level 'resume'
+    // event is a Cordova convention Capacitor doesn't reliably emit.
+    let sub = null;
+    import('@capacitor/app')
+      .then(({ App: CapApp }) => CapApp.addListener('resume', () => fetchAccent(true)))
+      .then((s) => { if (alive) sub = s; else s?.remove?.(); })
+      .catch(() => { /* plugin unavailable — startup fetch already ran */ });
+    return () => { alive = false; sub?.remove?.(); };
+  }, [settings.materialYou, android]);
+
   // Keep var(--accent) in sync with the user's chosen accent colour (see
   // ThemeBase.applyAccent). Without this, every var()-reading component showed
   // the theme's default accent while prop-reading ones showed the custom one.
-  useEffect(() => { applyAccent(customization.accentHex); }, [customization.accentHex]);
+  // Material You's system accent (when active) outranks the custom pick.
+  useEffect(() => { applyAccent(systemAccent ?? customization.accentHex); }, [customization.accentHex, systemAccent]);
 
   // Desktop shell: flag Electron so the custom title bar shows and the app-root
   // height accounts for it (see index.css .is-electron / TitleBar.jsx).
@@ -1106,6 +1136,28 @@ function AppInner({ navigateRef }) {
     setMenuOpen((v) => !v);
   };
 
+  // ── Desktop: open a specific chapter of a specific book directly ──────────
+  // Used by the sidebar chapter tree and the Ctrl+K quick switcher.
+  const openBookChapter = useCallback((bookId, chapIdx) => {
+    setCurrentId(bookId);
+    setCurrentChapterIdx(chapIdx);
+    setView("editor");
+  }, []);
+
+  // ── Ctrl+K quick switcher (desktop refinement) ─────────────────────────────
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  useEffect(() => {
+    if (android) return undefined;
+    const down = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSwitcherOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, [android]);
+
   // ── Screen-transition direction ───────────────────────────────────────────
   // Depth orders the main screens; moving deeper slides forward, shallower slides
   // back. Book/chapter open/close (transitions among home↔book↔editor) use the
@@ -1186,6 +1238,8 @@ function AppInner({ navigateRef }) {
         sessions={filtered} onNewBook={newBook} onNewStoryboard={newStoryboard}
         search={search} setSessions={setSessions} setSearch={setSearch}
         onSelect={handleSelect} currentId={currentId} setView={setView}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenChapter={openBookChapter}
         accentHex={customization.accentHex}
         isDrawerOpen={drawerOpen} onDrawerClose={() => setDrawerOpen(false)}
         session={current}
@@ -1208,6 +1262,7 @@ function AppInner({ navigateRef }) {
       {view === "extension-page" && extPageState ? (
         <ExtensionPage extension={extPageState.extension} pageId={extPageState.pageId} session={extPageState.session ?? editorCurrent ?? current} accentHex={customization.accentHex} onBack={() => { setView(extPageState._prevView ?? "home"); setExtPageState(null); }} />
       ) : view === "home" ? (
+        android ? (
         <HomeScreen
           sessions={sessions} accentHex={customization.accentHex}
           onNewBook={newBook} onSelect={handleSelect}
@@ -1230,7 +1285,31 @@ function AppInner({ navigateRef }) {
           })()}
           onResume={() => resumeWriting()}
         />
+        ) : (
+        <HomeDesktop
+          sessions={sessions} accentHex={customization.accentHex}
+          onNewBook={newBook} onSelect={handleSelect}
+          onDelete={(id) => {
+            const updated = sessions.filter((s) => s.id !== id);
+            setSessions(updated);
+            if (id === currentId) { setCurrentId(null); }
+            localStorage.setItem("offlineWriterSessions", JSON.stringify(updated));
+          }}
+          onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
+          onReadAloud={() => { if (current) setReadAloudSession(current); else toast('Open a book first to read it aloud', { variant: 'info' }); }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          resumeInfo={(() => {
+            const last = getLastResume();
+            const b = last && sessions.find((s) => s.id === last.bookId);
+            if (!b) return null;
+            const ch = (b.chapters || []).find((c) => c.chap_idx === last.chapIdx);
+            return { title: b.title || 'Untitled Book', chapter: ch?.title || null };
+          })()}
+          onResume={() => resumeWriting()}
+        />
+        )
       ) : view === "book-dashboard" ? (
+        android ? (
         <BookDashboard
           session={current} accentHex={customization.accentHex}
           onBack={() => setView("home")} onEditChapter={handleEditChapter}
@@ -1243,6 +1322,19 @@ function AppInner({ navigateRef }) {
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
         />
+        ) : (
+        <BookStudio
+          session={current} accentHex={customization.accentHex}
+          onBack={() => setView("home")} onEditChapter={handleEditChapter}
+          onNewChapter={handleNewChapter} onUpdateSession={handleUpdateSession}
+          onDeleteChapter={handleDeleteChapter} onMoveChapter={handleMoveChapter}
+          onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
+          onReadAloud={() => current && setReadAloudSession(current)}
+          onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
+          goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+        />
+        )
       ) : (
         <Editor
           current={editorCurrent} onEditTitle={handleEditTitle} onEditContent={handleEditContent}
@@ -1264,6 +1356,19 @@ function AppInner({ navigateRef }) {
       )}
       </motion.div>
       </AnimatePresence>
+
+      {/* Ctrl+K quick switcher (desktop) */}
+      {!android && (
+        <QuickSwitcher
+          open={switcherOpen} onClose={() => setSwitcherOpen(false)}
+          sessions={sessions} accentHex={customization.accentHex}
+          onOpenBook={(id) => handleSelect(id)}
+          onOpenChapter={openBookChapter}
+          onNewBook={newBook}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onGoHome={() => setView("home")}
+        />
+      )}
 
       <BurgerMenu
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
