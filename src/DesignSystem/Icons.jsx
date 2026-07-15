@@ -30,6 +30,7 @@ import {
   Strikethrough, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   ListOrdered, Indent, Outdent, RemoveFormatting, Baseline, Highlighter,
   Undo2, Redo2, Scissors, ClipboardPaste, TextSelect,
+  History as HistoryGlyph,
 } from 'lucide-react';
 
 // Uniform wrapper: preserves the legacy {size, color, style} contract and the
@@ -107,6 +108,7 @@ export const DSIcons = {
   SelectAll:     icon(TextSelect),
   Undo:          icon(Undo2),
   Redo:          icon(Redo2),
+  History:       icon(HistoryGlyph),
   // Status
   Info:          icon(Info),
   Warning:       icon(AlertTriangle),

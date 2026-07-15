@@ -25,6 +25,7 @@ import { isSpeechSupported } from '../utils/readAloud';
 import { V, staggerContainer, PRESS, HOVER_LIFT, useMotionEnabled } from '../utils/motion';
 import { CountUp } from './Motion';
 import ContextMenu from './ContextMenu';
+import { DeleteBookDialog } from './ConfirmDialog';
 import Logo from '../logo.svg';
 
 function words(html) {
@@ -46,6 +47,7 @@ export default function HomeDesktop({
   const motionOK = useMotionEnabled();
   const importInputRef = useRef(null);
   const [ctx, setCtx] = useState(null); // { x, y, book }
+  const [deleteBook, setDeleteBook] = useState(null); // book pending the remove dialog (v1.1.18)
 
   const stats = useMemo(() => {
     let chapters = 0, totalWords = 0;
@@ -184,7 +186,7 @@ export default function HomeDesktop({
         </div>
 
         {/* Action row */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div data-tour="new-book" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {actionBtn(<DSIcons.FilePlus size={14} color="#fff" />, 'New book', onNewBook, true)}
           {actionBtn(<DSIcons.FolderOpen size={14} />, 'Open…', openExisting)}
           {actionBtn(<DSIcons.Download size={14} />, 'Import a book', () => importInputRef.current?.click())}
@@ -193,7 +195,7 @@ export default function HomeDesktop({
         </div>
 
         {/* Library grid */}
-        <div>
+        <div data-tour="library">
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '6px 2px 10px' }}>
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text-1)' }}>Library</h2>
             <span style={{ fontSize: 12, color: 'var(--text-5)' }}>{recent.length} {recent.length === 1 ? 'book' : 'books'}</span>
@@ -247,8 +249,18 @@ export default function HomeDesktop({
         onClose={() => setCtx(null)}
         items={ctx && [
           { label: 'Open', icon: <DSIcons.BookOpen size={14} />, onClick: () => onSelect(ctx.book.id) },
-          onDelete && { label: 'Remove from list', icon: <DSIcons.Trash size={14} />, danger: true, onClick: () => onDelete(ctx.book.id) },
+          onDelete && { label: 'Remove…', icon: <DSIcons.Trash size={14} />, danger: true, onClick: () => setDeleteBook(ctx.book) },
         ]}
+      />
+
+      {/* Remove/perma-delete confirmation (v1.1.18 — replaces the instant,
+          promptless "Remove from list") */}
+      <DeleteBookDialog
+        open={!!deleteBook}
+        book={deleteBook}
+        accentHex={accentHex}
+        onCancel={() => setDeleteBook(null)}
+        onConfirm={({ deleteFile }) => { onDelete?.(deleteBook.id, { deleteFile }); setDeleteBook(null); }}
       />
     </div>
   );

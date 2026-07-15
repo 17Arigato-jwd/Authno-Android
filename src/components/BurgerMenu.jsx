@@ -38,6 +38,7 @@ export default function BurgerMenu({
   onChapterInfo,          // present only when a chapter is open
   onExport,               // { txt, html, epub, pdf }
   onReadAloud,
+  onHistory,              // change-history panel (v1.1.18)
 }) {
   const { showError } = useError();
   const [status, setStatus] = useState("idle");
@@ -225,6 +226,22 @@ export default function BurgerMenu({
       {item({ icon: <DSIcons.Archive size={15} />, disabled: busy || !current, onClick: handleSaveAs, children: "Save As…" })}
       <Divider style={{ margin: "2px 0" }} />
       {item({ icon: <DSIcons.Edit size={15} />, disabled: !current, onClick: () => { setRenameVal(current?.title ?? ""); setRenaming(true); }, children: "Rename…" })}
+      {onHistory && (
+        <>
+          <Divider style={{ margin: "2px 0" }} />
+          {item({ icon: <DSIcons.History size={15} />, disabled: !current, onClick: () => { onClose?.(); onHistory(); }, children: (
+            <>
+              History
+              {/* Docs-style faded shortcut hint (keyboards only exist on desktop) */}
+              {!android && (
+                <span style={{ opacity: 0.45, fontSize: 11, fontWeight: 500, marginLeft: 8, letterSpacing: 0.4 }}>
+                  Ctrl+Shift+Z
+                </span>
+              )}
+            </>
+          ) })}
+        </>
+      )}
       {onChapterInfo && (
         <>
           <Divider style={{ margin: "2px 0" }} />

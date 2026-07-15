@@ -146,7 +146,7 @@ export function EmptyState({ icon, iconBg, accentHex, title, description, action
  *   attribution   ATTRIBUTION-shaped array
  *   accentHex     string
  */
-export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accentHex, onSeeChanges, style = {} }) {
+export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accentHex, onSeeChanges, onStartTour, style = {} }) {
   const accent = accentHex ?? COLORS.violet;
 
   return (
@@ -193,6 +193,23 @@ export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accen
                 <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
               </svg>
               See changes
+            </button>
+          )}
+          {onStartTour && (
+            <button
+              type="button"
+              onClick={onStartTour}
+              title="Replay the guided tour of the app"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
+                background: 'transparent', border: `1px solid ${accent}33`, borderRadius: RADIUS.full,
+                color: accent, cursor: 'pointer', fontFamily: TYPOGRAPHY.sans, fontSize: TYPOGRAPHY.size.sm, fontWeight: 600,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              Guided tour
             </button>
           )}
         </div>

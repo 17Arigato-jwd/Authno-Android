@@ -547,6 +547,10 @@ export function sessionToBook(session) {
         // inside META: JSON, RS-parity-protected, ignored by older readers, and
         // bookToSession's `...book.meta` spread restores it on load for free.
         threads:     session.threads     || null,
+        // Change history (undo/redo panel): the book keeps the 10 most recent
+        // entries; the in-memory session may hold up to 50 while writing.
+        // Omitted entirely when there's no history (old files stay byte-clean).
+        ...(session.history?.length ? { history: session.history.slice(0, 10) } : {}),
       },
       chapters,
       streak:  session.streak || {},

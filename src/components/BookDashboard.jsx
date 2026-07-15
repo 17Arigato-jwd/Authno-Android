@@ -614,7 +614,7 @@ export default function BookDashboard({
           )}
 
           {/* ── Info card ── */}
-          <div style={card}>
+          <div data-tour="book-meta" style={card}>
 
             {/* Title */}
             <h1 style={{ margin: '0 0 12px', fontSize: '22px', fontWeight: 800, color: 'var(--text-1)', letterSpacing: '-0.3px', lineHeight: 1.2 }}>
@@ -777,7 +777,7 @@ export default function BookDashboard({
                 <DSIcons.Edit size={15} />
                 First Chapter
               </button>
-              <button onClick={onNewChapter} style={{ ...ghostBtn, flex: 1 }}>
+              <button data-tour="add-chapter" onClick={onNewChapter} style={{ ...ghostBtn, flex: 1 }}>
                 <DSIcons.Edit size={15} />
                 New Chapter [{nextChapNum}]
               </button>
@@ -785,7 +785,7 @@ export default function BookDashboard({
           </div>
 
           {/* ── Chapter List ── */}
-          <div style={{ paddingBottom: '0' }}>
+          <div data-tour="chapters" style={{ paddingBottom: '0' }}>
 
             {/* Extension tab bar — only shown when extensions contribute tabs */}
             {extTabs.length > 0 && (

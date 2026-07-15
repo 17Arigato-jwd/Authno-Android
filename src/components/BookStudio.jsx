@@ -23,6 +23,7 @@ import { FlameButton } from './Streak';
 import { ExportPanel, MetadataPanel, CoverPicker, wordCount, formatWords } from './BookDashboard';
 import { CountUp } from './Motion';
 import ContextMenu from './ContextMenu';
+import { ConfirmDialog } from './ConfirmDialog';
 import { htmlToText } from '../utils/editorFormat';
 import { isSpeechSupported } from '../utils/readAloud';
 import { V, T, staggerContainer, PRESS, useMotionEnabled } from '../utils/motion';
@@ -102,13 +103,27 @@ export default function BookStudio({
     setSynopsisDraft(null);
   };
 
+  // v1.1.18: chapter deletes confirm through the shared styled dialog instead
+  // of window.confirm. `confirmDel` = { idxs: [chap_idx…], label } or null.
+  const [confirmDel, setConfirmDel] = useState(null);
+
   const bulkDelete = () => {
     const count = multiSel.size;
     if (!count) return;
-    if (!window.confirm(`Delete ${count} chapter${count > 1 ? 's' : ''}? This can't be undone.`)) return;
-    for (const idx of multiSel) onDeleteChapter?.(idx);
+    setConfirmDel({
+      idxs: [...multiSel],
+      label: count === 1
+        ? `"${(session?.chapters || []).find((c) => c.chap_idx === [...multiSel][0])?.title ?? 'this chapter'}"`
+        : `${count} chapters`,
+    });
+  };
+
+  const runConfirmedDelete = () => {
+    if (!confirmDel) return;
+    for (const idx of confirmDel.idxs) onDeleteChapter?.(idx);
     setMultiSel(new Set());
-    if (multiSel.has(selectedIdx)) setSelectedIdx(null);
+    if (confirmDel.idxs.includes(selectedIdx)) setSelectedIdx(null);
+    setConfirmDel(null);
   };
 
   const commitSynopsis = () => {
@@ -174,7 +189,7 @@ export default function BookStudio({
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
 
         {/* ── Pane 1: book info ─────────────────────────────────────────── */}
-        <div style={{ width: 248, flexShrink: 0, borderRight: paneBorder, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div data-tour="book-meta" style={{ width: 248, flexShrink: 0, borderRight: paneBorder, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {session?.coverBase64 ? (
             <img src={`data:${session.coverMime || 'image/jpeg'};base64,${session.coverBase64}`} alt="cover"
               style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border-sm)' }} />
@@ -207,7 +222,7 @@ export default function BookStudio({
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 'auto' }}>
+          <div data-tour="add-chapter" style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 'auto' }}>
             {smallBtn('New chapter', <DSIcons.Plus size={13} color="#fff" />, onNewChapter, true)}
             {smallBtn('Edit metadata', <DSIcons.Edit size={13} />, () => setShowMetadata(true))}
             {smallBtn('Export…', <DSIcons.Upload size={13} />, () => setShowExport(true))}
@@ -216,7 +231,7 @@ export default function BookStudio({
         </div>
 
         {/* ── Pane 2: chapter list ──────────────────────────────────────── */}
-        <div style={{ width: 292, flexShrink: 0, borderRight: paneBorder, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div data-tour="chapters" style={{ width: 292, flexShrink: 0, borderRight: paneBorder, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '10px 10px 8px', borderBottom: '1px solid var(--border-sm)', display: 'flex', gap: 6, alignItems: 'center' }}>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 9px' }}>
               <DSIcons.Search size={13} style={{ color: 'var(--text-5)', flexShrink: 0 }} />
@@ -361,8 +376,20 @@ export default function BookStudio({
           { label: 'Open in editor', icon: <DSIcons.Edit size={14} />, onClick: () => onEditChapter(ctx.chap.chap_idx) },
           { label: 'Move up', icon: <DSIcons.ChevronUp size={14} />, disabled: ctx.pos === 0, onClick: () => onMoveChapter?.(ctx.chap.chap_idx, sortOrder === 'newest' ? 1 : -1) },
           { label: 'Move down', icon: <DSIcons.ChevronDown size={14} />, disabled: ctx.pos === visible.length - 1, onClick: () => onMoveChapter?.(ctx.chap.chap_idx, sortOrder === 'newest' ? -1 : 1) },
-          (session?.chapters || []).length > 1 && { label: 'Delete chapter', icon: <DSIcons.Trash size={14} />, danger: true, onClick: () => { if (window.confirm(`Delete "${ctx.chap.title}"?`)) onDeleteChapter?.(ctx.chap.chap_idx); } },
+          (session?.chapters || []).length > 1 && { label: 'Delete chapter', icon: <DSIcons.Trash size={14} />, danger: true, onClick: () => setConfirmDel({ idxs: [ctx.chap.chap_idx], label: `"${ctx.chap.title}"` }) },
         ]}
+      />
+
+      {/* Chapter delete confirmation (v1.1.18 — replaces window.confirm) */}
+      <ConfirmDialog
+        open={!!confirmDel}
+        title={`Delete ${confirmDel?.label ?? ''}?`}
+        body={<>Deleted chapters are kept in the History panel <span style={{ opacity: 0.55, fontSize: 11.5, letterSpacing: 0.4 }}>Ctrl+Shift+Z</span> — you can bring the text back from there if you change your mind.</>}
+        confirmLabel="Delete"
+        danger
+        accentHex={accentHex}
+        onCancel={() => setConfirmDel(null)}
+        onConfirm={runConfirmedDelete}
       />
     </div>
   );

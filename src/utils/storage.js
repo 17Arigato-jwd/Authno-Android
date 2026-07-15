@@ -227,6 +227,32 @@ export async function deleteAutosave(session) {
   }
 }
 
+/**
+ * Permanently delete a book's on-disk copies (v1.1.18 — the "also delete the
+ * file" checkbox in the remove-book dialog). Removes:
+ *   Android — the SAF document (if user-placed) AND any app-folder autosave.
+ *   Desktop — the .authbook file at session.filePath via the main process.
+ * Throws when a user-placed file exists but could not be deleted.
+ */
+export async function deleteBookFiles(session) {
+  if (!session) return;
+  if (isAndroid()) {
+    if (session.filePath?.startsWith('content://')) {
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
+      await plugin.deleteDocument({ uri: session.filePath });
+    }
+    // Autosave copies are best-effort — they may already be gone.
+    await deleteAutosave(session).catch(() => {});
+    return;
+  }
+  if (isElectron() && session.filePath) {
+    if (!window.electron?.deleteBookFile) throw new Error('Delete is not available in this build');
+    const res = await window.electron.deleteBookFile(session.filePath);
+    if (!res?.success) throw new Error(res?.error || 'Could not delete the file');
+  }
+}
+
 // ─── Core file I/O ────────────────────────────────────────────────────────────
 
 export async function saveBook(session) {

@@ -25,6 +25,9 @@ import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/Th
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
 import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
+import { recordEdit, recordOp, restorePatch } from "./utils/history";
+import HistoryPanel from "./components/HistoryPanel";
+import GuidedTour from "./components/GuidedTour";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -80,6 +83,7 @@ function Editor({
   fullSession, onUpdateSession, onOpenChapter,
   customFonts,
   resumePoint, onResumeConsumed,
+  syncNonce, onOpenHistory,
 }) {
   const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
@@ -172,6 +176,49 @@ function Editor({
     editorRef.current?.focus();
     document.execCommand(cmd, false, val);
   };
+
+  // ── Debounced content flush (typing performance, v1.1.18) ─────────────────
+  // Every keystroke used to push the full innerHTML through setSessions,
+  // re-rendering the whole app tree per key. The contentEditable is
+  // uncontrolled, so keystrokes can safely stay in the DOM; state now flushes
+  // after a 400ms pause — or immediately on blur / chapter switch / unmount.
+  // The flush TARGET (book + chapter) is captured at input time so a late
+  // flush can never land in the wrong chapter after navigation.
+  const pendingEdit = useRef(null);
+  const flushTimer = useRef(null);
+  const onEditContentRef = useRef(onEditContent);
+  useEffect(() => { onEditContentRef.current = onEditContent; });
+  const flushPendingEdit = useCallback(() => {
+    clearTimeout(flushTimer.current);
+    const p = pendingEdit.current;
+    if (!p) return;
+    pendingEdit.current = null;
+    onEditContentRef.current(p.html, { bookId: p.bookId, chapIdx: p.chapIdx });
+  }, []);
+  const dropPendingEdit = useCallback(() => {
+    pendingEdit.current = null;
+    clearTimeout(flushTimer.current);
+  }, []);
+  const queueEditContent = (html) => {
+    pendingEdit.current = { html, bookId: current?.id, chapIdx: current?._editingChap ?? 1 };
+    clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(flushPendingEdit, 400);
+  };
+  // Flush before the editor moves to another book/chapter, and on unmount.
+  useEffect(() => () => flushPendingEdit(), [current?.id, current?._editingChap, flushPendingEdit]);
+
+  // A history restore replaced the chapter content in state while this
+  // chapter is open: overwrite the DOM (and discard any stale pending flush
+  // that would immediately undo the restore).
+  useEffect(() => {
+    if (!syncNonce) return;
+    dropPendingEdit();
+    if (editorRef.current && current?.content !== undefined) {
+      const next = current.content || "";
+      if (editorRef.current.innerHTML !== next) editorRef.current.innerHTML = next;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncNonce]);
 
   // ── Resume Writing: record where the user is ─────────────────────────────
   // Caret + scroll are saved (debounced) so the widget button, launcher
@@ -267,9 +314,22 @@ function Editor({
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+          <span data-tour="streak" style={{ display: "inline-flex" }}>
+            <FlameButton current={current} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+          </span>
+          {current && !android && onOpenHistory && (
+            <button
+              onClick={() => { flushPendingEdit(); onOpenHistory(); }}
+              title="History — recent changes (Ctrl+Shift+Z)"
+              aria-label="History"
+              style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", transition: "all 0.15s", color: "var(--text-1)", display: "flex", alignItems: "center" }}
+            >
+              <DSIcons.History size={20} color="currentColor" />
+            </button>
+          )}
           {current && (
             <button
+              data-tour="threads"
               onClick={() => setThreadsOpen((v) => !v)}
               title="Threads — plotlines & character arcs"
               aria-label="Threads"
@@ -280,6 +340,7 @@ function Editor({
           )}
           <button
             ref={burgerBtnRef}
+            data-tour="menu"
             onClick={onToggleMenu}
             style={{ padding: 8, border: "1px solid var(--border)", borderRadius: 6, background: "none", cursor: "pointer", transition: "background 0.15s", color: "var(--text-1)" }}
           >
@@ -348,6 +409,7 @@ function Editor({
             <EditorToolbar execCommand={execCommand} accentHex={accentHex} session={current} editorRef={editorRef} customFonts={customFonts} />
             <div
               ref={editorRef}
+              data-tour="editor"
               contentEditable
               suppressContentEditableWarning
               style={{
@@ -358,7 +420,8 @@ function Editor({
                 marginTop: android ? "0.25rem" : "5rem",
                 WebkitUserSelect: "text", userSelect: "text",
               }}
-              onInput={(e) => onEditContent(e.currentTarget.innerHTML)}
+              onInput={(e) => queueEditContent(e.currentTarget.innerHTML)}
+              onBlur={flushPendingEdit}
               onPaste={(e) => {
                 // F4: strip foreign fonts/colors/scripts from web pastes while
                 // keeping bold/italic/lists/paragraph structure. Routed through
@@ -369,7 +432,9 @@ function Editor({
                 e.preventDefault();
                 if (html) document.execCommand("insertHTML", false, sanitizePastedHtml(html));
                 else document.execCommand("insertText", false, text);
-                onEditContent(e.currentTarget.innerHTML);
+                // A paste is a discrete change — flush it right away.
+                queueEditContent(e.currentTarget.innerHTML);
+                flushPendingEdit();
               }}
             />
           </>
@@ -387,7 +452,12 @@ function Editor({
         editorRef={editorRef}
         data={threadsData}
         onChangeData={handleChangeThreads}
-        onEditContent={onEditContent}
+        onEditContent={(html) => {
+          // Anchor markup just changed the DOM directly — the layer's html is
+          // newer than any pending keystroke flush, so replace it and commit.
+          dropPendingEdit();
+          onEditContent(html, { bookId: current?.id, chapIdx: current?._editingChap ?? 1 });
+        }}
         onOpenThread={(id) => openThread(id)}
         accentHex={accentHex}
       />
@@ -487,6 +557,9 @@ function AppInner({ navigateRef }) {
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [fontCustomizerOpen, setFontCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
+  const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
+  const [tourActive, setTourActive] = useState(false);             // guided tour (v1.1.18)
   const [readAloudSession, setReadAloudSession] = useState(null);
   const [chapterInfoOpen, setChapterInfoOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
@@ -603,6 +676,7 @@ function AppInner({ navigateRef }) {
     let listener;
     CapApp.addListener('backButton', () => {
       if (menuOpen)       { setMenuOpen(false);        return; }
+      if (historyOpen)    { setHistoryOpen(false);     return; }
       if (drawerOpen)     { setDrawerOpen(false);      return; }
       if (settingsOpen)   { setSettingsOpen(false);    return; }
       if (customizerOpen) { setCustomizerOpen(false);  return; }
@@ -612,7 +686,7 @@ function AppInner({ navigateRef }) {
       CapApp.minimizeApp();
     }).then(h => { listener = h; });
     return () => { listener?.remove(); };
-  }, [android, menuOpen, drawerOpen, settingsOpen, customizerOpen, view]);
+  }, [android, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view]);
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -705,7 +779,12 @@ function AppInner({ navigateRef }) {
   // fields from the mirror and fail soft.
   useEffect(() => {
     if (sessions.length === 0) return;
-    const slimForMirror = sessions.map(({ coverBase64, ...rest }) => rest);
+    // History snapshots are also slimmed to the book-persisted 10 — the full
+    // 50-entry session history only ever lives in memory.
+    const slimForMirror = sessions.map(({ coverBase64, history, ...rest }) => ({
+      ...rest,
+      ...(history?.length ? { history: history.slice(0, 10) } : {}),
+    }));
     try {
       localStorage.setItem("offlineWriterSessions", JSON.stringify(slimForMirror));
     } catch (e) {
@@ -1023,7 +1102,10 @@ function AppInner({ navigateRef }) {
     const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.order))    : 0;
     const newIdx   = maxIdx + 1;
     const newChap  = { chap_idx: newIdx, title: `Chapter ${newIdx}`, order: maxOrder + 1, content: '', created: now, updated: now };
-    setSessions(prev => prev.map(s => s.id !== currentId ? s : { ...s, chapters: [...(s.chapters || []), newChap], updated: now }));
+    setSessions(prev => prev.map(s => s.id !== currentId ? s : {
+      ...s, chapters: [...(s.chapters || []), newChap], updated: now,
+      history: recordOp(s.history, { kind: 'add-chapter', chapIdx: newIdx, chapTitle: newChap.title, content: '' }),
+    }));
     setCurrentChapterIdx(newIdx); setView('editor');
   }, [currentId, sessions]);
   const handleUpdateSession = useCallback((updates) => {
@@ -1033,12 +1115,19 @@ function AppInner({ navigateRef }) {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
       if ((s.chapters || []).length <= 1) return s;
+      const dead = (s.chapters || []).find(c => c.chap_idx === chapIdx);
       const chapters = (s.chapters || []).filter(c => c.chap_idx !== chapIdx);
       // Keep the content/preview mirror honest: it tracks the first chapter,
       // so deleting that chapter must re-mirror from the new first one —
       // otherwise the home screen kept previewing deleted text.
       const first = [...chapters].sort((a, b) => a.order - b.order)[0];
-      return { ...s, chapters, content: first?.content ?? '', preview: previewOf(first?.content ?? ''), updated: new Date().toISOString() };
+      // History keeps the deleted chapter's text — the panel can bring it back.
+      const history = dead ? recordOp(s.history, {
+        kind: 'delete-chapter', chapIdx, chapTitle: dead.title,
+        content: dead.content ?? '', order: dead.order,
+        ...(dead.synopsis ? { synopsis: dead.synopsis } : {}),
+      }) : s.history;
+      return { ...s, chapters, content: first?.content ?? '', preview: previewOf(first?.content ?? ''), updated: new Date().toISOString(), history };
     }));
     // Deleting the chapter that's open left currentChapterIdx dangling — the
     // editor then silently fell back to the chapter-1 mirror while the header
@@ -1063,28 +1152,71 @@ function AppInner({ navigateRef }) {
         if (c.chap_idx === sorted[swapPos].chap_idx) return { ...c, order: ordA };
         return c;
       });
-      return { ...s, chapters, updated: new Date().toISOString() };
+      const history = recordOp(s.history, { kind: 'move-chapter', chapIdx, chapTitle: sorted[pos].title, order: ordB });
+      return { ...s, chapters, updated: new Date().toISOString(), history };
     }));
   }, [currentId]);
-  const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId ? { ...x, title: t } : x));
-  const handleEditContent = (c) => setSessions((s) => s.map((x) => {
-    if (x.id !== currentId) return x;
-    const chapIdx = currentChapterIdx || 1;
-    const now = new Date().toISOString();
-    const chapters = (x.chapters || []).map((ch) => ch.chap_idx === chapIdx ? { ...ch, content: c, updated: now } : ch);
-    // Mirror the FIRST chapter by order, not chap_idx 1 — after chapter 1 is
-    // deleted, no chap_idx 1 exists and the home-screen preview froze forever.
-    const firstIdx = [...chapters].sort((a, b) => a.order - b.order)[0]?.chap_idx ?? 1;
-    const isFirst = chapIdx === firstIdx;
-    return { ...x, chapters, content: isFirst ? c : x.content, preview: isFirst ? previewOf(c) : x.preview, updated: now };
-  }));
+  const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId
+    ? { ...x, title: t, history: recordOp(x.history, { kind: 'rename-book', chapTitle: t }) }
+    : x));
+  // `target` is the { bookId, chapIdx } captured by the Editor at input time —
+  // the debounced flush may arrive after navigation, and must still land in
+  // the chapter the user actually typed in.
+  const handleEditContent = useCallback((c, target) => {
+    const bookId = target?.bookId ?? currentId;
+    const targetChap = target?.chapIdx ?? currentChapterIdx ?? 1;
+    setSessions((s) => s.map((x) => {
+      if (x.id !== bookId) return x;
+      const now = new Date().toISOString();
+      let before = null, chapTitle = null;
+      const chapters = (x.chapters || []).map((ch) => {
+        if (ch.chap_idx !== targetChap) return ch;
+        before = ch.content ?? '';
+        chapTitle = ch.title;
+        return { ...ch, content: c, updated: now };
+      });
+      // Mirror the FIRST chapter by order, not chap_idx 1 — after chapter 1 is
+      // deleted, no chap_idx 1 exists and the home-screen preview froze forever.
+      const firstIdx = [...chapters].sort((a, b) => a.order - b.order)[0]?.chap_idx ?? 1;
+      const isFirst = targetChap === firstIdx;
+      // Change history (undo/redo panel): coalesces typing bursts per chapter.
+      const history = (before === null || before === c)
+        ? x.history
+        : recordEdit(x.history, { chapIdx: targetChap, chapTitle, beforeContent: before, afterContent: c });
+      return { ...x, chapters, content: isFirst ? c : x.content, preview: isFirst ? previewOf(c) : x.preview, updated: now, history };
+    }));
+  }, [currentId, currentChapterIdx]);
   const handleEditChapterTitle = useCallback((t) => {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
       const chapters = (s.chapters || []).map((ch) => ch.chap_idx === currentChapterIdx ? { ...ch, title: t } : ch);
-      return { ...s, chapters };
+      return { ...s, chapters, history: recordOp(s.history, { kind: 'rename-chapter', chapIdx: currentChapterIdx, chapTitle: t }) };
     }));
   }, [currentId, currentChapterIdx]);
+
+  // ── Remove a book (v1.1.18) ───────────────────────────────────────────────
+  // The styled confirmation lives with the callers (Sidebar / HomeDesktop
+  // render DeleteBookDialog); this does the actual removal and — when the
+  // user ticked the checkbox — deletes the on-disk copies too.
+  const handleDeleteBook = useCallback((id, { deleteFile = false } = {}) => {
+    const book = sessions.find((s) => s.id === id);
+    const updated = sessions.filter((s) => s.id !== id);
+    setSessions(updated);
+    if (id === currentId) { setCurrentId(null); setView("home"); }
+    // The mirror effect skips empty arrays (it can't tell "deleted the last
+    // book" from "not loaded yet"), so removals write the mirror directly.
+    try {
+      localStorage.setItem("offlineWriterSessions", JSON.stringify(updated.map(({ coverBase64, ...rest }) => rest)));
+    } catch { /* quota — the effect's slim path will retry on next change */ }
+    if (deleteFile && book) {
+      import('./utils/storage')
+        .then(({ deleteBookFiles }) => deleteBookFiles(book))
+        .then(() => toast("Book deleted from this device", { variant: "success" }))
+        .catch((e) => showError("deleteBookFile", e, { sessionTitle: book?.title }));
+    } else if (book) {
+      toast("Removed from AuthNo", { variant: "info" });
+    }
+  }, [sessions, currentId, showError]);
 
   const filtered = sessions.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
   const current  = sessions.find((s) => s.id === currentId) || null;
@@ -1149,7 +1281,7 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     if (android) return undefined;
     const down = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      if ((e.ctrlKey || e.metaKey) && e.key?.toLowerCase?.() === "k") {
         e.preventDefault();
         setSwitcherOpen((v) => !v);
       }
@@ -1157,6 +1289,60 @@ function AppInner({ navigateRef }) {
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, [android]);
+
+  // ── Change history panel (undo/redo, v1.1.18) ──────────────────────────────
+  // Ctrl+Shift+Z / Ctrl+Shift+Y toggle a Docs-style version-history panel of
+  // the open book's recent changes; clicking an entry restores that state.
+  // Plain Ctrl+Z / Ctrl+Y keep their native in-editor behaviour.
+  useEffect(() => {
+    const down = (e) => {
+      const k = e.key?.toLowerCase?.();
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === "z" || k === "y")) {
+        e.preventDefault();
+        if (currentId) setHistoryOpen((v) => !v);
+        else toast("Open a book to see its change history", { variant: "info" });
+      }
+    };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, [currentId]);
+
+  // ── Guided tour (v1.1.18) ──────────────────────────────────────────────────
+  // The tour drives the real screens; this navigates between them per step,
+  // creating a first book on the fly when the library is empty so the
+  // book/editor steps always have something real to point at.
+  const handleTourNavigate = useCallback((dest) => {
+    if (dest === "home") { setView("home"); return; }
+    let book = sessions.find((s) => s.id === currentId) ?? sessions[0];
+    if (!book) {
+      const id = Date.now().toString(), now = new Date().toISOString();
+      const firstChap = { chap_idx: 1, title: "Chapter 1", order: 1, content: "", created: now, updated: now };
+      book = { id, title: "My First Book", preview: "", content: "", type: "book", created: now, updated: now, chapters: [firstChap], authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "" };
+      setSessions((prev) => [book, ...prev]);
+    }
+    setCurrentId(book.id);
+    if (dest === "book") {
+      setCurrentChapterIdx(null);
+      setView("book-dashboard");
+    } else {
+      const first = [...(book.chapters || [])].sort((a, b) => a.order - b.order)[0];
+      setCurrentChapterIdx(first?.chap_idx ?? 1);
+      setView("editor");
+    }
+  }, [sessions, currentId]);
+
+  const handleRestoreHistory = useCallback((entryId) => {
+    const cur = sessions.find((s) => s.id === currentId);
+    if (!cur) return;
+    const res = restorePatch(cur, entryId, previewOf);
+    if (!res) { toast("You're already at that version", { variant: "info" }); return; }
+    setSessions((prev) => prev.map((s) => (s.id === currentId ? { ...s, ...res.patch, updated: new Date().toISOString() } : s)));
+    // Force the open contentEditable to re-sync (it never re-reads innerHTML
+    // on content-only changes — see the Editor sync effect).
+    setEditorSyncNonce((n) => n + 1);
+    hapticSelect();
+    toast(res.label, { variant: "success" });
+  }, [sessions, currentId]);
 
   // ── Screen-transition direction ───────────────────────────────────────────
   // Depth orders the main screens; moving deeper slides forward, shallower slides
@@ -1191,7 +1377,13 @@ function AppInner({ navigateRef }) {
           onClose={() => setReadAloudSession(null)}
         />
       )}
-      {showOnboarding && <Onboarding accentHex={customization.accentHex} onDone={() => setShowOnboarding(false)} />}
+      {showOnboarding && (
+        <Onboarding
+          accentHex={customization.accentHex}
+          onDone={() => setShowOnboarding(false)}
+          onStartTour={() => { setShowOnboarding(false); setTourActive(true); }}
+        />
+      )}
       {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
 
       {brokenFiles.length > 0 && (
@@ -1243,12 +1435,7 @@ function AppInner({ navigateRef }) {
         accentHex={customization.accentHex}
         isDrawerOpen={drawerOpen} onDrawerClose={() => setDrawerOpen(false)}
         session={current}
-        onDelete={(id) => {
-          const updated = sessions.filter((s) => s.id !== id);
-          setSessions(updated);
-          if (id === currentId) { setCurrentId(null); setView("home"); }
-          localStorage.setItem("offlineWriterSessions", JSON.stringify(updated));
-        }}
+        onDelete={handleDeleteBook}
       />
 
       <AnimatePresence mode="wait" custom={screenDir} initial={false}>
@@ -1289,12 +1476,7 @@ function AppInner({ navigateRef }) {
         <HomeDesktop
           sessions={sessions} accentHex={customization.accentHex}
           onNewBook={newBook} onSelect={handleSelect}
-          onDelete={(id) => {
-            const updated = sessions.filter((s) => s.id !== id);
-            setSessions(updated);
-            if (id === currentId) { setCurrentId(null); }
-            localStorage.setItem("offlineWriterSessions", JSON.stringify(updated));
-          }}
+          onDelete={handleDeleteBook}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           onReadAloud={() => { if (current) setReadAloudSession(current); else toast('Open a book first to read it aloud', { variant: 'info' }); }}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -1352,6 +1534,7 @@ function AppInner({ navigateRef }) {
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
           resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
+          syncNonce={editorSyncNonce} onOpenHistory={() => setHistoryOpen(true)}
         />
       )}
       </motion.div>
@@ -1370,6 +1553,21 @@ function AppInner({ navigateRef }) {
         />
       )}
 
+      {/* Guided tour — spotlight walkthrough of the real screens (v1.1.18) */}
+      <GuidedTour
+        active={tourActive} android={android}
+        accentHex={customization.accentHex}
+        onNavigate={handleTourNavigate}
+        onDone={() => setTourActive(false)}
+      />
+
+      {/* Change history — Docs-style version panel (desktop side panel / mobile sheet) */}
+      <HistoryPanel
+        open={historyOpen} onClose={() => setHistoryOpen(false)}
+        session={current} accentHex={customization.accentHex}
+        onRestore={handleRestoreHistory}
+      />
+
       <BurgerMenu
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
         setSessions={setSessions}
@@ -1377,6 +1575,7 @@ function AppInner({ navigateRef }) {
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
         context={view === "home" ? "home" : "book"}
+        onHistory={current ? () => { setMenuOpen(false); setHistoryOpen(true); } : null}
         onRename={(t) => handleUpdateSession({ title: t })}
         onChapterInfo={current ? () => setChapterInfoOpen(true) : null}
         onExport={{ txt: handleExportTxt, html: handleExportHtml, epub: handleExportEpub, pdf: handleExportPdf }}
@@ -1409,6 +1608,7 @@ function AppInner({ navigateRef }) {
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
         sessions={sessions} onSessionChange={handleSessionChange}
         onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
+        onStartTour={() => { setSettingsOpen(false); setTourActive(true); }}
       />
 
       <CustomizationSlider

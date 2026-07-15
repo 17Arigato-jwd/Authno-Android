@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "7";
+const UPDATE_VERSION = "8";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -253,7 +253,7 @@ const ONB_THEME_CSS = `
 .onb .border-white\\/15 { border-color: var(--border); }
 `;
 
-export function Onboarding({ accentHex = "#5a00d9", onDone }) {
+export function Onboarding({ accentHex = "#5a00d9", onDone, onStartTour }) {
   const [page, setPage] = useState(0);
   const contentRef = useRef(null);
 
@@ -478,6 +478,21 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
                     Grant All Files Access
                   </button>
                 )}
+                {current.last && onStartTour && (
+                  <button
+                    onClick={async () => {
+                      // Finishing via the tour still counts as having seen the
+                      // welcome — it must not replay on the next launch.
+                      await markOnboardingDone().catch(() => {});
+                      onStartTour();
+                    }}
+                    className="mt-1 flex items-center justify-center gap-2 rounded-2xl border border-white/15 px-4 py-3 text-sm font-semibold text-white transition active:scale-95"
+                    style={{ background: `${accentHex}2e`, borderColor: `${accentHex}66` }}
+                  >
+                    <DSIcons.Rocket size={15} color={accentHex} />
+                    Take the guided tour (1 min)
+                  </button>
+                )}
               </div>
               </motion.div>
               </AnimatePresence>
@@ -539,19 +554,24 @@ export function Onboarding({ accentHex = "#5a00d9", onDone }) {
 
 const UPDATE_NOTES = [
   {
-    icon: (p) => <DSIcons.Palette {...p} />,
-    title: "Material You",
-    body: "On Android 12+, AuthNo can follow your wallpaper: turn on Settings → Appearance → Material You colour and the app's accent matches your system palette — and updates when your wallpaper changes.",
+    icon: (p) => <DSIcons.History {...p} />,
+    title: "Change history",
+    body: "Press Ctrl+Shift+Z (or menu → History) to see your book's recent changes — typing bursts, renames, added and deleted chapters — and click any of them to go back. The last 10 changes are saved inside the book itself; a writing session keeps up to 50.",
   },
   {
-    icon: (p) => <DSIcons.PanelLeft {...p} />,
-    title: "A real desktop app",
-    body: "On PC, AuthNo has a whole new layout: a writer's dashboard home with your library as a cover grid, a three-pane book studio (info · chapters · preview), a sidebar with expandable chapters, right-click menus, multi-select, and a Ctrl+K quick switcher.",
+    icon: (p) => <DSIcons.Lightning {...p} />,
+    title: "Faster typing",
+    body: "Keystrokes no longer redraw the whole app — the editor now batches changes quietly in the background. Long chapters feel noticeably snappier, especially on phones.",
   },
   {
-    icon: (p) => <DSIcons.Sparkle {...p} />,
-    title: "Even more motion",
-    body: "Menus, sheets, popovers, the selection chip and these very pages now animate — fast and subtle. Prefer calm? Settings → Appearance → Reduce animations (it also follows your device's accessibility setting).",
+    icon: (p) => <DSIcons.Trash {...p} />,
+    title: "Safer deletes",
+    body: "Deleting a chapter asks first — and the text stays recoverable from History. Removing a book now clearly separates \"remove from AuthNo\" from \"permanently delete the file\", with a checkbox for the latter.",
+  },
+  {
+    icon: (p) => <DSIcons.Rocket {...p} />,
+    title: "A proper guided tour",
+    body: "New here, or curious what you've missed? Settings → About → Guided tour walks you through the real app: creating a book, chapters, writing, threads, streaks, saving and exporting.",
   },
 ];
 

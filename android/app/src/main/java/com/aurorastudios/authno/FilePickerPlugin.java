@@ -237,6 +237,28 @@ public class FilePickerPlugin extends Plugin {
         } catch (Exception e) { call.reject("Write failed: " + e.getMessage()); }
     }
 
+    // ── Permanently delete a SAF document ─────────────────────────────────
+    // Backs the "also permanently delete the file from this device" checkbox
+    // in the remove-book dialog (v1.1.18). Resolves { success: true } when
+    // the document was deleted, or rejects with the provider's reason.
+
+    @PluginMethod
+    public void deleteDocument(PluginCall call) {
+        String uriStr = call.getString("uri");
+        if (uriStr == null) { call.reject("uri required"); return; }
+        try {
+            Uri uri = Uri.parse(uriStr);
+            boolean ok = android.provider.DocumentsContract.deleteDocument(
+                    getContext().getContentResolver(), uri);
+            if (!ok) throw new Exception("Provider refused to delete the document");
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Delete failed: " + e.getMessage());
+        }
+    }
+
     // ── Check if URI is still accessible ──────────────────────────────────
 
     @PluginMethod

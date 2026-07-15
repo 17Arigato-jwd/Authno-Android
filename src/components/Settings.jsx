@@ -752,7 +752,7 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
   const { isPro } = useEntitlement();
   return (
     <div>
@@ -790,7 +790,7 @@ function AboutPanel({ accentHex, onSeeChanges }) {
         </button>
       </div>
 
-      <AboutSection accentHex={accentHex} onSeeChanges={onSeeChanges} />
+      <AboutSection accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />
     </div>
   );
 }
@@ -1011,7 +1011,7 @@ export const DEFAULT_SETTINGS = {
   materialYou: false,          // Android 12+: use the wallpaper's system colour as accent
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('profile');
   const isPortrait = useIsPortrait();
@@ -1114,7 +1114,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
@@ -1158,7 +1158,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
               {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
               {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
               {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} />}
+              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
               {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
               {allNavItems.filter(i => i._extItem).map(item => (
                 activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />

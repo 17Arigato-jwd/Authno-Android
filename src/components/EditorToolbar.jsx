@@ -519,7 +519,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
     return (
       <>
       {extras}
-      <div style={{ ...dockedSurface, ...posStyle }}>
+      <div data-tour="toolbar" style={{ ...dockedSurface, ...posStyle }}>
         <div className="toolbar-scroll" onPointerDownCapture={captureEditorRange} style={{
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '6px 10px', overflowX: 'auto',
@@ -543,7 +543,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
     {/* sticky top:8 keeps the pill docked right under the chapter switcher as
         the manuscript scrolls; z-index sits below the selection menu, which is
         positioned to never overlap the pill (see ThreadLayer PILL_ZONE). */}
-    <div style={{
+    <div data-tour="toolbar" style={{
       position: 'sticky', top: 8, zIndex: 20,
       margin: '0 auto', maxWidth: '100%', width: 'fit-content',
       borderRadius: 24, overflow: 'hidden',
