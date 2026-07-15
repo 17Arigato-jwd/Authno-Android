@@ -3,6 +3,70 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.0
+
+_The safety-net release: change history, safer deletes, faster typing, and a
+real guided tour._
+
+### New — Change history (undo/redo panel)
+
+- **Ctrl+Shift+Z / Ctrl+Shift+Y** opens a Docs-style history panel of the open
+  book's recent changes — typing bursts (grouped like an editing session),
+  chapter adds/deletes/renames/moves, and restores. **Click any entry to go
+  back to that state**; restores are recorded too, so browsing versions is
+  never destructive. Plain Ctrl+Z/Ctrl+Y still undo/redo inside the editor as
+  before.
+- **Persistence exactly as designed**: the last **10** changes are saved inside
+  the `.authbook` (riding the same RS-parity-protected META as Threads) and
+  load back with the book; a writing session keeps up to **50** in memory.
+- **Other ways in**: a History button in the editor header (desktop), and a
+  menu entry with the shortcut shown next to it, faded, Google-Docs style. On
+  Android it's a bottom sheet with its own menu entry and back-button support.
+- **Deleted chapters are recoverable** — deleting a chapter records its full
+  text in history, and clicking that entry brings the chapter back (under a
+  fresh number if the old one was reused — it will never overwrite a newer
+  chapter).
+
+### New — Delete confirmations
+
+- **Deleting a chapter asks first** everywhere (the desktop studio's bulk
+  delete and right-click delete now use a proper themed dialog instead of the
+  browser popup; the mobile rows keep their inline confirm).
+- **Removing a book got its own dialog**: it explains the file stays on disk,
+  with a checkbox to **"Also permanently delete the file from this device"** —
+  the button turns into *Delete forever* when ticked. Works on desktop
+  (deletes the `.authbook`) and Android (deletes the SAF document and any
+  app-folder autosave). Never-saved desktop drafts say clearly that removing
+  them is permanent. The old "don't ask again" bypass is gone — book removal
+  always asks now.
+
+### Improved — Typing performance
+
+- **Keystrokes no longer re-render the whole app.** The editor keeps input in
+  the page and flushes to app state after a 400 ms pause (or instantly on
+  blur/navigation), with the flush target captured at input time so a late
+  flush can never land in the wrong chapter. Sidebar, previews, word counts
+  and autosave all now update per pause instead of per key — long chapters on
+  phones feel dramatically lighter.
+
+### New — Guided tour
+
+- **A real tutorial**, not just welcome slides: a spotlight walks through the
+  actual app — creating a book, chapters, synopsis, cover & details, writing,
+  formatting, Threads, streaks, and save/export — highlighting the real
+  buttons on your screen, on both the phone and desktop layouts.
+- Offered at the end of the welcome tour (**"Take the guided tour"**),
+  replayable any time from **Settings → About → Guided tour**, skippable at
+  every step, keyboard-navigable, and it creates your first book for you if
+  the library is empty.
+
+### Fixes
+
+- Restoring an "Added chapter" history entry can no longer blank out a chapter
+  that has been written into since.
+- The Ctrl+K handler no longer assumes `e.key` exists (rare crash with IME /
+  autofill synthetic key events).
+
 ## 1.1.17-beta.4
 
 _QA round — this release also carries everything listed under 1.1.17-beta.3

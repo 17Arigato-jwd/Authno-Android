@@ -456,7 +456,7 @@ export default function HomeScreen({
         )}
 
         {/* Actions card */}
-        <div style={{ ...theme.glassCard, padding: '20px' }}>
+        <div data-tour="new-book" style={{ ...theme.glassCard, padding: '20px' }}>
           <h2 style={{
             margin: '0 0 18px 0', fontSize: '20px', fontWeight: 800,
             color: 'var(--text-1)', letterSpacing: '-0.3px',
@@ -477,7 +477,7 @@ export default function HomeScreen({
         </div>
 
         {/* Tab card — minHeight keeps at least 2 book cards visible in landscape */}
-        <div style={{ ...theme.glassCard, padding: '0', overflow: 'hidden', flex: 1, minHeight: '250px' }}>
+        <div data-tour="library" style={{ ...theme.glassCard, padding: '0', overflow: 'hidden', flex: 1, minHeight: '250px' }}>
 
           {/* Tab bar */}
           <div style={{

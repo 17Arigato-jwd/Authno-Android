@@ -132,6 +132,28 @@ test('a flipped byte in the big chapter payload is recovered (RS parity)', async
   expect(restored.chapters[1].synopsis).toBe('Every written word ages the writer by a minute.');
 });
 
+test('change history persists: last 10 entries ride in the book, order kept', async () => {
+  const session = makeSession();
+  // 14 session entries, newest first — only the newest 10 should be saved.
+  session.history = Array.from({ length: 14 }, (_, i) => ({
+    id: `h${i}`, ts: 1_700_000_000_000 - i * 60_000, kind: 'edit',
+    chapIdx: 1, chapTitle: 'Discovery',
+    content: `<p>Draft ${14 - i}</p>`, words: 2, prevWords: 1,
+  }));
+
+  const { restored } = await roundTrip(session);
+
+  expect(restored.history).toHaveLength(10);
+  expect(restored.history.map((e) => e.id)).toEqual(session.history.slice(0, 10).map((e) => e.id));
+  expect(restored.history[0].content).toBe('<p>Draft 14</p>');
+  expect(restored.history[0].kind).toBe('edit');
+
+  // Books that never had a history load without one (no [] noise on old files).
+  const plain = makeSession();
+  const { restored: r2 } = await roundTrip(plain);
+  expect(r2.history).toBeUndefined();
+});
+
 test('a legacy flat session (no chapters array) still packs and loads', async () => {
   const legacy = {
     id: 'legacy-1', title: 'Old Book',

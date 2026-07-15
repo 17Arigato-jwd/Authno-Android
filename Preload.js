@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('electron', {
   saveBookBytes:   (data) => ipcRenderer.invoke('save-book-bytes',    data),
   saveAsBytesBook: (data) => ipcRenderer.invoke('save-as-bytes-book', data),
   openBookBytes:   ()     => ipcRenderer.invoke('open-book-bytes'),
+  // Permanently delete a book file (remove-book dialog's checkbox, v1.1.18)
+  deleteBookFile:  (filePath) => ipcRenderer.invoke('delete-book-file', filePath),
 
   // ── Legacy text-based operations (kept for backward compatibility) ─────────
   openBook:   ()     => ipcRenderer.invoke('open-book'),

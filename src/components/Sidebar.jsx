@@ -14,6 +14,7 @@ import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
 import ExtensionTab from "./ExtensionTab";
 import { hapticDelete } from "../utils/haptics";
+import { DeleteBookDialog } from "./ConfirmDialog";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
 import {
@@ -133,39 +134,18 @@ export default function Sidebar({
     longPressCleanup.current?.();
   };
 
-  // ── Delete with confirmation modal ───────────────────────────────────────
-  // 4H: previously a raw document.createElement + innerHTML dialog injected
-  // outside React — unthemed, unclosable via Escape/backdrop, and duplicated
-  // styling. Now a normal React modal driven by state (rendered below).
+  // ── Delete with confirmation dialog ──────────────────────────────────────
+  // v1.1.18: the shared DeleteBookDialog replaces the inline modal AND the old
+  // "skipDeleteWarning" bypass — removing a book always asks now, because the
+  // dialog also owns the "permanently delete the file" choice.
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [skipCheck, setSkipCheck] = useState(false);
 
   const handleDelete = (directId) => {
     const sessionId = directId ?? contextMenu?.sessionId;
     if (!sessionId) return;
-    if (localStorage.getItem("skipDeleteWarning") === "true") {
-      onDelete?.(sessionId);
-      setContextMenu(null);
-      return;
-    }
-    setSkipCheck(false);
     setDeleteTarget(sessionId);
     setContextMenu(null);
   };
-
-  const confirmDelete = () => {
-    if (skipCheck) { try { localStorage.setItem("skipDeleteWarning", "true"); } catch { /* ignore */ } }
-    onDelete?.(deleteTarget);
-    setDeleteTarget(null);
-  };
-
-  // Escape closes the delete modal (previously impossible).
-  useEffect(() => {
-    if (!deleteTarget) return;
-    const onKey = (e) => { if (e.key === 'Escape') setDeleteTarget(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [deleteTarget]);
 
   // ── Drag-drop (desktop only) ──────────────────────────────────────────────
   const onDragStart = (e, i) => { dragState.current.from = i; e.dataTransfer.effectAllowed = "move"; };
@@ -668,44 +648,18 @@ export default function Sidebar({
         }
       `}</style>
 
-      {/* ── DELETE CONFIRMATION (React, themed — replaces the old raw-DOM dialog, 4H) ── */}
-      {deleteTarget && createPortal(
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'var(--scrim-strong)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-          onClick={() => setDeleteTarget(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'var(--modal-bg)', color: 'var(--text-1)',
-              border: '1px solid var(--border)', borderRadius: 16,
-              padding: 24, width: 360, maxWidth: '90vw',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 10px' }}>Delete from Workspace?</h2>
-            <p style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6, margin: '0 0 18px' }}>
-              This removes the session from your workspace.<br />
-              {android ? 'Your writing data will be deleted.' : <>The actual <b>.authbook</b> file will remain on your computer.</>}
-            </p>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, cursor: 'pointer', fontSize: 13, color: 'var(--text-3)' }}>
-              <input type="checkbox" checked={skipCheck} onChange={(e) => setSkipCheck(e.target.checked)} style={{ width: 15, height: 15, accentColor: accentHex }} />
-              Don't show this again
-            </label>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setDeleteTarget(null)}
-                style={{ padding: '7px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13, color: 'var(--text-2)' }}>
-                Cancel
-              </button>
-              <button onClick={confirmDelete}
-                style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* ── DELETE CONFIRMATION — shared remove/perma-delete dialog (v1.1.18) ── */}
+      <DeleteBookDialog
+        open={!!deleteTarget}
+        book={sessions.find((s) => s.id === deleteTarget) ?? (session?.id === deleteTarget ? session : null)}
+        accentHex={accentHex}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={({ deleteFile }) => {
+          hapticDelete();
+          onDelete?.(deleteTarget, { deleteFile });
+          setDeleteTarget(null);
+        }}
+      />
     </aside>
   );
 }

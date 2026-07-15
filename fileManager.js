@@ -56,6 +56,22 @@ function registerHandlers() {
     return { success: true, filePath };
   });
 
+  // ── Permanently delete a book file (v1.1.18 remove-book dialog) ───────────
+  // Only .authbook files are deletable over this channel — the renderer never
+  // needs to remove anything else, so anything else is rejected outright.
+  ipcMain.handle('delete-book-file', async (_event, filePath) => {
+    try {
+      if (!filePath || typeof filePath !== 'string') throw new Error('No file path provided');
+      if (path.extname(filePath).toLowerCase() !== '.authbook') throw new Error('Not an .authbook file');
+      if (!fs.existsSync(filePath)) return { success: true, missing: true }; // already gone
+      fs.unlinkSync(filePath);
+      return { success: true };
+    } catch (err) {
+      console.error('❌ delete-book-file failed:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
   // ── Open dialog ────────────────────────────────────────────────────────────
   ipcMain.handle('open-book-bytes', async () => {
     const { filePaths, canceled } = await dialog.showOpenDialog({
