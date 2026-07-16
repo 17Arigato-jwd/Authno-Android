@@ -20,7 +20,7 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DSIcons } from '../DesignSystem';
 import { FlameButton } from './Streak';
-import { ExportPanel, MetadataPanel, CoverPicker, wordCount, formatWords } from './BookDashboard';
+import { ExportPanel, MetadataPanel, CoverPicker, chapterWords, formatWords } from './BookDashboard';
 import { CountUp } from './Motion';
 import ContextMenu from './ContextMenu';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -73,7 +73,7 @@ export default function BookStudio({
   }, [chapters, search]);
 
   const totalWords = useMemo(
-    () => (session?.chapters || []).reduce((n, c) => n + wordCount(c.content), 0),
+    () => (session?.chapters || []).reduce((n, c) => n + chapterWords(c), 0),
     [session?.chapters]
   );
 
@@ -304,7 +304,7 @@ export default function BookStudio({
                     <span style={{ fontSize: 10.5, color: 'var(--text-5)', flexShrink: 0 }}>{timeAgo(chap.updated || chap.created)}</span>
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text-5)', marginTop: 2 }}>
-                    {formatWords(wordCount(chap.content))} words{chap.synopsis ? ' · synopsis' : ''}
+                    {formatWords(chapterWords(chap))} words{chap.synopsis ? ' · synopsis' : ''}
                   </div>
                 </motion.div>
               );
@@ -328,7 +328,7 @@ export default function BookStudio({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h1 style={{ margin: 0, fontSize: 21, fontWeight: 800, color: 'var(--text-1)', lineHeight: 1.25 }}>{selected.title || 'Untitled'}</h1>
                     <div style={{ fontSize: 12, color: 'var(--text-5)', marginTop: 6 }}>
-                      {formatWords(wordCount(selected.content))} words · updated {timeAgo(selected.updated || selected.created)}
+                      {formatWords(chapterWords(selected))} words · updated {timeAgo(selected.updated || selected.created)}
                     </div>
                   </div>
                   {onChapterInfo && (
@@ -382,8 +382,11 @@ export default function BookStudio({
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-4)', marginBottom: 8 }}>Details</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
                     {[
-                      ['Words', formatWords(wordCount(selected.content))],
-                      ['Position', `${visible.findIndex((c) => c.chap_idx === selected.chap_idx) + 1} of ${(session?.chapters || []).length}`],
+                      ['Words', formatWords(chapterWords(selected))],
+                      // Position = place in the STORY, not in the filtered/sorted
+                      // list — searching used to make this read "1 of 12" for
+                      // whatever happened to match first.
+                      ['Position', `${[...(session?.chapters || [])].sort((a, b) => a.order - b.order).findIndex((c) => c.chap_idx === selected.chap_idx) + 1} of ${(session?.chapters || []).length}`],
                       ['Created', selected.created ? new Date(selected.created).toLocaleDateString() : '—'],
                       ['Updated', selected.updated ? new Date(selected.updated).toLocaleDateString() : '—'],
                     ].map(([label, value]) => (

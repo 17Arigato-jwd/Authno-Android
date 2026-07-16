@@ -481,6 +481,9 @@ export async function unpackSession(bytes) {
     content:  sections['CHAP']?.[ch.chap_idx] ?? '',
     created:  ch.created  || new Date().toISOString(),
     updated:  ch.updated  || new Date().toISOString(),
+    // The manifest's stored word_count seeds the in-app cache so stats never
+    // re-parse chapter HTML on load (beta.2 perf).
+    ...(typeof ch.word_count === 'number' ? { word_count: ch.word_count } : {}),
     ...(ch.synopsis ? { synopsis: ch.synopsis } : {}),
   })).sort((a, b) => a.order - b.order);
 
@@ -522,6 +525,7 @@ export function bookToSession(book) {
  * Otherwise create a single-chapter book from `session.content`.
  */
 export function sessionToBook(session) {
+  const _persistable = persistableHistory(session.history);
   if (session.chapters?.length) {
     // Already has chapter structure — sync chapter 1 content from session.content
     const chapters = session.chapters.map((c, i) =>
@@ -552,7 +556,7 @@ export function sessionToBook(session) {
         // entries; the in-memory session may hold up to 50 while writing.
         // Working-state fields (baseline snapshots, provisional accumulators)
         // are stripped; omitted entirely when empty so old files stay byte-clean.
-        ...(persistableHistory(session.history).length ? { history: persistableHistory(session.history) } : {}),
+        ...(_persistable.length ? { history: _persistable } : {}),
       },
       chapters,
       streak:  session.streak || {},
@@ -587,7 +591,10 @@ export function bytesToBase64(bytes) {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function _wordCount(html) {
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  // Must match utils/history.js wordCountOf — the manifest's stored count now
+  // seeds the app's word_count cache on load (beta.2), so a divergent rule
+  // here would make totals jump after the first edit.
+  const text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
   return text ? text.split(' ').length : 0;
 }
 

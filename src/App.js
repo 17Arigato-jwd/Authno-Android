@@ -25,7 +25,7 @@ import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/Th
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
 import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
-import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory } from "./utils/history";
+import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
 import GuidedTour from "./components/GuidedTour";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
@@ -1229,7 +1229,8 @@ function AppInner({ navigateRef }) {
         if (ch.chap_idx !== targetChap) return ch;
         before = ch.content ?? '';
         chapTitle = ch.title;
-        return { ...ch, content: c, updated: now };
+        // word_count kept fresh per flush so stats/streak never re-parse HTML.
+        return { ...ch, content: c, updated: now, word_count: wordCountOf(c) };
       });
       // Mirror the FIRST chapter by order, not chap_idx 1 — after chapter 1 is
       // deleted, no chap_idx 1 exists and the home-screen preview froze forever.
@@ -1430,6 +1431,10 @@ function AppInner({ navigateRef }) {
       else if (k === "n" && e.shiftKey) { e.preventDefault(); if (currentId) handleNewChapter(); }
       else if (k === "o" && !e.shiftKey && !e.altKey) { e.preventDefault(); handleOpenExisting(); }
       else if (k === "i" && e.altKey) {
+        // AltGr registers as Ctrl+Alt on Windows — writers on layouts where
+        // AltGr+I types a letter (í on Hungarian/Slovak) must not get the
+        // info modal mid-word. Real Ctrl+Alt has no AltGraph modifier state.
+        if (e.getModifierState?.("AltGraph")) return;
         e.preventDefault();
         if (view === "editor" && currentChapterIdx != null) { setChapterInfoIdx(null); setChapterInfoOpen(true); }
       }

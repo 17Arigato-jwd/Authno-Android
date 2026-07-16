@@ -78,6 +78,17 @@ export function wordCount(html) {
   return t ? t.split(' ').length : 0;
 }
 
+/**
+ * Word count for a chapter, preferring the cached `word_count` (maintained on
+ * every edit in App.handleEditContent and loaded from the .authbook manifest)
+ * over re-parsing the HTML. The parse fallback covers chapters that predate
+ * the cache (old mirrors, imports) until their first edit. (beta.2 perf —
+ * stats used to re-strip every chapter's HTML on every render.)
+ */
+export function chapterWords(c) {
+  return typeof c?.word_count === 'number' ? c.word_count : wordCount(c?.content);
+}
+
 export function formatWords(n) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000)    return `${(n / 1000).toFixed(1)}K`;
@@ -427,7 +438,7 @@ export default function BookDashboard({
   );
 
   const totalWords = useMemo(() =>
-    chapters.reduce((n, c) => n + wordCount(c.content), 0),
+    chapters.reduce((n, c) => n + chapterWords(c), 0),
     [chapters]
   );
 

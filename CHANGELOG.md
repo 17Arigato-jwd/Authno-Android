@@ -3,6 +3,47 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.2
+
+_Bug-hunt and optimization round on beta.1._
+
+### Performance
+
+- **Word counts stopped re-parsing HTML.** Every chapter now carries a cached
+  `word_count` — maintained on each edit, loaded from the `.authbook`
+  manifest, and refreshed by History restores/reverts. The streak flame
+  (which recounted the whole book on every editor flush), the desktop home
+  stats, the book studio's chapter rows and totals, and the dashboard totals
+  all read the cache and only fall back to parsing for chapters that predate
+  it.
+- **The history engine parses each chapter state once, not four times.**
+  Paragraph splitting is now memoized (small LRU) — during a typing burst the
+  baseline and previous-state splits are cache hits, cutting the per-flush
+  diff cost to roughly a quarter.
+
+### Fixes
+
+- **History: leftover invisible accumulators are cleaned up.** Sub-threshold
+  edit accumulators for a chapter used to linger hidden in the history array
+  forever once a new entry started; they're now purged (their content lives
+  on as the new entry's baseline).
+- **History: blank paragraphs no longer count as changes.** Empty `<p>`s from
+  pressing Enter showed up as empty preview lines and padded "N paragraphs
+  changed" summaries.
+- **History: repeated reverts are safe.** Reverting the same change twice
+  could operate on a shared cached block array; reverts now work on copies.
+- **Word-count rules unified.** The manifest counter, the streak counter and
+  the app counter each treated `&nbsp;` slightly differently, so totals could
+  jump by a few words after a chapter's first edit once the cache kicked in.
+  One rule everywhere now.
+- **Book studio: "Position" is the chapter's place in the story**, not its
+  place in whatever the search box happened to match ("1 of 12" while
+  filtering).
+- **Ctrl+Alt+I no longer fires on AltGr layouts.** On Windows, AltGr registers
+  as Ctrl+Alt — typing í on Hungarian/Slovak keyboards popped the chapter-info
+  modal mid-word. Real Ctrl+Alt is distinguished via the AltGraph modifier
+  state.
+
 ## 1.1.18-beta.1
 
 _The QA round on beta.0, shaped by the author's feedback — history that shows

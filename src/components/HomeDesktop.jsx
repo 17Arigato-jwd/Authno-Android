@@ -54,7 +54,10 @@ export default function HomeDesktop({
     for (const s of sessions) {
       const chs = s.chapters || [];
       chapters += chs.length;
-      for (const c of chs) totalWords += words(c.content);
+      // Cached word_count when available (maintained on edit / loaded from the
+      // manifest) — re-stripping every chapter's HTML here scaled with library
+      // size on every sessions change.
+      for (const c of chs) totalWords += (typeof c.word_count === 'number' ? c.word_count : words(c.content));
     }
     return { books: sessions.length, chapters, totalWords };
   }, [sessions]);
