@@ -1,12 +1,12 @@
 /**
  * Step2GuidedTour.jsx — Interactive spotlight tour over a mock app.
  *
- * Mimics GuidedTour.jsx but with a mock app interface showing the Good Knight
+ * Mimics GuidedTour.jsx but with a mock app interface showing The Good Knight
  * demo book. User learns core workflows: viewing books, opening chapters, writing.
  *
  * 10 tour steps:
  * 0. Welcome to your library
- * 1. Your demo book "Good Knight"
+ * 1. Your demo book "The Good Knight"
  * 2. Tap to view chapters
  * 3. Each chapter can be read or edited
  * 4. Open a chapter to start writing
@@ -18,18 +18,18 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { GradientButton, COLORS } from '../../DesignSystem';
+import { COLORS } from '../../../DesignSystem';
 
 const TOUR_STEPS = [
   {
     target: 'home-screen',
     title: 'Your Library',
-    body: 'This is where all your books live. The demo book "Good Knight" is ready for you to explore.',
+    body: 'This is where all your books live. The demo book "The Good Knight" is ready for you to explore.',
   },
   {
     target: 'demo-book',
-    title: 'Good Knight',
-    body: 'A 3-chapter story to explore. Tap it to see the chapters inside.',
+    title: 'The Good Knight',
+    body: 'A short story to explore. Tap it to see what\'s inside.',
   },
   {
     target: 'chapters-list',
@@ -76,7 +76,6 @@ const TOUR_STEPS = [
 export function Step2GuidedTour({ onNext, onSkip }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [screen, setScreen] = useState('home'); // 'home', 'book-detail', 'editor'
-  const [targetElement, setTargetElement] = useState(null);
   const elementRefs = useRef({});
 
   const step = TOUR_STEPS[currentStep];
@@ -171,8 +170,8 @@ function HomeScreen({ elementRefs }) {
         onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
       >
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Good Knight</h2>
-        <p style={{ fontSize: 13, opacity: 0.9 }}>A tale of courage and honor</p>
+        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>The Good Knight</h2>
+        <p style={{ fontSize: 13, opacity: 0.9 }}>The tale of a knight and his princess</p>
       </div>
 
       {/* New Book Tile */}
@@ -232,8 +231,8 @@ function BookDetailScreen({ elementRefs }) {
             marginBottom: 20,
           }}
         >
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Good Knight</h1>
-          <p style={{ fontSize: 13, opacity: 0.9 }}>A tale of courage and honor</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>The Good Knight</h1>
+          <p style={{ fontSize: 13, opacity: 0.9 }}>The tale of a knight and his princess</p>
         </div>
       </div>
 
@@ -242,7 +241,7 @@ function BookDetailScreen({ elementRefs }) {
         <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 12 }}>
           Chapters
         </h2>
-        {['Chapter 1: The Call to Adventure', 'Chapter 2: Into the Wilderness', 'Chapter 3: The First Trial'].map(
+        {['Chapter 1'].map(
           (title, i) => (
             <div
               key={i}
@@ -267,7 +266,7 @@ function BookDetailScreen({ elementRefs }) {
             >
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-1)' }}>{title}</div>
               <div style={{ fontSize: 12, color: COLORS.textSubtle, marginTop: 4 }}>
-                1,200 words
+                ~900 words
               </div>
             </div>
           )
@@ -312,7 +311,7 @@ function EditorScreen({ elementRefs }) {
           ← Back
         </button>
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>
-          Chapter 1: The Call to Adventure
+          Chapter 1
         </div>
         <div
           ref={(el) => { if (el) elementRefs.current['auto-save-indicator'] = el; }}
@@ -354,9 +353,9 @@ function EditorScreen({ elementRefs }) {
           fontFamily: 'Georgia, serif',
         }}
       >
-        The morning sun cast long shadows across the stone courtyard as Sir Aldric received the
-        summons. The scroll bore the royal seal—urgent and unmistakable. He had spent years
-        training for this moment, though he never imagined it would come like this.
+        “Ah… finally. We’re HERE!” “Calm down Joseph, how long did it take, about 2 days?” said
+        Catrina, clearly exhausted from the long carriage ride. Eclas suddenly shouted, “Hey
+        guards, you need to pay more attention, we’re supposed to reach fort Bayzid quietly.”
       </div>
     </div>
   );

@@ -16,7 +16,7 @@
  * - Demo book filtered out when funnel complete or skipped
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Step0Welcome } from './steps/Step0Welcome';
 import { Step1AboutYou } from './steps/Step1AboutYou';
 import { Step2GuidedTour } from './steps/Step2GuidedTour';
@@ -38,16 +38,17 @@ export function OnboardingFunnel({
   const [profile, setProfileState] = useState(getProfile());
   const [personalization, setPersonalization] = useState({});
 
-  // Add demo book on mount
+  // Add demo book on mount, remove on unmount. Callbacks go through refs so
+  // the effect runs exactly once even when App passes fresh inline closures
+  // on every render (deps on the props would re-add the book each render).
+  const addRef = useRef(onDemoBookAdd);
+  const removeRef = useRef(onDemoBookRemove);
+  addRef.current = onDemoBookAdd;
+  removeRef.current = onDemoBookRemove;
   useEffect(() => {
-    const demoBook = createDemoBook();
-    onDemoBookAdd?.(demoBook);
-
-    return () => {
-      // Clean up demo book on unmount (either complete or skip)
-      onDemoBookRemove?.();
-    };
-  }, [onDemoBookAdd, onDemoBookRemove]);
+    addRef.current?.(createDemoBook());
+    return () => { removeRef.current?.(); };
+  }, []);
 
   const handleStepUpdate = (updates) => {
     const updated = setProfile(updates);
@@ -81,10 +82,15 @@ export function OnboardingFunnel({
   };
 
   const handleSkip = () => {
-    // Remove demo book
+    // Skipping still finishes onboarding — otherwise the funnel would
+    // reappear on every launch. The trial starts either way so gating
+    // stays consistent with the Day 1/5/7 timeline.
+    setProfile({
+      onboardingCompleted: true,
+      onboardingCompletedAt: new Date().toISOString(),
+    });
+    startTrialMock();
     onDemoBookRemove?.();
-
-    // Skip to home without trial
     onComplete?.();
   };
 

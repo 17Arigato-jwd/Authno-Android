@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { GradientButton, COLORS } from '../../DesignSystem';
+import { GradientButton, COLORS } from '../../../DesignSystem';
 
 export function Step4CreatorsNote({ onComplete }) {
   return (

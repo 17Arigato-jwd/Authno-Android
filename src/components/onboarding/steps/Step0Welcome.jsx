@@ -5,7 +5,7 @@
  * No input, just navigation to next step.
  */
 
-import { GradientButton, COLORS } from '../../DesignSystem';
+import { GradientButton, COLORS } from '../../../DesignSystem';
 
 export function Step0Welcome({ onNext, onSkip }) {
   return (

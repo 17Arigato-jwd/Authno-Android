@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { GradientButton, COLORS } from '../../DesignSystem';
+import { GradientButton, COLORS } from '../../../DesignSystem';
 
 const WRITING_TYPES = [
   { id: 'novel', label: 'A novel', icon: '📖' },

@@ -45,7 +45,7 @@ import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import BillingPage from "./components/BillingPage";
 import { subscribeBilling, openBilling } from "./utils/billingBus";
-import { Onboarding, hasSeenOnboarding, UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
+import { UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
 import { OnboardingFunnel } from "./components/onboarding/OnboardingFunnel";
 import { getProfile } from "./utils/profile";
 import { ExtensionProvider } from "./utils/ExtensionContext";
@@ -589,7 +589,6 @@ function AppInner({ navigateRef }) {
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [demoBook, setDemoBook] = useState(null); // demo book for onboarding funnel
   const [resumePointState, setResumePointState] = useState(null); // pending Resume Writing target
   const [sharedImport, setSharedImport] = useState(null);         // text shared from another app
   const [showUpdateOnboarding, setShowUpdateOnboarding] = useState(false);
@@ -767,7 +766,9 @@ function AppInner({ navigateRef }) {
 
     const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
-    if (saved) { try { const p = JSON.parse(saved); if (Array.isArray(p)) { setSessions(p); if (savedId) setCurrentId(savedId); } } catch { /* corrupt store — start clean */ } }
+    // Strip any persisted onboarding demo book — the funnel re-creates its
+    // own copy when it runs, and a finished funnel should leave none behind.
+    if (saved) { try { const p = JSON.parse(saved); if (Array.isArray(p)) { setSessions(p.filter(s => !s?._demo)); if (savedId) setCurrentId(savedId); } } catch { /* corrupt store — start clean */ } }
     // Honour the "Restore previously open books" setting (Settings → Startup).
     // Previously this ran unconditionally, so turning the toggle off did nothing.
     if (window.electron && (settings.restoreOpenBooks ?? true)) {
@@ -1532,13 +1533,12 @@ function AppInner({ navigateRef }) {
             openBilling();
           }}
           onDemoBookAdd={(book) => {
-            setDemoBook(book);
-            setSessions(prev => [book, ...prev]);
+            // Dedupe on the _demo flag — a stale demo book can survive in
+            // localStorage if the app was killed mid-funnel.
+            setSessions(prev => [book, ...prev.filter(s => !s?._demo)]);
           }}
           onDemoBookRemove={() => {
-            if (demoBook) {
-              setSessions(prev => prev.filter(s => s.id !== demoBook.id));
-            }
+            setSessions(prev => prev.filter(s => !s?._demo));
           }}
         />
       )}

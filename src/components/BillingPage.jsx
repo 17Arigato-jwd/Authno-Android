@@ -1,19 +1,25 @@
 /**
- * BillingPage.jsx — Pro upgrade / billing screen (MOCK — instruction 11).
+ * BillingPage.jsx — Pro one-time purchase screen (MOCK — instruction 11).
  *
  * IMPORTANT: This is a front-end simulation only. There is NO backend, NO
  * payment gateway, and NO real charge. Submitting either payment method runs a
  * fake "processing" animation, then calls unlockProMock() to flip the local
  * entitlement to Pro so the Pro UI can be tested. A UPI option is provided
- * alongside card, as requested.
+ * alongside card for the India region.
  *
- * When real Google Play Billing is added, replace handlePay() and remove the
- * mock banner — the rest of the UI can stay.
+ * Monetization model (next release): single one-time purchase (₹2,999.99 in
+ * India, regional equivalents elsewhere — see utils/pricing.js) preceded by a
+ * 7-day free trial started at onboarding completion. The timeline block shows
+ * Day 1 (unlocked) / Day 5 (reminder) / Day 7 (first charge).
+ *
+ * When real Google Play Billing is added, replace handlePay() and the pricing
+ * lookup and remove the mock banner — the rest of the UI can stay.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { unlockProMock, resetToFree } from '../utils/entitlements';
 import { useEntitlement } from '../utils/useEntitlement';
+import { getOneTimePrice } from '../utils/pricing';
 import { DSIcons, CloseButton } from '../DesignSystem';
 
 // Desktop = a centered dialog with a two-column layout; mobile/portrait = a
@@ -37,17 +43,12 @@ const PRO_FEATURES = [
   'Support independent development',
 ];
 
-const PLANS = [
-  { id: 'monthly', label: 'Monthly', price: '₹149', per: '/month', note: '' },
-  { id: 'yearly',  label: 'Yearly',  price: '₹1,199', per: '/year', note: 'Save 33%' },
-  { id: 'lifetime',label: 'Lifetime',price: '₹2,999', per: 'once',  note: 'Best value' },
-];
-
 export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
-  const { isPro } = useEntitlement();
+  const { tier, isTrial, trialDaysLeft } = useEntitlement();
   const wide = useWideLayout();
-  const [plan, setPlan] = useState('yearly');
-  const [method, setMethod] = useState('upi');       // 'upi' | 'card'
+  const price = useMemo(() => getOneTimePrice(), []);
+  const upiAvailable = price.currency === 'INR';
+  const [method, setMethod] = useState(upiAvailable ? 'upi' : 'card'); // 'upi' | 'card'
   const [status, setStatus] = useState('idle');       // idle | processing | success
   const [upiId, setUpiId] = useState('');
   const [card, setCard] = useState({ number: '', name: '', expiry: '', cvv: '' });
@@ -67,7 +68,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
     }, 1600);
   };
 
-  if (isPro && status !== 'success') {
+  if (tier === 'pro' && status !== 'success') {
     return (
       <Screen accentHex={accentHex} onClose={onClose} title="Authno Pro" wide={wide}>
         <div style={{ textAlign: 'center', padding: '32px 16px' }}>
@@ -101,32 +102,29 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 
   const paymentColumn = (
     <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
-      {/* Plans */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {PLANS.map((p) => {
-          const active = plan === p.id;
-          return (
-            <button key={p.id} onClick={() => setPlan(p.id)}
-              style={{
-                flex: 1, padding: '12px 8px', borderRadius: 14, cursor: 'pointer', textAlign: 'center',
-                background: active ? `${accentHex}18` : 'var(--surface)',
-                border: `1.5px solid ${active ? accentHex : 'var(--border)'}`,
-                transition: 'all 0.12s',
-              }}>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600 }}>{p.label}</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginTop: 3 }}>{p.price}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-4)' }}>{p.per}</div>
-              {p.note ? <div style={{ fontSize: 10.5, color: accentHex, fontWeight: 700, marginTop: 4 }}>{p.note}</div> : null}
-            </button>
-          );
-        })}
+      {/* One-time purchase price card */}
+      <div style={{
+        padding: '16px 18px', borderRadius: 14, marginBottom: 20,
+        background: `${accentHex}12`, border: `1.5px solid ${accentHex}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      }}>
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase' }}>One-time purchase</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3 }}>Pay once. Yours forever. No subscription.</div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-1)' }}>{price.formatted}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-4)' }}>once</div>
+        </div>
       </div>
 
-      {/* Payment method toggle */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        <MethodTab active={method === 'upi'} onClick={() => setMethod('upi')} label="UPI" accentHex={accentHex} />
-        <MethodTab active={method === 'card'} onClick={() => setMethod('card')} label="Card" accentHex={accentHex} />
-      </div>
+      {/* Payment method toggle — UPI is India-only */}
+      {upiAvailable && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <MethodTab active={method === 'upi'} onClick={() => setMethod('upi')} label="UPI" accentHex={accentHex} />
+          <MethodTab active={method === 'card'} onClick={() => setMethod('card')} label="Card" accentHex={accentHex} />
+        </div>
+      )}
 
       {method === 'upi' ? (
         <div style={{ marginBottom: 20 }}>
@@ -179,7 +177,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
           boxShadow: canPay ? `0 6px 18px ${accentHex}55` : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
-        {status === 'processing' ? (<><Spinner /> Processing…</>) : `Pay ${PLANS.find(p => p.id === plan)?.price} with ${method === 'upi' ? 'UPI' : 'Card'}`}
+        {status === 'processing' ? (<><Spinner /> Processing…</>) : `Pay ${price.formatted} with ${method === 'upi' ? 'UPI' : 'Card'}`}
       </button>
       <p style={{ fontSize: 11, color: 'var(--text-5)', textAlign: 'center', marginTop: 12 }}>Simulated secure checkout · no real charge</p>
     </div>
@@ -192,6 +190,17 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
         <DSIcons.Flask size={16} color="var(--color-warning)" />
         <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Demo checkout — no real payment is processed. Submitting unlocks Pro locally for testing.</span>
       </div>
+
+      {isTrial && status !== 'success' && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', borderRadius: 10, background: `${accentHex}12`, border: `1px solid ${accentHex}44`, marginBottom: 20 }}>
+          <StarIcon color={accentHex} size={15} />
+          <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
+            Free trial active — <b style={{ color: 'var(--text-1)' }}>{trialDaysLeft} {trialDaysLeft === 1 ? 'day' : 'days'} left</b> with everything unlocked.
+          </span>
+        </div>
+      )}
+
+      {status !== 'success' && <TrialTimeline accentHex={accentHex} price={price.formatted} />}
 
       {status === 'success' ? (
         <div style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -212,6 +221,76 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 }
 
 // ── Small building blocks ─────────────────────────────────────────────────────
+
+/**
+ * TrialTimeline — the Day 1 / Day 5 / Day 7 rail.
+ * Day 1: everything unlocked · Day 5: reminder before it expires ·
+ * Day 7: the one-time charge. Mirrors the onboarding prototype.
+ */
+function TrialTimeline({ accentHex, price }) {
+  const MILESTONES = [
+    {
+      day: 'Day 1',
+      title: 'Everything unlocked',
+      body: 'Full access to every Pro feature, right now.',
+      color: 'var(--color-success)',
+      icon: (c) => (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" />
+        </svg>
+      ),
+    },
+    {
+      day: 'Day 5',
+      title: 'We remind you',
+      body: 'A heads-up before your trial ends — cancel anytime before then.',
+      color: 'var(--color-warning)',
+      icon: (c) => (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+      ),
+    },
+    {
+      day: 'Day 7',
+      title: `First charge · ${price}`,
+      body: 'One payment. Pro is yours forever.',
+      color: accentHex,
+      icon: (c) => (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <h2 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-1)', margin: '0 0 12px' }}>How your free trial works</h2>
+      <div style={{ position: 'relative', paddingLeft: 4 }}>
+        {/* vertical rail */}
+        <div style={{ position: 'absolute', left: 18, top: 14, bottom: 14, width: 2, background: 'var(--border)', borderRadius: 1 }} />
+        {MILESTONES.map((m) => (
+          <div key={m.day} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '7px 0', position: 'relative' }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+              background: 'var(--modal-bg)', border: `2px solid ${m.color}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1,
+            }}>
+              {m.icon(m.color)}
+            </div>
+            <div style={{ paddingTop: 2 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-1)' }}>
+                <span style={{ color: m.color }}>{m.day}</span> — {m.title}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{m.body}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Screen({ children, accentHex, onClose, title, wide }) {
   return (

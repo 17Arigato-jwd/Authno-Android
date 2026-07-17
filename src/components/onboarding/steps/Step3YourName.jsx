@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from 'react';
-import { GradientButton, COLORS } from '../../DesignSystem';
+import { GradientButton, COLORS } from '../../../DesignSystem';
 
 export function Step3YourName({ onNext, onSkip, onUpdate, profile, writingGoal }) {
   const [name, setName] = useState(profile?.name || '');
