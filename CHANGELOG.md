@@ -5,7 +5,27 @@ under the top-most version until it ships.
 
 ## 1.1.18-beta.2
 
-_Bug-hunt and optimization round on beta.1._
+_Bug-hunt and optimization round on beta.1, plus a Raycast-style Settings
+redesign._
+
+### Settings, redesigned (Raycast-style)
+
+- **New shell**: a sidebar with a **working settings search** (type to match
+  tabs *and* individual settings — clicking a result jumps straight to its
+  tab), a profile/account row, and icon-tile navigation grouped into
+  separated blocks. Content renders as **rounded row-cards** — label and a
+  small description on the left, the control on the right, hairline
+  separators between rows — in a centred column.
+- **Mobile**: the same cards full-width, a search field under the header, an
+  icon-tile tab strip, and rows that wrap so controls drop below their labels
+  on narrow screens. All of it plain CSS on theme variables — no new
+  libraries, nothing running at rest.
+- **Startup merged into General** (a select instead of a whole tab), profile
+  editing lives in General too, and the tab count drops by one.
+- **New settings, all live-wired** (no dead toggles): **Interface scale**
+  (90 / 100 / 110% — scales the whole app), **Editor text size** (S–XL),
+  **Line spacing** (tight / normal / loose), and **Default chapter sort**
+  for the book screen (story order / recently edited).
 
 ### Performance
 

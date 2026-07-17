@@ -49,12 +49,13 @@ export default function BookStudio({
   onReadAloud, onToggleMenu, burgerBtnRef,
   goalWords, onStreakUpdate, streakEnabled,
   onChapterInfo,   // (chapIdx) → chapter info modal (beta.1)
+  defaultSort = 'story', // Settings → Editor → Default chapter sort (beta.2)
 }) {
   const motionOK = useMotionEnabled();
   const [showExport, setShowExport] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [search, setSearch] = useState('');
-  const [sortOrder, setSortOrder] = useState('oldest'); // story order by default on desktop
+  const [sortOrder, setSortOrder] = useState(defaultSort === 'recent' ? 'newest' : 'oldest');
   const [selectedIdx, setSelectedIdx] = useState(null);      // detail-pane chapter
   const [multiSel, setMultiSel] = useState(() => new Set()); // bulk-selection set
   const [lastClickIdx, setLastClickIdx] = useState(null);    // shift-range anchor

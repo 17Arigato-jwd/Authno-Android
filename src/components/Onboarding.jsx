@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "9";
+const UPDATE_VERSION = "10";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -565,8 +565,8 @@ const UPDATE_NOTES = [
   },
   {
     icon: (p) => <DSIcons.Settings {...p} />,
-    title: "Settings, reorganised",
-    body: "New Editor tab (spell check, manuscript width, auto-save delay), a Shortcuts reference, and a Developer tab (error log, diagnostics, replay any tour, reset settings). Vibration feedback moved to General; duplicate Settings buttons were pruned.",
+    title: "Settings, redesigned",
+    body: "A new layout inspired by the best desktop apps: a sidebar with working settings search, your profile up top, and clean row-cards for every option. Plus new controls that actually do things — interface scale, editor text size, line spacing, and default chapter sort.",
   },
   {
     icon: (p) => <DSIcons.Volume {...p} />,
