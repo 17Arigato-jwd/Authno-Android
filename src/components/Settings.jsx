@@ -757,6 +757,7 @@ const SHORTCUTS = [
   ['Editor', [
     ['Chapter info', 'Ctrl+Alt+I'],
     ['Threads panel', 'Ctrl+Shift+T'],
+    ['Find & replace', 'Ctrl+F'],
     ['Bold / Italic / Underline', 'Ctrl+B / I / U'],
     ['Undo / Redo typing', 'Ctrl+Z / Ctrl+Y'],
   ]],

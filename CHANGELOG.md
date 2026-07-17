@@ -5,8 +5,30 @@ under the top-most version until it ships.
 
 ## 1.1.18-beta.2
 
-_Bug-hunt and optimization round on beta.1, plus a Raycast-style Settings
-redesign._
+_Bug-hunt and optimization round on beta.1, a Raycast-style Settings redesign,
+and a Word/Docs-class editor toolbar._
+
+### Editor toolbar: Word & Docs features
+
+- **Paragraph styles** — a Normal text / Heading 1–3 / Quote dropdown at the
+  head of the toolbar (Docs' style selector), with each entry previewed in its
+  own weight and the active style checked.
+- **Find & replace (Ctrl+F)** — a bar under the toolbar with next/previous
+  match (Enter / Shift+Enter), Replace and Replace All, scoped to the open
+  chapter. Opening it pre-fills whatever text you had selected.
+- **Format painter** — Word's paintbrush: click it with the caret in styled
+  text, then select other text to copy the bold/italic/underline/strike,
+  colour, highlight, font and size across. Esc cancels.
+- **Change case** — UPPERCASE, lowercase, Capitalize Each Word and Sentence
+  case, applied in place so bold/italic runs inside the selection keep their
+  formatting.
+- **Line spacing** — Single / 1.15 / 1.5 / Double per paragraph, like Docs'
+  line-spacing menu, on top of the global setting in Settings → Editor.
+- **Subscript & superscript** buttons next to strikethrough.
+- **Undo / Redo buttons** leftmost on the toolbar (they were shortcut-only).
+- **Live word count** for the open chapter at the toolbar's end (desktop).
+- Everything routes through the editor's native undo stack and lands in
+  History like normal typing.
 
 ### Settings, redesigned (Raycast-style)
 

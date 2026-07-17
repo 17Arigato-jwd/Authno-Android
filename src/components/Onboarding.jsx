@@ -564,6 +564,11 @@ const UPDATE_NOTES = [
     body: "Ctrl+K search, Ctrl+, settings, Ctrl+N new book, Ctrl+O open, Ctrl+Shift+N new chapter, Ctrl+Shift+T threads, Ctrl+Shift+E export, Ctrl+Shift+R read aloud. Hints sit faded next to buttons, and the full list lives in Settings → Shortcuts.",
   },
   {
+    icon: (p) => <DSIcons.Text {...p} />,
+    title: "A real word-processor toolbar",
+    body: "Paragraph styles (headings & quotes), find & replace (Ctrl+F), a format painter, change case, per-paragraph line spacing, subscript/superscript, undo/redo buttons and a live word count — the toolbar now covers what you'd reach for in Word or Docs.",
+  },
+  {
     icon: (p) => <DSIcons.Settings {...p} />,
     title: "Settings, redesigned",
     body: "A new layout inspired by the best desktop apps: a sidebar with working settings search, your profile up top, and clean row-cards for every option. Plus new controls that actually do things — interface scale, editor text size, line spacing, and default chapter sort.",
