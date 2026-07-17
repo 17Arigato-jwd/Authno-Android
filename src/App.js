@@ -25,7 +25,7 @@ import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/Th
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
 import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
-import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory } from "./utils/history";
+import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
 import GuidedTour from "./components/GuidedTour";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
@@ -86,6 +86,7 @@ function Editor({
   resumePoint, onResumeConsumed,
   syncNonce, onOpenHistory,
   spellcheckOn = true, editorWidth = "full",
+  editorFontSize = 16, editorLineHeight = 1.7,
 }) {
   const [title, setTitle] = useState(chapterTitle ?? current?.title ?? "");
   const editorRef = useRef(null);
@@ -435,7 +436,8 @@ function Editor({
               spellCheck={spellcheckOn}
               style={{
                 width: "100%", minHeight: 400, padding: 16, borderRadius: 8,
-                boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none", lineHeight: 1.7,
+                boxShadow: "inset 0 2px 8px rgba(0,0,0,0.3)", outline: "none",
+                lineHeight: editorLineHeight, fontSize: editorFontSize,
                 background: 'var(--editor-bg)', color: 'var(--text-1)',
                 fontFamily: 'var(--font-editor)',
                 marginTop: android ? "0.25rem" : "5rem",
@@ -689,6 +691,15 @@ function AppInner({ navigateRef }) {
     themeAnimTimer.current = setTimeout(() => el.classList.remove("theme-anim"), 450);
     return () => clearTimeout(themeAnimTimer.current);
   }, [theme?.meta?.id, customization.fonts, android]);
+
+  // ── Interface scale (Settings → General, beta.2) ──────────────────────────
+  // Chromium's zoom scales the whole tree (portals included) in one property —
+  // no per-component work, so it's free at rest on both platforms.
+  useEffect(() => {
+    const scale = settings.uiScale ?? 100;
+    document.body.style.zoom = scale === 100 ? "" : String(scale / 100);
+    return () => { document.body.style.zoom = ""; };
+  }, [settings.uiScale]);
 
   // ── Global tap haptics (B7) ───────────────────────────────────────────────
   // Every button/menu tap gives a light tick (author: "vibrations don't really
@@ -1229,7 +1240,8 @@ function AppInner({ navigateRef }) {
         if (ch.chap_idx !== targetChap) return ch;
         before = ch.content ?? '';
         chapTitle = ch.title;
-        return { ...ch, content: c, updated: now };
+        // word_count kept fresh per flush so stats/streak never re-parse HTML.
+        return { ...ch, content: c, updated: now, word_count: wordCountOf(c) };
       });
       // Mirror the FIRST chapter by order, not chap_idx 1 — after chapter 1 is
       // deleted, no chap_idx 1 exists and the home-screen preview froze forever.
@@ -1430,6 +1442,10 @@ function AppInner({ navigateRef }) {
       else if (k === "n" && e.shiftKey) { e.preventDefault(); if (currentId) handleNewChapter(); }
       else if (k === "o" && !e.shiftKey && !e.altKey) { e.preventDefault(); handleOpenExisting(); }
       else if (k === "i" && e.altKey) {
+        // AltGr registers as Ctrl+Alt on Windows — writers on layouts where
+        // AltGr+I types a letter (í on Hungarian/Slovak) must not get the
+        // info modal mid-word. Real Ctrl+Alt has no AltGraph modifier state.
+        if (e.getModifierState?.("AltGraph")) return;
         e.preventDefault();
         if (view === "editor" && currentChapterIdx != null) { setChapterInfoIdx(null); setChapterInfoOpen(true); }
       }
@@ -1642,6 +1658,7 @@ function AppInner({ navigateRef }) {
           onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
           onReadAloud={(chapIdx) => current && startReadAloud(current.id, chapIdx ?? null)}
           onChapterInfo={(chapIdx) => { setChapterInfoIdx(chapIdx); setChapterInfoOpen(true); }}
+          defaultSort={settings.chapterSort ?? "story"}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
@@ -1666,6 +1683,7 @@ function AppInner({ navigateRef }) {
           resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
           syncNonce={editorSyncNonce} onOpenHistory={() => setHistoryOpen(true)}
           spellcheckOn={settings.spellcheck ?? true} editorWidth={settings.editorWidth ?? "full"}
+          editorFontSize={settings.editorFontSize ?? 16} editorLineHeight={settings.editorLineHeight ?? 1.7}
         />
       )}
       </motion.div>

@@ -52,19 +52,111 @@ const ACCENT_PRESETS = [
   { label: 'Gold',   hex: '#f59e0b' },
 ];
 
-// v1.1.18-beta.1 regroup: General absorbs Profile (+ device preferences),
-// Editor / Shortcuts / Developer are new, Data & About stay put.
+// v1.1.18-beta.2 (Raycast-style shell): Startup merged into General, sidebar
+// gets search + an account row, nav items get icon tiles. Groups render as
+// separated blocks (no text headers), like the reference.
 const NAV_ITEMS = [
   { id: 'general',    label: 'General',          icon: (p) => <DSIcons.User {...p} />,      group: 'User' },
   { id: 'appearance', label: 'Appearance',       icon: (p) => <DSIcons.Palette {...p} />,   group: 'User' },
   { id: 'editor',     label: 'Editor',           icon: (p) => <DSIcons.Edit {...p} />,      group: 'User' },
   { id: 'writing',    label: 'Writing Goal',     icon: (p) => <DSIcons.Target {...p} />,    group: 'User' },
-  { id: 'startup',    label: 'Startup',          icon: (p) => <DSIcons.BookOpen {...p} />,  group: 'App'  },
   { id: 'shortcuts',  label: 'Shortcuts',        icon: (p) => <DSIcons.Lightning {...p} />, group: 'App'  },
   { id: 'data',       label: 'Data & Storage',   icon: (p) => <DSIcons.Package {...p} />,   group: 'App'  },
   { id: 'developer',  label: 'Developer',        icon: (p) => <DSIcons.Terminal {...p} />,  group: 'App'  },
   { id: 'about',      label: 'About',            icon: (p) => <DSIcons.Info {...p} />,      group: 'App'  },
 ];
+
+// ── Settings search (Raycast-style) ──────────────────────────────────────────
+// A static registry of individual settings so the sidebar search can jump
+// straight to the tab that owns them. Pure data — costs nothing at rest.
+const SETTINGS_INDEX = [
+  ['general', 'Display name'], ['general', 'Avatar'], ['general', 'Startup behaviour'],
+  ['general', 'Restore previously open books'], ['general', 'Vibration feedback'],
+  ['general', 'Interface scale'],
+  ['appearance', 'Theme'], ['appearance', 'Accent colour'], ['appearance', 'Background effect'],
+  ['appearance', 'Fonts'], ['appearance', 'App icon'], ['appearance', 'Reduce animations'],
+  ['appearance', 'Material You colour'],
+  ['editor', 'Spell check'], ['editor', 'Manuscript width'], ['editor', 'Editor text size'],
+  ['editor', 'Line spacing'], ['editor', 'Auto-save delay'], ['editor', 'Default chapter sort'],
+  ['writing', 'Daily word goal'], ['writing', 'Writing streaks'],
+  ['shortcuts', 'Keyboard shortcuts'],
+  ['data', 'Clear all sessions'], ['data', 'Storage & recovery'],
+  ['developer', 'Error log'], ['developer', 'Copy diagnostics'], ['developer', 'Replay welcome slides'],
+  ['developer', 'Guided tour'], ['developer', 'Reset all settings'],
+  ['about', 'Version'], ["about", "What's new"], ['about', 'Credits'],
+];
+
+// ── Raycast-style row primitives ─────────────────────────────────────────────
+// Rounded cards of rows: label (+ small muted description) on the left,
+// control on the right, hairline separators between rows. Rows wrap on narrow
+// screens so mobile stacks the control under the label. Pure CSS, theme vars.
+
+function RGroupLabel({ children }) {
+  return (
+    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-3)', margin: '18px 2px 8px' }}>
+      {children}
+    </div>
+  );
+}
+
+function RCard({ children, style }) {
+  return (
+    <div className="rcard" style={{
+      background: 'var(--surface)', border: '1px solid var(--border-sm)',
+      borderRadius: 12, overflow: 'hidden', ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function RRow({ label, description, children }) {
+  return (
+    <div className="rrow" style={{
+      display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px',
+      padding: '12px 14px', minHeight: 30,
+    }}>
+      <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-1)' }}>{label}</div>
+        {description && (
+          <div style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2, lineHeight: 1.45 }}>{description}</div>
+        )}
+      </div>
+      <div style={{ flexShrink: 0, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Compact segmented control (interface scale, text size, line spacing…). */
+function Segmented({ options, value, onChange, accentHex }) {
+  return (
+    <div style={{ display: 'inline-flex', background: 'var(--surface-md)', border: '1px solid var(--border-sm)', borderRadius: 8, padding: 2, gap: 2 }}>
+      {options.map(([v, label]) => {
+        const on = v === value;
+        return (
+          <button key={String(v)} onClick={() => onChange(v)}
+            style={{
+              padding: '5px 11px', borderRadius: 6, border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: on ? 700 : 500,
+              background: on ? `${accentHex}2e` : 'transparent',
+              color: on ? 'var(--text-1)' : 'var(--text-4)',
+              transition: 'background 0.12s, color 0.12s', whiteSpace: 'nowrap',
+            }}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const RSELECT_STYLE = {
+  padding: '6px 10px', borderRadius: 7, background: 'var(--input-bg)',
+  border: '1px solid var(--border)', color: 'var(--text-1)', fontSize: 12.5, outline: 'none',
+  maxWidth: 200,
+};
 
 // ─── Local-only primitives (settings-specific layout, not shared UI) ──────────
 
@@ -228,68 +320,6 @@ function ConfirmModal({ title, message, type, onConfirm, onCancel }) {
 }
 
 // ─── Section Panels ───────────────────────────────────────────────────────────
-
-function ProfilePanel({ settings, onChange, accentHex }) {
-  const fileRef = useRef(null);
-
-  const handleAvatarFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => onChange({ avatarDataUrl: reader.result });
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  };
-
-  return (
-    <div>
-      <SectionTitle>Profile</SectionTitle>
-      <SectionSubtitle>Manage how you appear in the app.</SectionSubtitle>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '24px' }}>
-        <div style={{ position: 'relative' }}>
-          <div style={{ width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', border: `3px solid ${accentHex}`, background: 'var(--surface-md)' }}>
-            {settings.avatarDataUrl
-              ? <img src={settings.avatarDataUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><DSIcons.User size={32} color="var(--text-4)" /></div>
-            }
-          </div>
-          <button
-            onClick={() => fileRef.current?.click()}
-            style={{ position: 'absolute', bottom: 0, right: 0, width: '26px', height: '26px', borderRadius: '50%', background: accentHex, border: '2px solid var(--modal-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-          >
-            <DSIcons.Camera size={12} color="#fff" />
-          </button>
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} />
-        </div>
-        <div>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-1)' }}>{settings.displayName || 'Anonymous'}</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>Click the camera to update your avatar</div>
-        </div>
-      </div>
-
-      <Label>Display Name</Label>
-      <input
-        value={settings.displayName || ''}
-        onChange={(e) => onChange({ displayName: e.target.value })}
-        placeholder="Your name"
-        style={{ width: '100%', padding: '10px 14px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-2)', fontSize: '14px', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-        onFocus={e => e.target.style.borderColor = accentHex}
-        onBlur={e => e.target.style.borderColor = 'var(--border)'}
-      />
-
-      {settings.avatarDataUrl && (
-        <>
-          <SettingsDivider />
-          <button onClick={() => onChange({ avatarDataUrl: null })} style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(237,66,69,0.15)', border: '1px solid rgba(237,66,69,0.3)', color: '#ed4245', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
-            Remove Avatar
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
 
 // ── Background effect options ─────────────────────────────────────────────────
 const BG_EFFECTS = [
@@ -566,78 +596,143 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
   );
 }
 
-// ── General: profile + device preferences (v1.1.18-beta.1) ──────────────────
+// ── General (Raycast-style, beta.2): profile · startup · device ─────────────
 function GeneralPanel(props) {
   const { settings, onChange, accentHex } = props;
+  const fileRef = useRef(null);
+  const handleAvatarFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => onChange({ avatarDataUrl: reader.result });
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   return (
     <div>
-      <ProfilePanel {...props} />
-      <SettingsDivider />
-      <SectionTitle>Preferences</SectionTitle>
-      <SectionSubtitle>How the app behaves on this device.</SectionSubtitle>
-      {isAndroid() ? (
-        <SettingRow icon={DSIcons.Bell} title="Vibration feedback" description="Light haptic tick on taps, plus stronger cues for saves, deletes and goals" accentHex={accentHex}>
-          <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
-        </SettingRow>
-      ) : (
-        <div style={{ fontSize: 12.5, color: 'var(--text-5)', lineHeight: 1.6 }}>
-          Device preferences (vibration feedback) appear here on Android. Editor behaviour lives under <b>Editor</b>, and keyboard shortcuts under <b>Shortcuts</b>.
+      <RGroupLabel>Profile</RGroupLabel>
+      <RCard>
+        <div className="rrow" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px' }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', border: `2px solid ${accentHex}`, background: 'var(--surface-md)' }}>
+              {settings.avatarDataUrl
+                ? <img src={settings.avatarDataUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><DSIcons.User size={20} color="var(--text-4)" /></div>}
+            </div>
+            <button onClick={() => fileRef.current?.click()} aria-label="Change avatar"
+              style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: accentHex, border: '2px solid var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <DSIcons.Camera size={10} color="#fff" />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} />
+          </div>
+          <input
+            value={settings.displayName || ''}
+            onChange={(e) => onChange({ displayName: e.target.value })}
+            placeholder="Your name"
+            style={{ flex: 1, minWidth: 120, padding: '9px 12px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-1)', fontSize: 13.5, outline: 'none' }}
+            onFocus={(e) => { e.target.style.borderColor = accentHex; }}
+            onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+          />
+          {settings.avatarDataUrl && (
+            <button onClick={() => onChange({ avatarDataUrl: null })}
+              style={{ padding: '7px 12px', borderRadius: 7, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}>
+              Remove avatar
+            </button>
+          )}
         </div>
-      )}
+        <RRow label="Author stamp" description="Saved into your .authbook files as the author name">
+          <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>{(settings.displayName || '').trim() || 'Anonymous'}</span>
+        </RRow>
+      </RCard>
+
+      <RGroupLabel>Startup</RGroupLabel>
+      <RCard>
+        <RRow label="When AuthNo opens" description="Resume drops you at your last caret position">
+          <select value={settings.startupBehavior ?? 'last'} onChange={(e) => onChange({ startupBehavior: e.target.value })} style={RSELECT_STYLE}>
+            <option value="resume">Resume writing</option>
+            <option value="last">Reopen last book</option>
+            <option value="blank">Open a blank book</option>
+            <option value="home">Show home screen</option>
+          </select>
+        </RRow>
+        {!isAndroid() && (
+          <RRow label="Restore previously open books" description="Re-open every book that was open last session">
+            <Toggle on={settings.restoreOpenBooks ?? true} onChange={(v) => onChange({ restoreOpenBooks: v })} accentHex={accentHex} />
+          </RRow>
+        )}
+      </RCard>
+
+      <RGroupLabel>Device</RGroupLabel>
+      <RCard>
+        <RRow label="Interface scale" description="Size of the whole interface on this device">
+          <Segmented accentHex={accentHex}
+            options={[[90, '90%'], [100, '100%'], [110, '110%']]}
+            value={settings.uiScale ?? 100}
+            onChange={(v) => onChange({ uiScale: v })} />
+        </RRow>
+        {isAndroid() && (
+          <RRow label="Vibration feedback" description="Light tick on taps, stronger cues for saves, deletes and goals">
+            <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
+          </RRow>
+        )}
+      </RCard>
     </div>
   );
 }
 
-// ── Editor settings (v1.1.18-beta.1) — all three are live-wired ─────────────
+// ── Editor settings (Raycast-style rows, beta.2) — all live-wired ───────────
 function EditorPanel({ settings, onChange, accentHex }) {
   const android = isAndroid();
-  const widths = [
-    ['full', 'Full width', 'The manuscript uses the whole window'],
-    ['focused', 'Focused column', 'A centred ~72-character column, like a page'],
-  ];
-  const delays = [[2, '2 s'], [4, '4 s'], [10, '10 s'], [30, '30 s']];
   return (
     <div>
-      <SectionTitle>Editor</SectionTitle>
-      <SectionSubtitle>How writing feels and behaves.</SectionSubtitle>
+      <RGroupLabel>Writing</RGroupLabel>
+      <RCard>
+        <RRow label="Spell check" description="Underline possible misspellings while you type (device dictionary)">
+          <Toggle on={settings.spellcheck ?? true} onChange={(v) => onChange({ spellcheck: v })} accentHex={accentHex} />
+        </RRow>
+        <RRow label="Editor text size" description="Base size of your manuscript text">
+          <Segmented accentHex={accentHex}
+            options={[[14, 'S'], [16, 'M'], [18, 'L'], [20, 'XL']]}
+            value={settings.editorFontSize ?? 16}
+            onChange={(v) => onChange({ editorFontSize: v })} />
+        </RRow>
+        <RRow label="Line spacing" description="Breathing room between lines of prose">
+          <Segmented accentHex={accentHex}
+            options={[[1.5, 'Tight'], [1.7, 'Normal'], [2.0, 'Loose']]}
+            value={settings.editorLineHeight ?? 1.7}
+            onChange={(v) => onChange({ editorLineHeight: v })} />
+        </RRow>
+        {!android && (
+          <RRow label="Manuscript width" description="Focused centres a ~72-character page-like column">
+            <Segmented accentHex={accentHex}
+              options={[['full', 'Full width'], ['focused', 'Focused']]}
+              value={settings.editorWidth ?? 'full'}
+              onChange={(v) => onChange({ editorWidth: v })} />
+          </RRow>
+        )}
+      </RCard>
 
-      <SettingRow icon={DSIcons.Check} title="Spell check" description="Underline possible misspellings while you type (device dictionary)" accentHex={accentHex}>
-        <Toggle on={settings.spellcheck ?? true} onChange={(v) => onChange({ spellcheck: v })} accentHex={accentHex} />
-      </SettingRow>
-
-      {!android && (
-        <>
-          <SettingsDivider />
-          <Label>Manuscript width</Label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
-            {widths.map(([id, label, desc]) => {
-              const active = (settings.editorWidth ?? 'full') === id;
-              return (
-                <button key={id} onClick={() => onChange({ editorWidth: id })}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: active ? `${accentHex}18` : 'var(--surface)', border: `1px solid ${active ? accentHex + '55' : 'var(--border)'}`, transition: 'all 0.15s' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? accentHex : 'var(--text-2)' }}>{label}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-5)', marginTop: 2 }}>{desc}</div>
-                  </div>
-                  {active && <DSIcons.Check size={14} color={accentHex} />}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <RGroupLabel>Book screen</RGroupLabel>
+      <RCard>
+        <RRow label="Default chapter sort" description="How the chapter list is ordered when you open a book">
+          <Segmented accentHex={accentHex}
+            options={[['story', 'Story order'], ['recent', 'Recently edited']]}
+            value={settings.chapterSort ?? 'story'}
+            onChange={(v) => onChange({ chapterSort: v })} />
+        </RRow>
+      </RCard>
 
       {android && (
         <>
-          <SettingsDivider />
-          <SettingRow icon={DSIcons.Save} title="Auto-save delay" description="How long after you stop typing the silent auto-save runs" accentHex={accentHex}>
-            <select
-              value={settings.autosaveDelaySec ?? 4}
-              onChange={(e) => onChange({ autosaveDelaySec: Number(e.target.value) })}
-              style={{ padding: '7px 10px', borderRadius: 7, background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text-1)', fontSize: 13, outline: 'none' }}>
-              {delays.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-            </select>
-          </SettingRow>
+          <RGroupLabel>Saving</RGroupLabel>
+          <RCard>
+            <RRow label="Auto-save delay" description="How long after you stop typing the silent auto-save runs">
+              <select value={settings.autosaveDelaySec ?? 4} onChange={(e) => onChange({ autosaveDelaySec: Number(e.target.value) })} style={RSELECT_STYLE}>
+                {[[2, '2 seconds'], [4, '4 seconds'], [10, '10 seconds'], [30, '30 seconds']].map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+              </select>
+            </RRow>
+          </RCard>
         </>
       )}
     </div>
@@ -662,6 +757,7 @@ const SHORTCUTS = [
   ['Editor', [
     ['Chapter info', 'Ctrl+Alt+I'],
     ['Threads panel', 'Ctrl+Shift+T'],
+    ['Find & replace', 'Ctrl+F'],
     ['Bold / Italic / Underline', 'Ctrl+B / I / U'],
     ['Undo / Redo typing', 'Ctrl+Z / Ctrl+Y'],
   ]],
@@ -777,61 +873,6 @@ function DeveloperPanel({ settings, accentHex, sessions = [], onSeeChanges, onSt
       )}
 
       {showErrorLog && <ErrorLogModal onClose={() => setShowErrorLog(false)} accentHex={accentHex} />}
-    </div>
-  );
-}
-
-function StartupPanel({ settings, onChange, accentHex }) {
-  const options = [
-    { id: 'resume', icon: DSIcons.Flame,   title: 'Resume writing',    description: 'Straight into the editor, at your last caret position' },
-    { id: 'last',  icon: DSIcons.Bookmark, title: 'Reopen last book',  description: 'Open the book dashboard of your last book' },
-    { id: 'blank', icon: DSIcons.FilePlus, title: 'Open a blank book', description: 'Start fresh every time you launch'    },
-    { id: 'home',  icon: (p) => <DSIcons.BookOpen {...p} />,   title: 'Show home screen',  description: 'Browse and choose a book on launch'   },
-  ];
-
-  return (
-    <div>
-      <SectionTitle>Startup Behavior</SectionTitle>
-      <SectionSubtitle>Choose what happens when the app launches.</SectionSubtitle>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {options.map(opt => {
-          const selected = (settings.startupBehavior ?? 'last') === opt.id;
-          return (
-            <div
-              key={opt.id}
-              onClick={() => onChange({ startupBehavior: opt.id })}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '14px',
-                padding: '14px 16px', borderRadius: '10px',
-                border: `1px solid ${selected ? accentHex + '80' : 'var(--surface-md)'}`,
-                background: selected ? `${accentHex}14` : 'var(--surface)',
-                cursor: 'pointer', transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: selected ? `${accentHex}30` : 'var(--surface-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <opt.icon size={17} color={selected ? accentHex : 'var(--text-4)'} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '14px', fontWeight: 500, color: selected ? 'var(--text-1)' : 'var(--text-2)' }}>{opt.title}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-4)', marginTop: '2px' }}>{opt.description}</div>
-              </div>
-              <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: `2px solid ${selected ? accentHex : 'var(--text-5)'}`, background: selected ? accentHex : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
-                {selected && <DSIcons.Check size={10} color="#fff" />}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <SettingsDivider />
-
-      <Label>Session Persistence</Label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SettingRow icon={DSIcons.BookOpen} title="Restore previously open books" description="Re-open all books that were open last session" accentHex={accentHex}>
-          <Toggle on={settings.restoreOpenBooks ?? true} onChange={(v) => onChange({ restoreOpenBooks: v })} accentHex={accentHex} />
-        </SettingRow>
-      </div>
     </div>
   );
 }
@@ -1226,11 +1267,17 @@ export const DEFAULT_SETTINGS = {
   spellcheck: true,            // contentEditable spellCheck attribute
   editorWidth: 'full',         // 'full' | 'focused' (desktop manuscript column)
   autosaveDelaySec: 4,         // Android silent auto-save debounce
+  // beta.2 (Raycast-style settings round) — all live-wired:
+  uiScale: 100,                // whole-interface zoom (90/100/110)
+  editorFontSize: 16,          // manuscript base font size
+  editorLineHeight: 1.7,       // manuscript line spacing
+  chapterSort: 'story',        // BookStudio default chapter ordering
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('general');
+  const [query, setQuery] = useState('');           // sidebar settings search (beta.2)
   const isPortrait = useIsPortrait();
 
   const extSettingsItems = useExtensionContributions('settings');
@@ -1269,8 +1316,118 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     })),
   ];
 
-  const groups    = [...new Set(allNavItems.map(i => i.group))];
   const panelProps = { settings, onChange: handleChange, accentHex, sessions, onSessionChange };
+
+  // ── Sidebar search (Raycast-style): match tabs and individual settings ────
+  const q = query.trim().toLowerCase();
+  const tabMatches = q ? allNavItems.filter((i) => i.label.toLowerCase().includes(q)) : [];
+  const settingMatches = q
+    ? SETTINGS_INDEX.filter(([, label]) => label.toLowerCase().includes(q)).slice(0, 10)
+    : [];
+  const jumpTo = (tab) => { setActiveSection(tab); setQuery(''); };
+
+  // One panel switch for both orientations (they used to be duplicated).
+  const renderPanel = () => (
+    <>
+      {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
+      {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
+      {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
+      {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
+      {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
+      {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
+      {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
+      {allNavItems.filter(i => i._extItem).map(item => (
+        activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
+      ))}
+    </>
+  );
+
+  // Icon inside a small rounded tile — the Raycast sidebar look.
+  const iconTile = (item, active) => (
+    <span style={{
+      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      background: active ? `${accentHex}2e` : 'var(--surface-md)',
+      color: active ? accentHex : 'var(--text-3)',
+    }}>
+      {item._extItem ? <item.icon /> : <item.icon size={13} color="currentColor" />}
+    </span>
+  );
+
+  const navButton = (item, { compact = false } = {}) => {
+    const active = activeSection === item.id;
+    return (
+      <button key={item.id} className="settings-nav-item" onClick={() => jumpTo(item.id)}
+        style={{
+          width: compact ? undefined : '100%',
+          display: 'flex', alignItems: 'center', gap: 9,
+          padding: compact ? '7px 12px 7px 8px' : '6px 8px',
+          borderRadius: 8, border: 'none',
+          background: active ? 'var(--surface)' : 'transparent',
+          color: active ? 'var(--text-1)' : 'var(--text-3)',
+          cursor: 'pointer', fontSize: 13, fontWeight: active ? 600 : 500,
+          textAlign: 'left', whiteSpace: 'nowrap', flexShrink: 0,
+          transition: 'background 0.12s, color 0.12s',
+        }}>
+        {iconTile(item, active)}
+        {item.label}
+      </button>
+    );
+  };
+
+  const searchInput = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'var(--surface)', border: '1px solid var(--border-sm)', borderRadius: 8, padding: '0 9px' }}>
+      <DSIcons.Search size={13} color="var(--text-5)" />
+      <input
+        value={query} onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search settings…"
+        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none', color: 'var(--text-1)', fontSize: 12.5, padding: '7px 0' }}
+      />
+      {query && (
+        <button onClick={() => setQuery('')} aria-label="Clear search"
+          style={{ border: 'none', background: 'transparent', color: 'var(--text-5)', cursor: 'pointer', padding: 2, display: 'flex' }}>
+          <DSIcons.X size={12} color="currentColor" />
+        </button>
+      )}
+    </div>
+  );
+
+  // Search results (replaces the nav while typing, like the reference).
+  const searchResults = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {tabMatches.map((item) => navButton(item))}
+      {settingMatches.length > 0 && (
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-5)', padding: '10px 8px 4px' }}>Settings</div>
+      )}
+      {settingMatches.map(([tab, label]) => {
+        const owner = allNavItems.find((i) => i.id === tab);
+        return (
+          <button key={`${tab}-${label}`} className="settings-nav-item" onClick={() => jumpTo(tab)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', fontSize: 12.5, textAlign: 'left' }}>
+            {owner ? iconTile(owner, false) : null}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+          </button>
+        );
+      })}
+      {tabMatches.length === 0 && settingMatches.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-5)', padding: '12px 8px' }}>No matches.</div>
+      )}
+    </div>
+  );
+
+  // Nav groups render as separated blocks (no text headers), Raycast-style.
+  const navGroups = ['User', 'App', 'Extensions']
+    .map((g) => allNavItems.filter((i) => i.group === g))
+    .filter((items) => items.length > 0);
+
+  const contentStyle = isExtSection
+    ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }
+    : { flex: 1, overflowY: 'auto', padding: isPortrait ? '14px 14px 32px' : '22px 28px 40px', position: 'relative' };
+
+  const panelColumn = isExtSection ? renderPanel() : (
+    <div style={{ maxWidth: 620, margin: '0 auto' }}>{renderPanel()}</div>
+  );
 
   return (
     <AnimatePresence>
@@ -1283,17 +1440,17 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     >
       <style>{`
         .settings-nav-item:hover { background: var(--surface) !important; color: var(--text-2) !important; }
-        .settings-tab:hover { background: var(--surface) !important; }
         .settings-content::-webkit-scrollbar { width: 4px; }
         .settings-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         .settings-tabs::-webkit-scrollbar { display: none; }
+        .rcard .rrow + .rrow { border-top: 1px solid var(--border-sm); }
       `}</style>
 
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 6 }} transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
         style={{
-        width: isPortrait ? '100vw' : '90vw', maxWidth: isPortrait ? '100vw' : '860px',
-        height: isPortrait ? '100dvh' : '80vh', maxHeight: isPortrait ? '100dvh' : '680px',
+        width: isPortrait ? '100vw' : '90vw', maxWidth: isPortrait ? '100vw' : '880px',
+        height: isPortrait ? '100dvh' : '82vh', maxHeight: isPortrait ? '100dvh' : '700px',
         display: 'flex', flexDirection: isPortrait ? 'column' : 'row',
         borderRadius: isPortrait ? '0' : '16px', overflow: 'hidden',
         background: 'var(--modal-bg)',
@@ -1303,91 +1460,82 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
 
         {isPortrait ? (
           <>
-            {/* Portrait header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 0', background: 'var(--nav-bg)', flexShrink: 0 }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px' }}>Settings</span>
-              <CloseButton onClick={onClose} />
+            {/* ── Mobile: header + search + icon-tile tab strip ── */}
+            <div style={{ padding: '14px 14px 10px', background: 'var(--nav-bg)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.2px' }}>Settings</span>
+                <CloseButton onClick={onClose} />
+              </div>
+              {searchInput}
             </div>
-            {/* Scrollable tab bar */}
-            <div className="settings-tabs" style={{ display: 'flex', overflowX: 'auto', gap: '4px', padding: '10px 12px', background: 'var(--nav-bg)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-              {allNavItems.map(item => {
-                const active = activeSection === item.id;
-                return (
-                  <button key={item.id} className="settings-tab" onClick={() => setActiveSection(item.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', border: 'none', background: active ? `${accentHex}22` : 'transparent', color: active ? 'var(--text-1)' : 'var(--text-4)', cursor: 'pointer', fontSize: '13px', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap', flexShrink: 0, borderBottom: active ? `2px solid ${accentHex}` : '2px solid transparent', transition: 'all 0.1s ease' }}
-                  >
-                    {item._extItem ? <item.icon /> : <item.icon size={14} color={active ? accentHex : 'var(--text-4)'} />}
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-            {/* Content */}
-            <div className="settings-content" style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : { flex: 1, overflowY: 'auto', padding: '20px 16px 32px' }}>
-              <AnimatePresence mode="wait" initial={false}>
-              <motion.div key={activeSection}
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
-              {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
-              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
-              {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
-              {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
-              {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
-              {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-              {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
-              {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
-              {allNavItems.filter(i => i._extItem).map(item => (
-                activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
-              ))}
-              </motion.div>
-              </AnimatePresence>
-            </div>
+            {q ? (
+              <div className="settings-content" style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
+                {searchResults}
+              </div>
+            ) : (
+              <>
+                <div className="settings-tabs" style={{ display: 'flex', overflowX: 'auto', gap: 4, padding: '0 12px 10px', background: 'var(--nav-bg)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  {allNavItems.map((item) => navButton(item, { compact: true }))}
+                </div>
+                <div className="settings-content" style={contentStyle}>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div key={activeSection}
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                      style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
+                      {panelColumn}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <>
-            {/* Landscape sidebar nav */}
-            <div style={{ width: '220px', flexShrink: 0, background: 'var(--nav-bg)', padding: '16px 8px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border-sm)', overflowY: 'auto' }}>
-              {groups.map(group => (
-                <div key={group} style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '4px 10px', marginBottom: '4px' }}>{group}</div>
-                  {allNavItems.filter(i => i.group === group).map(item => {
-                    const active = activeSection === item.id;
-                    return (
-                      <button key={item.id} className="settings-nav-item" onClick={() => setActiveSection(item.id)}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '6px', border: 'none', background: active ? `${accentHex}22` : 'transparent', color: active ? 'var(--text-1)' : 'var(--text-4)', cursor: 'pointer', fontSize: '14px', fontWeight: active ? 600 : 400, textAlign: 'left', transition: 'all 0.1s ease' }}
-                      >
-                        {item._extItem ? <item.icon /> : <item.icon size={16} color={active ? accentHex : 'var(--text-4)'} />}
-                        {item.label}
-                        {active && <div style={{ marginLeft: 'auto', width: '3px', height: '16px', borderRadius: '2px', background: accentHex }} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-              <div style={{ marginTop: 'auto', padding: '8px 10px', fontSize: '11px', color: 'var(--text-5)' }}>Settings v1.0</div>
+            {/* ── Desktop: Raycast-style sidebar ── */}
+            <div style={{ width: 230, flexShrink: 0, background: 'var(--nav-bg)', padding: '14px 10px 10px', display: 'flex', flexDirection: 'column', gap: 10, borderRight: '1px solid var(--border-sm)', overflowY: 'auto' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-1)', padding: '0 4px' }}>Settings</div>
+              {searchInput}
+              {q ? searchResults : (
+                <>
+                  {/* Account row → General (profile lives there) */}
+                  <button className="settings-nav-item" onClick={() => jumpTo('general')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 9, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                    <span style={{ width: 30, height: 30, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: 'var(--surface-md)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {settings.avatarDataUrl
+                        ? <img src={settings.avatarDataUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <DSIcons.User size={14} color="var(--text-4)" />}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(settings.displayName || '').trim() || 'Anonymous'}
+                      </span>
+                      <span style={{ display: 'block', fontSize: 10.5, color: 'var(--text-5)' }}>Profile</span>
+                    </span>
+                  </button>
+
+                  {navGroups.map((items, gi) => (
+                    <div key={gi} style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingTop: gi > 0 ? 10 : 0, borderTop: gi > 0 ? '1px solid var(--border-sm)' : 'none' }}>
+                      {items.map((item) => navButton(item))}
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 'auto', padding: '8px 8px 2px', fontSize: 10.5, color: 'var(--text-5)' }}>AuthNo v{APP_META.version}</div>
+                </>
+              )}
             </div>
             {/* Content */}
-            <div className="settings-content" style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : { flex: 1, overflowY: 'auto', padding: '32px 36px', position: 'relative' }}>
-              {/* Zero-height sticky wrapper keeps the close button pinned to the
-                  top-right while the panel scrolls (was position:absolute, which
-                  scrolled away with the content). */}
-              <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
-                <CloseButton onClick={onClose} style={{ position: 'absolute', top: '0px', right: '0px' }} />
-              </div>
-              {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
-              {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
-              {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
-              {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
-              {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
-              {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-              {activeSection === 'startup'    && <StartupPanel    {...panelProps} />}
-              {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
-              {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
-              {allNavItems.filter(i => i._extItem).map(item => (
-                activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('profile')} inline />
-              ))}
+            <div className="settings-content" style={contentStyle}>
+              {!isExtSection && (
+                <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
+                  <CloseButton onClick={onClose} style={{ position: 'absolute', top: '0px', right: '0px' }} />
+                </div>
+              )}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div key={activeSection}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                  style={isExtSection ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}>
+                  {panelColumn}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </>
         )}

@@ -31,6 +31,8 @@ import {
   ListOrdered, Indent, Outdent, RemoveFormatting, Baseline, Highlighter,
   Undo2, Redo2, Scissors, ClipboardPaste, TextSelect,
   History as HistoryGlyph,
+  Paintbrush, CaseUpper, Superscript as SuperscriptGlyph, Subscript as SubscriptGlyph,
+  AlignVerticalSpaceAround,
 } from 'lucide-react';
 
 // Uniform wrapper: preserves the legacy {size, color, style} contract and the
@@ -141,6 +143,11 @@ export const DSIcons = {
   ClearFormat:   icon(RemoveFormatting),
   TextColor:     icon(Baseline),
   Highlighter:   icon(Highlighter),
+  Painter:       icon(Paintbrush),
+  CaseChange:    icon(CaseUpper),
+  Superscript:   icon(SuperscriptGlyph),
+  Subscript:     icon(SubscriptGlyph),
+  LineSpacing:   icon(AlignVerticalSpaceAround),
   // Social / app
   Discord:       DiscordIcon,
   Chat:          icon(MessagesSquare),

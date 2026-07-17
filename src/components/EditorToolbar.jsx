@@ -29,7 +29,27 @@ import { isAndroid } from '../utils/platform';
 import { useEditorToolbarExtensions, useExtensions } from '../utils/ExtensionContext';
 import { useTheme } from '../theme';
 import { applyInlineStyle } from '../utils/editorFormat';
+import { wordCountOf } from '../utils/history';
 import { DSIcons } from '../DesignSystem';
+
+// ── Paragraph styles (Docs' "Normal text / Heading …" dropdown) ──────────────
+const BLOCK_STYLES = [
+  ['p',          'Normal text', {}],
+  ['h1',         'Heading 1',   { fontSize: 16, fontWeight: 800 }],
+  ['h2',         'Heading 2',   { fontSize: 14.5, fontWeight: 700 }],
+  ['h3',         'Heading 3',   { fontSize: 13.5, fontWeight: 700 }],
+  ['blockquote', 'Quote',       { fontStyle: 'italic', color: 'var(--text-3)' }],
+];
+const BLOCK_LABELS = Object.fromEntries(BLOCK_STYLES.map(([tag, label]) => [tag, label]));
+
+const CASE_MODES = [
+  ['upper',    'UPPERCASE'],
+  ['lower',    'lowercase'],
+  ['title',    'Capitalize Each Word'],
+  ['sentence', 'Sentence case'],
+];
+
+const LINE_SPACINGS = [[1, 'Single'], [1.15, '1.15'], [1.5, '1.5'], [2, 'Double'], [null, 'Default']];
 
 const initialState = {
   bold: false, italic: false, underline: false, strike: false, highlight: false,
@@ -146,11 +166,23 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   const [colorOpen, setColorOpen] = useState(false);
   const [hiliteOpen, setHiliteOpen] = useState(false);
   const [alignOpen, setAlignOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);       // paragraph styles (beta.2)
+  const [caseOpen, setCaseOpen] = useState(false);         // Aa change-case menu
+  const [spacingOpen, setSpacingOpen] = useState(false);   // line spacing
+  const [painter, setPainter] = useState(null);            // format painter (armed = captured styles)
+  const [findOpen, setFindOpen] = useState(false);         // find & replace bar
+  const [findQ, setFindQ] = useState('');
+  const [replQ, setReplQ] = useState('');
+  const [findMiss, setFindMiss] = useState(false);
   const [kbOpen, setKbOpen] = useState(false);
   const colorRef  = useRef(null);
   const hiliteRef = useRef(null);
   const alignRef  = useRef(null);
   const insertRef = useRef(null);
+  const styleRef  = useRef(null);
+  const caseRef   = useRef(null);
+  const spacingRef = useRef(null);
+  const findInputRef = useRef(null);
   const deskRowRef = useRef(null);
   const imageInputRef = useRef(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -162,15 +194,18 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   const android = isAndroid();
   const isDark = theme?.meta?.isDark !== false;
 
-  const closePopovers = () => { setInsertOpen(false); setColorOpen(false); setHiliteOpen(false); setAlignOpen(false); };
+  const closePopovers = () => { setInsertOpen(false); setColorOpen(false); setHiliteOpen(false); setAlignOpen(false); setStyleOpen(false); setCaseOpen(false); setSpacingOpen(false); };
 
   const updateActive = useCallback(() => {
     const q = (c) => { try { return document.queryCommandState(c); } catch { return false; } };
     const bg = (() => { try { return (document.queryCommandValue('backColor') || '').toLowerCase(); } catch { return ''; } })();
+    const block = (() => { try { return String(document.queryCommandValue('formatBlock') || 'p').toLowerCase(); } catch { return 'p'; } })();
     dispatch({
       type: 'SET_STATE',
       payload: {
         bold: q('bold'), italic: q('italic'), underline: q('underline'), strike: q('strikeThrough'),
+        sub: q('subscript'), sup: q('superscript'),
+        block,
         highlight: bg !== '' && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'rgb(255, 255, 255)',
         justifyLeft: q('justifyLeft'), justifyCenter: q('justifyCenter'),
         justifyRight: q('justifyRight'), justifyFull: q('justifyFull'),
@@ -215,6 +250,172 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
 
   const toggle = (cmd, val = null) => { execCommand(cmd, val); updateActive(); };
 
+  // Manual DOM edits (line spacing, case change) bypass execCommand, so React's
+  // onInput never fires on its own — dispatch a real bubbling input event so
+  // the editor's debounced flush (and History) sees the change.
+  const fireInput = () => editorRef?.current?.dispatchEvent(new Event('input', { bubbles: true }));
+
+  const selectionInEditor = () => {
+    const s = window.getSelection();
+    return !!(s?.anchorNode && editorRef?.current?.contains(s.anchorNode));
+  };
+
+  // ── Format painter (Word) — capture once, apply to the next selection ─────
+  const armPainter = () => {
+    if (painter) { setPainter(null); return; }
+    if (!selectionInEditor()) return;
+    const s = window.getSelection();
+    const el = s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement;
+    const cs = getComputedStyle(el);
+    const q = (c) => { try { return document.queryCommandState(c); } catch { return false; } };
+    const back = (() => { try { return document.queryCommandValue('backColor') || ''; } catch { return ''; } })();
+    setPainter({
+      bold: q('bold'), italic: q('italic'), underline: q('underline'), strike: q('strikeThrough'),
+      color: cs.color, fontFamily: cs.fontFamily, fontSize: cs.fontSize, back,
+    });
+  };
+
+  useEffect(() => {
+    if (!painter) return undefined;
+    const editor = editorRef?.current;
+    const onUp = () => {
+      setTimeout(() => { // let the selection settle after mouse/touch up
+        const s = window.getSelection();
+        if (!s || s.isCollapsed || !editor?.contains(s.anchorNode)) return;
+        const q = (c) => { try { return document.queryCommandState(c); } catch { return false; } };
+        [['bold', painter.bold], ['italic', painter.italic], ['underline', painter.underline], ['strikeThrough', painter.strike]]
+          .forEach(([cmd, want]) => { if (q(cmd) !== want) document.execCommand(cmd); });
+        document.execCommand('foreColor', false, painter.color);
+        const b = (painter.back || '').toLowerCase();
+        document.execCommand('backColor', false, (b && b !== 'transparent' && b !== 'rgba(0, 0, 0, 0)') ? painter.back : 'transparent');
+        applyInlineStyle(editor, { fontFamily: painter.fontFamily, fontSize: painter.fontSize });
+        setPainter(null);
+        updateActive();
+      }, 0);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setPainter(null); };
+    editor?.addEventListener('mouseup', onUp);
+    editor?.addEventListener('touchend', onUp);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      editor?.removeEventListener('mouseup', onUp);
+      editor?.removeEventListener('touchend', onUp);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [painter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Change case (Word's Aa) — transform text nodes in place so bold/italic
+  // runs inside the selection keep their formatting ─────────────────────────
+  const transformCase = (mode) => {
+    setCaseOpen(false);
+    const editor = editorRef?.current;
+    const sel = window.getSelection();
+    if (!editor || !sel?.rangeCount || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    const applyCase = (str) => {
+      if (mode === 'upper') return str.toUpperCase();
+      if (mode === 'lower') return str.toLowerCase();
+      if (mode === 'title') return str.replace(/\p{L}[\p{L}\p{M}'’-]*/gu, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+      return str.toLowerCase().replace(/(^|[.!?…]\s+)(\p{L})/gu, (m, p, ch) => p + ch.toUpperCase());
+    };
+    const nodes = [];
+    if (range.startContainer === range.endContainer && range.startContainer.nodeType === 3) {
+      nodes.push(range.startContainer);
+    } else {
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) { const n = walker.currentNode; if (range.intersectsNode(n)) nodes.push(n); }
+    }
+    for (const n of nodes) {
+      const start = n === range.startContainer ? range.startOffset : 0;
+      const end = n === range.endContainer ? range.endOffset : n.data.length;
+      if (end <= start) continue;
+      n.data = n.data.slice(0, start) + applyCase(n.data.slice(start, end)) + n.data.slice(end);
+    }
+    if (nodes.length) fireInput();
+  };
+
+  // ── Line spacing (Docs) — per-paragraph line-height on selected blocks ────
+  const setLineSpacing = (lh) => {
+    setSpacingOpen(false);
+    const editor = editorRef?.current;
+    const sel = window.getSelection();
+    if (!editor || !sel?.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer) && range.commonAncestorContainer !== editor) return;
+    const blocks = [];
+    for (const el of editor.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre')) {
+      if (range.intersectsNode(el)) blocks.push(el);
+    }
+    if (!blocks.length) {
+      let el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+      while (el && el !== editor && !/^(P|DIV|H[1-6]|LI|BLOCKQUOTE|PRE)$/.test(el.tagName)) el = el.parentElement;
+      if (el && el !== editor) blocks.push(el);
+    }
+    blocks.forEach((el) => { el.style.lineHeight = lh == null ? '' : String(lh); });
+    if (blocks.length) fireInput();
+  };
+
+  // ── Find & replace (Ctrl+F) — window.find keeps native match behaviour ────
+  const doFind = (backwards = false) => {
+    const editor = editorRef?.current;
+    if (!editor || !findQ) return false;
+    if (!selectionInEditor()) {
+      const r = document.createRange();
+      r.selectNodeContents(editor); r.collapse(!backwards);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    }
+    // window.find searches the whole page; skip hits that land outside the
+    // manuscript (bounded so a pathological page can't loop forever).
+    for (let i = 0; i < 200; i++) {
+      const found = window.find(findQ, false, backwards, true, false, false, false);
+      if (!found) { setFindMiss(true); return false; }
+      if (selectionInEditor()) { setFindMiss(false); return true; }
+    }
+    setFindMiss(true);
+    return false;
+  };
+
+  const doReplace = () => {
+    const editor = editorRef?.current;
+    const s = window.getSelection();
+    if (editor && s && !s.isCollapsed && editor.contains(s.anchorNode) &&
+        s.toString().toLowerCase() === findQ.toLowerCase()) {
+      editor.focus();
+      document.execCommand('insertText', false, replQ);
+    }
+    doFind();
+  };
+
+  const doReplaceAll = () => {
+    const editor = editorRef?.current;
+    if (!editor || !findQ) return;
+    const r = document.createRange();
+    r.selectNodeContents(editor); r.collapse(true);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    let n = 0;
+    // Forward-only with wrap off = exactly one pass over the chapter.
+    while (n < 2000 && window.find(findQ, false, false, false, false, false, false)) {
+      if (!selectionInEditor()) break;
+      editor.focus();
+      document.execCommand('insertText', false, replQ);
+      n++;
+    }
+    setFindMiss(n === 0);
+  };
+
+  const openFind = () => {
+    const s = window.getSelection();
+    if (s && !s.isCollapsed && selectionInEditor()) setFindQ(s.toString().slice(0, 200));
+    setFindMiss(false);
+    setFindOpen(true);
+    setTimeout(() => findInputRef.current?.focus(), 30);
+  };
+
+  // Live word count for the open chapter (Word's status bar). One parse per
+  // debounced flush of a single chapter — cheap.
+  const words = React.useMemo(() => wordCountOf(session?.content), [session?.content]);
+
   const setHighlight = (color) => {
     document.execCommand('backColor', false, color ?? 'transparent');
     setHiliteOpen(false);
@@ -238,9 +439,10 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       );
       if (!inEditor) return;
       if (k === 'b') { e.preventDefault(); toggle('bold'); }
-      else if (k === 'i') { e.preventDefault(); toggle('italic'); }
+      else if (k === 'i' && !e.altKey) { e.preventDefault(); toggle('italic'); }
       else if (k === 'u') { e.preventDefault(); toggle('underline'); }
       else if (k === 'h') { e.preventDefault(); setHighlight(active.highlight ? null : HILITE_COLORS[0]); }
+      else if (k === 'f' && !e.shiftKey) { e.preventDefault(); openFind(); }
     };
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
@@ -346,6 +548,42 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   // ── Shared control set ────────────────────────────────────────────────────
   const controls = (up) => (
     <>
+      {/* Undo / redo (Docs keeps them leftmost) */}
+      <TBtn title="Undo (Ctrl+Z)" onClick={() => toggle('undo')}><DSIcons.Undo size={15} /></TBtn>
+      <TBtn title="Redo (Ctrl+Y)" onClick={() => toggle('redo')}><DSIcons.Redo size={15} /></TBtn>
+
+      <TDivider />
+
+      {/* Paragraph styles — Normal text / Headings / Quote */}
+      <div ref={styleRef} style={{ position: 'relative', flexShrink: 0 }}>
+        <TBtn title="Paragraph style" active={styleOpen} onClick={() => { closePopovers(); setStyleOpen(v => !v); }}
+          style={{ minWidth: 92, justifyContent: 'space-between', padding: '0 8px' }}>
+          <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 96 }}>
+            {BLOCK_LABELS[active.block] || 'Normal text'}
+          </span>
+          <DSIcons.ChevronDown size={10} style={{ marginLeft: 4, opacity: 0.6 }} />
+        </TBtn>
+        <Popover open={styleOpen} onClose={() => setStyleOpen(false)} up={up} anchorRef={styleRef} width={176}>
+          <div style={{ width: '100%' }}>
+            {BLOCK_STYLES.map(([tag, label, st]) => (
+              <button key={tag}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { toggle('formatBlock', `<${tag}>`); setStyleOpen(false); }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+                  padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent',
+                  color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', textAlign: 'left', ...st,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                {label}
+                {active.block === tag && <DSIcons.Check size={12} color="var(--accent)" />}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      </div>
+
       <FontSelector customFonts={customFonts} onApply={applyStyle} editorRef={editorRef} />
       <SizeSelector onApply={applyStyle} editorRef={editorRef} />
 
@@ -355,6 +593,31 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       <TBtn title="Italic (Ctrl+I)" active={active.italic} onClick={() => toggle('italic')}><i>I</i></TBtn>
       <TBtn title="Underline (Ctrl+U)" active={active.underline} onClick={() => toggle('underline')}><u>U</u></TBtn>
       <TBtn title="Strikethrough" active={active.strike} onClick={() => toggle('strikeThrough')}><DSIcons.Strikethrough size={15} /></TBtn>
+      <TBtn title="Subscript" active={active.sub} onClick={() => toggle('subscript')}><DSIcons.Subscript size={15} /></TBtn>
+      <TBtn title="Superscript" active={active.sup} onClick={() => toggle('superscript')}><DSIcons.Superscript size={15} /></TBtn>
+
+      {/* Format painter (Word): copy formatting here, apply to next selection */}
+      <TBtn title={painter ? 'Format painter armed — select text to apply (Esc cancels)' : 'Format painter — copies this text\'s formatting to your next selection'}
+        active={!!painter} onClick={armPainter}><DSIcons.Painter size={15} /></TBtn>
+
+      {/* Change case (Word's Aa) */}
+      <div ref={caseRef} style={{ position: 'relative', flexShrink: 0 }}>
+        <TBtn title="Change case" active={caseOpen} onClick={() => { closePopovers(); setCaseOpen(v => !v); }}><DSIcons.CaseChange size={15} /></TBtn>
+        <Popover open={caseOpen} onClose={() => setCaseOpen(false)} up={up} anchorRef={caseRef} width={190}>
+          <div style={{ width: '100%' }}>
+            {CASE_MODES.map(([mode, label]) => (
+              <button key={mode}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => transformCase(mode)}
+                style={{ display: 'block', width: '100%', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      </div>
 
       {/* Text colour */}
       <div ref={colorRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -409,9 +672,31 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
       <TBtn title="Increase indent" onClick={() => toggle('indent')}><DSIcons.Indent size={15} /></TBtn>
       <TBtn title="Decrease indent" onClick={() => toggle('outdent')}><DSIcons.Outdent size={15} /></TBtn>
 
+      {/* Line spacing (Docs) */}
+      <div ref={spacingRef} style={{ position: 'relative', flexShrink: 0 }}>
+        <TBtn title="Line spacing" active={spacingOpen} onClick={() => { closePopovers(); setSpacingOpen(v => !v); }}><DSIcons.LineSpacing size={15} /></TBtn>
+        <Popover open={spacingOpen} onClose={() => setSpacingOpen(false)} up={up} anchorRef={spacingRef} width={136}>
+          <div style={{ width: '100%' }}>
+            {LINE_SPACINGS.map(([v, label]) => (
+              <button key={label}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setLineSpacing(v)}
+                style={{ display: 'block', width: '100%', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      </div>
+
       <TDivider />
 
       <TBtn title="Clear formatting" onClick={() => { toggle('removeFormat'); setHighlight(null); }}><DSIcons.ClearFormat size={15} /></TBtn>
+
+      {/* Find & replace */}
+      <TBtn title="Find & replace (Ctrl+F)" active={findOpen} onClick={() => (findOpen ? setFindOpen(false) : openFind())}><DSIcons.Search size={15} /></TBtn>
 
       {/* Insert menu */}
       <div ref={insertRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -467,6 +752,21 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
           ))}
         </>
       )}
+
+      {/* Live word count (Word's status bar) — desktop only; mobile pill space
+          is too tight and the dashboard already shows per-chapter counts. */}
+      {!android && (
+        <>
+          <TDivider />
+          <span title="Words in this chapter" style={{
+            flexShrink: 0, padding: '0 8px', fontSize: 12, fontWeight: 600,
+            color: 'var(--toolbar-item)', opacity: 0.75, whiteSpace: 'nowrap',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {words.toLocaleString()} {words === 1 ? 'word' : 'words'}
+          </span>
+        </>
+      )}
     </>
   );
 
@@ -494,6 +794,50 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
           </div>
         </div>, document.body)}
     </>
+  );
+
+  // ── Find & replace bar (Ctrl+F) — second row under the toolbar controls ───
+  const findFieldStyle = {
+    flex: '1 1 90px', minWidth: 70, padding: '6px 9px', borderRadius: 7,
+    border: '1px solid var(--border)', background: 'var(--surface)',
+    color: 'var(--text-1)', fontSize: 12.5, outline: 'none',
+  };
+  const findActStyle = {
+    padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)',
+    background: 'var(--surface)', color: 'var(--text-2)', fontSize: 12,
+    fontWeight: 600, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+  };
+  const findRow = findOpen && (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+      padding: '6px 10px 8px', borderTop: '1px solid var(--toolbar-divider)',
+    }}>
+      <DSIcons.Search size={13} style={{ color: 'var(--text-4)', flexShrink: 0 }} />
+      <input
+        ref={findInputRef}
+        value={findQ}
+        onChange={(e) => { setFindQ(e.target.value); setFindMiss(false); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); doFind(e.shiftKey); }
+          else if (e.key === 'Escape') { setFindOpen(false); editorRef?.current?.focus(); }
+        }}
+        placeholder="Find"
+        style={findFieldStyle}
+      />
+      <TBtn title="Previous match (Shift+Enter)" onClick={() => doFind(true)}><DSIcons.ChevronUp size={13} /></TBtn>
+      <TBtn title="Next match (Enter)" onClick={() => doFind(false)}><DSIcons.ChevronDown size={13} /></TBtn>
+      <input
+        value={replQ}
+        onChange={(e) => setReplQ(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doReplace(); } else if (e.key === 'Escape') { setFindOpen(false); editorRef?.current?.focus(); } }}
+        placeholder="Replace with"
+        style={findFieldStyle}
+      />
+      <button onClick={doReplace} style={findActStyle}>Replace</button>
+      <button onClick={doReplaceAll} style={findActStyle}>All</button>
+      {findMiss && <span style={{ fontSize: 11.5, color: 'var(--text-4)', flexShrink: 0 }}>No matches</span>}
+      <TBtn title="Close (Esc)" onClick={() => { setFindOpen(false); editorRef?.current?.focus(); }}><DSIcons.X size={13} /></TBtn>
+    </div>
   );
 
   // ── Android: floating pill that docks above the keyboard (B4) ─────────────
@@ -527,6 +871,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
         }}>
           {controls(kbOpen)}
         </div>
+        {findRow}
       </div>
       </>
     );
@@ -559,6 +904,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
         <style>{'.toolbar-scroll::-webkit-scrollbar{display:none}'}</style>
         {controls(false)}
       </div>
+      {findRow}
     </div>
     </>
   );

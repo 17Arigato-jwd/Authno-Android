@@ -3,6 +3,89 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.2
+
+_Bug-hunt and optimization round on beta.1, a Raycast-style Settings redesign,
+and a Word/Docs-class editor toolbar._
+
+### Editor toolbar: Word & Docs features
+
+- **Paragraph styles** — a Normal text / Heading 1–3 / Quote dropdown at the
+  head of the toolbar (Docs' style selector), with each entry previewed in its
+  own weight and the active style checked.
+- **Find & replace (Ctrl+F)** — a bar under the toolbar with next/previous
+  match (Enter / Shift+Enter), Replace and Replace All, scoped to the open
+  chapter. Opening it pre-fills whatever text you had selected.
+- **Format painter** — Word's paintbrush: click it with the caret in styled
+  text, then select other text to copy the bold/italic/underline/strike,
+  colour, highlight, font and size across. Esc cancels.
+- **Change case** — UPPERCASE, lowercase, Capitalize Each Word and Sentence
+  case, applied in place so bold/italic runs inside the selection keep their
+  formatting.
+- **Line spacing** — Single / 1.15 / 1.5 / Double per paragraph, like Docs'
+  line-spacing menu, on top of the global setting in Settings → Editor.
+- **Subscript & superscript** buttons next to strikethrough.
+- **Undo / Redo buttons** leftmost on the toolbar (they were shortcut-only).
+- **Live word count** for the open chapter at the toolbar's end (desktop).
+- Everything routes through the editor's native undo stack and lands in
+  History like normal typing.
+
+### Settings, redesigned (Raycast-style)
+
+- **New shell**: a sidebar with a **working settings search** (type to match
+  tabs *and* individual settings — clicking a result jumps straight to its
+  tab), a profile/account row, and icon-tile navigation grouped into
+  separated blocks. Content renders as **rounded row-cards** — label and a
+  small description on the left, the control on the right, hairline
+  separators between rows — in a centred column.
+- **Mobile**: the same cards full-width, a search field under the header, an
+  icon-tile tab strip, and rows that wrap so controls drop below their labels
+  on narrow screens. All of it plain CSS on theme variables — no new
+  libraries, nothing running at rest.
+- **Startup merged into General** (a select instead of a whole tab), profile
+  editing lives in General too, and the tab count drops by one.
+- **New settings, all live-wired** (no dead toggles): **Interface scale**
+  (90 / 100 / 110% — scales the whole app), **Editor text size** (S–XL),
+  **Line spacing** (tight / normal / loose), and **Default chapter sort**
+  for the book screen (story order / recently edited).
+
+### Performance
+
+- **Word counts stopped re-parsing HTML.** Every chapter now carries a cached
+  `word_count` — maintained on each edit, loaded from the `.authbook`
+  manifest, and refreshed by History restores/reverts. The streak flame
+  (which recounted the whole book on every editor flush), the desktop home
+  stats, the book studio's chapter rows and totals, and the dashboard totals
+  all read the cache and only fall back to parsing for chapters that predate
+  it.
+- **The history engine parses each chapter state once, not four times.**
+  Paragraph splitting is now memoized (small LRU) — during a typing burst the
+  baseline and previous-state splits are cache hits, cutting the per-flush
+  diff cost to roughly a quarter.
+
+### Fixes
+
+- **History: leftover invisible accumulators are cleaned up.** Sub-threshold
+  edit accumulators for a chapter used to linger hidden in the history array
+  forever once a new entry started; they're now purged (their content lives
+  on as the new entry's baseline).
+- **History: blank paragraphs no longer count as changes.** Empty `<p>`s from
+  pressing Enter showed up as empty preview lines and padded "N paragraphs
+  changed" summaries.
+- **History: repeated reverts are safe.** Reverting the same change twice
+  could operate on a shared cached block array; reverts now work on copies.
+- **Word-count rules unified.** The manifest counter, the streak counter and
+  the app counter each treated `&nbsp;` slightly differently, so totals could
+  jump by a few words after a chapter's first edit once the cache kicked in.
+  One rule everywhere now.
+- **Book studio: "Position" is the chapter's place in the story**, not its
+  place in whatever the search box happened to match ("1 of 12" while
+  filtering).
+- **Ctrl+Alt+I no longer fires on AltGr layouts.** On Windows, AltGr registers
+  as Ctrl+Alt — typing í on Hungarian/Slovak keyboards popped the chapter-info
+  modal mid-word. Real Ctrl+Alt is distinguished via the AltGraph modifier
+  state.
+
 ## 1.1.18-beta.1
 
 _The QA round on beta.0, shaped by the author's feedback — history that shows

@@ -25,7 +25,10 @@ export function getTodayKey() {
 
 export function countWords(html) {
   if (!html) return 0;
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ');
+  // Same rule as history.js wordCountOf / authbook's manifest counter — the
+  // fallback must agree with the cached word_count it stands in for, or the
+  // streak baseline drifts by a few words after the first edit of a chapter.
+  const text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ');
   return text.trim().split(/\s+/).filter(w => w.length > 0).length;
 }
 
@@ -37,7 +40,13 @@ export function countWords(html) {
  */
 export function countBookWords(session) {
   const chapters = session?.chapters;
-  if (chapters?.length) return chapters.reduce((n, c) => n + countWords(c.content || ''), 0);
+  // Prefer the cached word_count (maintained per edit, loaded from the
+  // manifest) — this runs on EVERY FlameButton render, i.e. every editor
+  // flush, and used to re-strip the whole book's HTML each time.
+  if (chapters?.length) {
+    return chapters.reduce((n, c) =>
+      n + (typeof c.word_count === 'number' ? c.word_count : countWords(c.content || '')), 0);
+  }
   return countWords(session?.content ?? '');
 }
 

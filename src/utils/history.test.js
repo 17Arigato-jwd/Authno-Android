@@ -174,6 +174,50 @@ test('history is capped at the session limit', () => {
   expect(h[0].order).toBe(SESSION_HISTORY_LIMIT + 29);
 });
 
+test('stale provisional accumulators are purged when a new entry starts', () => {
+  const base = P('A calm quiet start to the chapter today.');
+  // Small edit → provisional.
+  let h = recordEdit([], { chapIdx: 1, chapTitle: 'One', beforeContent: base, afterContent: P('A calm quiet start to the chapter today, mostly.') }, T0);
+  expect(h[0].provisional).toBe(true);
+  // Much later, a big edit lands — accumulates from the provisional's content
+  // and replaces it instead of leaving it hidden in the array forever.
+  const big = P('A calm quiet start to the chapter today, mostly, until the storm arrived with thunder and sideways rain that soaked everyone.');
+  h = recordEdit(h, { chapIdx: 1, chapTitle: 'One', beforeContent: P('A calm quiet start to the chapter today, mostly.'), afterContent: big }, T0 + 600_000);
+  expect(h.filter((e) => e.provisional)).toHaveLength(0);
+  expect(visibleHistory(h)).toHaveLength(1);
+  expect(h[0].content).toBe(big);
+});
+
+test('blank paragraphs never become diff ops', () => {
+  const before = P('some words here');
+  const after = `${P('some words here')}<p><br></p><p></p>`;
+  expect(diffBlocks(before, after)).toHaveLength(0);
+});
+
+test('splitBlocks caching never lets a revert corrupt later diffs', () => {
+  const p1 = 'The very first paragraph with its original words intact.';
+  const p2a = 'A second paragraph before any rewriting happened to it.';
+  const p2b = 'A second paragraph after a very thorough rewriting job with lots of fresh words in it now.';
+  let h = recordEdit([], { chapIdx: 1, chapTitle: 'One', beforeContent: P(p1, p2a), afterContent: P(p1, p2b) }, T0);
+  const session = { title: 'B', chapters: [{ chap_idx: 1, title: 'One', order: 1, content: P(p1, p2b) }], history: h };
+  // Two consecutive reverts over the same (cached) split must both compute
+  // from unmutated block arrays.
+  const r1 = revertChangePatch(session, h[0].id, null, T0 + 1000);
+  expect(r1.patch.chapters[0].content).toBe(P(p1, p2a));
+  const r2 = revertChangePatch(session, h[0].id, null, T0 + 2000);
+  expect(r2.patch.chapters[0].content).toBe(P(p1, p2a));
+});
+
+test('restore and revert keep the chapter word_count cache fresh', () => {
+  const session = {
+    title: 'Book',
+    chapters: [{ chap_idx: 1, title: 'One', order: 1, content: '<p>current words here</p>', word_count: 3 }],
+    history: [{ id: 'e1', ts: T0, kind: 'edit', chapIdx: 1, chapTitle: 'One', content: '<p>five words live in here</p>', words: 5 }],
+  };
+  const res = restorePatch(session, 'e1', null, T0 + 1000);
+  expect(res.patch.chapters[0].word_count).toBe(5);
+});
+
 test('describeEntry summarises paragraph-level ops', () => {
   const added = { kind: 'edit', chapTitle: 'One', words: 30, prevWords: 10, blocks: [{ type: 'added', after: { html: '', text: 'twenty words or so of new prose in a fresh paragraph appended at the end of the chapter now' }, words: 20 }] };
   expect(describeEntry(added).title).toBe('Added a paragraph in One');

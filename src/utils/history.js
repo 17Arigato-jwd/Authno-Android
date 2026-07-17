@@ -68,10 +68,31 @@ function _textOfHtml(html) {
   return _norm(String(html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' '));
 }
 
-/** Split chapter HTML into top-level blocks: [{ html, text }]. */
+// splitBlocks runs several times per debounced flush (baseline diff + locality
+// diff) and its DOM parse dominates recordEdit's cost. During a burst the same
+// strings recur (baseline stays fixed; the previous "after" becomes the next
+// diff's "before"), so a tiny LRU makes most calls free. Entries are treated
+// as immutable — mutating callers must copy (see revertChangePatch).
+const _splitCache = new Map();
+const _SPLIT_CACHE_MAX = 8;
+
+/** Split chapter HTML into top-level blocks: [{ html, text }]. Cached; treat the result as read-only. */
 export function splitBlocks(html) {
   const src = String(html || '');
   if (!src.trim()) return [];
+  const hit = _splitCache.get(src);
+  if (hit) {
+    // Refresh recency.
+    _splitCache.delete(src); _splitCache.set(src, hit);
+    return hit;
+  }
+  const out = _splitBlocksUncached(src);
+  _splitCache.set(src, out);
+  if (_splitCache.size > _SPLIT_CACHE_MAX) _splitCache.delete(_splitCache.keys().next().value);
+  return out;
+}
+
+function _splitBlocksUncached(src) {
   if (typeof document !== 'undefined') {
     const div = document.createElement('div');
     div.innerHTML = src;
@@ -180,7 +201,9 @@ export function diffBlocks(beforeHtml, afterHtml) {
     if (ca > prevA || cb > prevB) emitGap(prevA, ca, prevB, cb);
     prevA = ca + 1; prevB = cb + 1;
   }
-  return ops;
+  // Blank paragraphs (pressing Enter makes empty <p>s) are layout, not prose —
+  // as ops they rendered as empty preview lines and padded the op count.
+  return ops.filter((o) => (o.before?.text || '') !== '' || (o.after?.text || '') !== '');
 }
 
 function _diffWords(ops) { return ops.reduce((s, o) => s + (o.words || 0), 0); }
@@ -219,12 +242,18 @@ export function recordEdit(history, { chapIdx, chapTitle, beforeContent, afterCo
   const headIsEdit = head && head.kind === 'edit' && head.chapIdx === chapIdx && head.content != null;
   const active = headIsEdit && (head.provisional || now - head.ts < COALESCE_MS);
 
+  // Older provisional accumulators for this chapter are superseded the moment
+  // a NEW entry starts — without this purge they lingered hidden in the array
+  // forever, eating the size budget. (The freshly consulted one has already
+  // donated its content as the new entry's baseline.)
+  const _dropStaleProvisionals = (list) => list.filter((e) => !(e.provisional && e.chapIdx === chapIdx));
+
   if (active) {
     // Moved to a different paragraph with a substantial change → new entry.
     if (!head.provisional) {
       const inc = diffBlocks(head.content, afterContent);
       if (inc.length && !_touchesSameRegion(head.blocks || [], inc) && _qualifies(inc)) {
-        return _trim([_mkEditEntry(chapIdx, chapTitle, head.content, afterContent, now), ...h]);
+        return _trim([_mkEditEntry(chapIdx, chapTitle, head.content, afterContent, now), ..._dropStaleProvisionals(h)]);
       }
     }
     // Merge into the open entry (re-diff from its baseline).
@@ -249,7 +278,7 @@ export function recordEdit(history, { chapIdx, chapTitle, beforeContent, afterCo
   const lastForChap = h.find((e) => e.chapIdx === chapIdx && e.content != null);
   const baseline = lastForChap ? lastForChap.content : beforeContent;
   if (baseline === afterContent) return h;
-  return _trim([_mkEditEntry(chapIdx, chapTitle, baseline, afterContent, now), ...h]);
+  return _trim([_mkEditEntry(chapIdx, chapTitle, baseline, afterContent, now), ..._dropStaleProvisionals(h)]);
 }
 
 /**
@@ -332,7 +361,7 @@ export function restorePatch(session, entryId, previewOf, now = Date.now()) {
       // never overwrite the newcomer; resurrect under a fresh idx instead.
       restoredAsNew = true;
     } else {
-      chapters[idx] = { ...chapters[idx], content: entry.content, updated: nowIso };
+      chapters[idx] = { ...chapters[idx], content: entry.content, updated: nowIso, word_count: wordCountOf(entry.content) };
     }
   }
   if (idx < 0 || restoredAsNew) {
@@ -346,6 +375,7 @@ export function restorePatch(session, entryId, previewOf, now = Date.now()) {
       order: restoredAsNew ? maxOrder + 1 : (entry.order ?? maxOrder + 1),
       content: entry.content,
       created: nowIso, updated: nowIso,
+      word_count: wordCountOf(entry.content),
       ...(entry.synopsis ? { synopsis: entry.synopsis } : {}),
     });
   }
@@ -403,7 +433,8 @@ export function revertChangePatch(session, entryId, previewOf, now = Date.now())
   const ci = chapters.findIndex((c) => c.chap_idx === entry.chapIdx);
   if (ci === -1) return null;
 
-  let cur = splitBlocks(chapters[ci].content);
+  // splitBlocks results are cached and shared — copy before splicing.
+  let cur = [...splitBlocks(chapters[ci].content)];
   let applied = 0;
 
   for (const op of entry.blocks) {
@@ -425,7 +456,7 @@ export function revertChangePatch(session, entryId, previewOf, now = Date.now())
   const newHtml = cur.map((b) => b.html).join('');
   if (newHtml === chapters[ci].content) return null;
   const nowIso = new Date(now).toISOString();
-  chapters[ci] = { ...chapters[ci], content: newHtml, updated: nowIso };
+  chapters[ci] = { ...chapters[ci], content: newHtml, updated: nowIso, word_count: wordCountOf(newHtml) };
 
   const mirror = _mirrorFirst(chapters, previewOf);
   const chapTitle = entry.chapTitle || `Chapter ${entry.chapIdx}`;
