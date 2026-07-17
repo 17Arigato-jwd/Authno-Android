@@ -44,8 +44,10 @@ import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import BillingPage from "./components/BillingPage";
-import { subscribeBilling } from "./utils/billingBus";
+import { subscribeBilling, openBilling } from "./utils/billingBus";
 import { Onboarding, hasSeenOnboarding, UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
+import { OnboardingFunnel } from "./components/onboarding/OnboardingFunnel";
+import { getProfile } from "./utils/profile";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
@@ -587,6 +589,7 @@ function AppInner({ navigateRef }) {
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [demoBook, setDemoBook] = useState(null); // demo book for onboarding funnel
   const [resumePointState, setResumePointState] = useState(null); // pending Resume Writing target
   const [sharedImport, setSharedImport] = useState(null);         // text shared from another app
   const [showUpdateOnboarding, setShowUpdateOnboarding] = useState(false);
@@ -757,10 +760,11 @@ function AppInner({ navigateRef }) {
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
-    hasSeenOnboarding().then((seen) => {
-      if (!seen) setShowOnboarding(true);
-      else hasSeenUpdate().then((seenUpdate) => { if (!seenUpdate) setShowUpdateOnboarding(true); });
-    });
+    const profile = getProfile();
+    const seen = profile.onboardingCompleted;
+    if (!seen) setShowOnboarding(true);
+    else hasSeenUpdate().then((seenUpdate) => { if (!seenUpdate) setShowUpdateOnboarding(true); });
+
     const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");
     if (saved) { try { const p = JSON.parse(saved); if (Array.isArray(p)) { setSessions(p); if (savedId) setCurrentId(savedId); } } catch { /* corrupt store — start clean */ } }
@@ -1522,10 +1526,20 @@ function AppInner({ navigateRef }) {
         />
       )}
       {showOnboarding && (
-        <Onboarding
-          accentHex={customization.accentHex}
-          onDone={() => setShowOnboarding(false)}
-          onStartTour={() => { setShowOnboarding(false); setTourActive(true); }}
+        <OnboardingFunnel
+          onComplete={() => {
+            setShowOnboarding(false);
+            openBilling();
+          }}
+          onDemoBookAdd={(book) => {
+            setDemoBook(book);
+            setSessions(prev => [book, ...prev]);
+          }}
+          onDemoBookRemove={() => {
+            if (demoBook) {
+              setSessions(prev => prev.filter(s => s.id !== demoBook.id));
+            }
+          }}
         />
       )}
       {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
