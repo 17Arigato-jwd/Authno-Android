@@ -3,6 +3,52 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.3
+
+_Onboarding rebuilt as a five-step funnel, and Pro reframed from subscription
+plans to a single one-time purchase with a 7-day free trial._
+
+### New onboarding
+
+- **Five-step funnel replaces the welcome deck**: Welcome → About you →
+  guided tour → your name → a note from the creator, with a persistent
+  progress rail (dots + bar) across every step. Keyboard: → / Enter advance,
+  ← back, Esc skips.
+- **"The Good Knight" demo book** — a real short story (Chapter 1 final) is
+  placed in your library during the tour so there's something genuine to
+  explore before you've created anything. It's removed automatically when
+  setup finishes and never survives an app restart.
+- **About you** pre-selects the common answers (a novel, just starting,
+  300–5000 words) so most people just tap Continue — everything stays
+  editable.
+- **Your name** captures a display name and optional username into a new
+  local profile store (`authno_profile`) — the future seam for cloud
+  accounts; nothing leaves the device.
+- **Replay** still lives in Settings; replaying never resets your trial or
+  touches a purchased Pro.
+
+### Pro: one-time purchase + 7-day trial
+
+- **Plans are gone.** Monthly/yearly/lifetime is replaced by a single
+  one-time purchase: **₹2,999.99** in India, converted per region and
+  rounded to a .99 price elsewhere ($29.99 / £24.99 / €29.99, more in
+  `src/utils/pricing.js`). Unknown regions fall back to USD. Still the mock
+  checkout — Play Billing will supply store-localized prices later.
+- **7-day free trial starts when setup finishes** (existing users: on first
+  launch after this update). Every Pro feature is unlocked during the trial;
+  gating everywhere is now trial-aware.
+- **The billing page explains the timeline**: Day 1 everything unlocked,
+  Day 5 a reminder, Day 7 the one-time charge — plus a days-left banner
+  while a trial is running. The paywall slides up on its own about half a
+  second after setup ends, not as a step inside it.
+- **UPI is shown for the India region only**; other regions get card.
+
+### Migration
+
+- Existing installs are recognised by the old "seen onboarding" flag: they
+  skip the new-user funnel, get the profile backfilled, start their trial,
+  and see this what's-new notice instead.
+
 ## 1.1.18-beta.2
 
 _Bug-hunt and optimization round on beta.1, a Raycast-style Settings redesign,
