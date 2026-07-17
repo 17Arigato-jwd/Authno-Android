@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "10";
+const UPDATE_VERSION = "11";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -554,29 +554,29 @@ export function Onboarding({ accentHex = "#5a00d9", onDone, onStartTour }) {
 
 const UPDATE_NOTES = [
   {
-    icon: (p) => <DSIcons.History {...p} />,
-    title: "History shows real changes now",
-    body: "The History panel (Ctrl+Shift+Z) lists actual edits — a rewritten paragraph, a deleted line, a new passage — each with a before/after preview. Click one to preview, then either revert just that change (keeping everything since) or restore the chapter to that point.",
+    icon: (p) => <DSIcons.Star {...p} />,
+    title: "Your 7-day full-access trial",
+    body: "Every Pro feature is unlocked for you right now, free for 7 days. You'll get a reminder on day 5, and if AuthNo earns its place, Pro is one single payment — yours forever, no subscription. See the timeline any time under Upgrade.",
   },
   {
-    icon: (p) => <DSIcons.Lightning {...p} />,
-    title: "Shortcuts everywhere",
-    body: "Ctrl+K search, Ctrl+, settings, Ctrl+N new book, Ctrl+O open, Ctrl+Shift+N new chapter, Ctrl+Shift+T threads, Ctrl+Shift+E export, Ctrl+Shift+R read aloud. Hints sit faded next to buttons, and the full list lives in Settings → Shortcuts.",
+    icon: (p) => <DSIcons.Heart {...p} />,
+    title: "Pro is now one payment, not a plan",
+    body: "Monthly and yearly plans are gone. Pro is a single one-time purchase (₹2,999.99 in India, matched .99 pricing per region) that unlocks everything for good. Buying once supports independent development directly.",
   },
   {
-    icon: (p) => <DSIcons.Text {...p} />,
-    title: "A real word-processor toolbar",
-    body: "Paragraph styles (headings & quotes), find & replace (Ctrl+F), a format painter, change case, per-paragraph line spacing, subscript/superscript, undo/redo buttons and a live word count — the toolbar now covers what you'd reach for in Word or Docs.",
+    icon: (p) => <DSIcons.Rocket {...p} />,
+    title: "A brand-new welcome",
+    body: "New writers now start with a five-step setup — personalization, a guided tour, and a note from the creator — instead of the old slide deck. You can replay it from Settings whenever you like; replaying never touches your trial or purchase.",
   },
   {
-    icon: (p) => <DSIcons.Settings {...p} />,
-    title: "Settings, redesigned",
-    body: "A new layout inspired by the best desktop apps: a sidebar with working settings search, your profile up top, and clean row-cards for every option. Plus new controls that actually do things — interface scale, editor text size, line spacing, and default chapter sort.",
+    icon: (p) => <DSIcons.BookOpen {...p} />,
+    title: "Meet “The Good Knight”",
+    body: "The new tour explores a real short story — the tale of the knight Eclas and Princess Penelope — so first-time writers see a finished book before creating their own. It appears only during setup and cleans itself up after.",
   },
   {
-    icon: (p) => <DSIcons.Volume {...p} />,
-    title: "Read aloud, aimed better",
-    body: "Read aloud from Home now asks which book and chapter to start from, and the book screen reads from your selected chapter. Plus: menus redesigned, chapter details on the book screen, and closing animations for every panel — with a soft crossfade on theme switches.",
+    icon: (p) => <DSIcons.User {...p} />,
+    title: "A local profile, ready for the future",
+    body: "AuthNo now keeps a small local profile — your name and writing preferences — stored only on this device. When cloud accounts arrive in a future release, this is what they'll build on. Nothing leaves your device today.",
   },
 ];
 

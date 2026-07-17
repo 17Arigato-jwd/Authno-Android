@@ -45,9 +45,10 @@ import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import BillingPage from "./components/BillingPage";
 import { subscribeBilling, openBilling } from "./utils/billingBus";
-import { UpdateOnboarding, hasSeenUpdate } from "./components/Onboarding";
+import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { OnboardingFunnel } from "./components/onboarding/OnboardingFunnel";
-import { getProfile } from "./utils/profile";
+import { getProfile, setProfile } from "./utils/profile";
+import { startTrialMock } from "./utils/entitlements";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
@@ -759,10 +760,24 @@ function AppInner({ navigateRef }) {
 
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
-    const profile = getProfile();
-    const seen = profile.onboardingCompleted;
-    if (!seen) setShowOnboarding(true);
-    else hasSeenUpdate().then((seenUpdate) => { if (!seenUpdate) setShowUpdateOnboarding(true); });
+    const showWhatsNew = () => hasSeenUpdate().then((seenUpdate) => { if (!seenUpdate) setShowUpdateOnboarding(true); });
+    if (getProfile().onboardingCompleted) {
+      showWhatsNew();
+    } else {
+      // Migration: users from before the funnel have the old preference flag
+      // but no profile. Backfill it so they see the what's-new notice instead
+      // of the new-user funnel, and start their 7-day trial (startTrialMock
+      // is a no-op for Pro and never resets an existing trial clock).
+      hasSeenOnboarding().then((seenLegacy) => {
+        if (seenLegacy) {
+          setProfile({ onboardingCompleted: true, onboardingCompletedAt: new Date().toISOString() });
+          startTrialMock();
+          showWhatsNew();
+        } else {
+          setShowOnboarding(true);
+        }
+      });
+    }
 
     const saved = localStorage.getItem("offlineWriterSessions");
     const savedId = localStorage.getItem("offlineWriterCurrentId");

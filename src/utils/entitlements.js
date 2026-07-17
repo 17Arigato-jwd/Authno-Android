@@ -65,9 +65,16 @@ export function subscribeEntitlement(fn) {
   return () => _subs.delete(fn);
 }
 
-/** Activate 7-day trial (called after onboarding completes). */
+/** Activate 7-day trial (called after onboarding completes).
+ *  Never downgrades a purchased Pro, and never resets an existing trial
+ *  clock — replaying onboarding from Settings must not grant a fresh trial. */
 export function startTrialMock() {
-  try { localStorage.setItem(TRIAL_START_KEY, String(Date.now())); } catch { /* ignore */ }
+  if (getEntitlement() === ENTITLEMENTS.PRO) return;
+  try {
+    if (!localStorage.getItem(TRIAL_START_KEY)) {
+      localStorage.setItem(TRIAL_START_KEY, String(Date.now()));
+    }
+  } catch { /* ignore */ }
   _set(ENTITLEMENTS.TRIAL);
 }
 
