@@ -3,6 +3,31 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.6
+
+_A hands-on first-book walkthrough, and a fix for a desktop startup hang._
+
+### Create My First Book
+
+- Brand-new users get a **"Create My First Book" banner** on the home screen
+  that launches an interactive, hands-on walkthrough. It builds your real
+  first book with you, one step at a time: import a draft (or start blank),
+  set a streak goal, add details, name a chapter, write a few words, add a
+  cover, save, track it with Threads, peek at History, and export.
+- Steps you must do (add details, name a chapter, write, save, make a thread,
+  open History) wait for you and unlock as you go; optional ones can be
+  skipped. The writing step pauses for as long as you like — leave and come
+  back, and it picks up right where you were.
+
+### Fixes
+
+- **Desktop startup hang.** On some (especially brand-new) Windows machines,
+  the app could sit on a blank window for a long time or fail to load. A boot
+  optimisation from beta.4 was the cause — reverted. The window now appears
+  only once it's ready to draw, with a safeguard so it can never stay hidden.
+  If a machine's graphics drivers are the problem, launching with
+  `AUTHNO_DISABLE_GPU=1` forces software rendering.
+
 ## 1.1.18-beta.5
 
 _A polish pass on the new onboarding: the funnel and paywall now match the

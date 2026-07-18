@@ -12,10 +12,14 @@ const isLinux = process.platform === "linux";
 // The app is a single window with its own title bar and shortcut system, so
 // the default application menu (and its accelerator table) is pure overhead.
 Menu.setApplicationMenu(null);
-// Windows: run the GPU service inside the main process instead of spawning a
-// dedicated GPU process — one fewer Chromium process (~50-80 MB). Kept off
-// Linux where in-process GPU is flaky across drivers.
-if (process.platform === "win32") app.commandLine.appendSwitch("in-process-gpu");
+//
+// NOTE: beta.4 also forced `in-process-gpu` on Windows to shave a process.
+// It caused a blank-screen hang on fresh Windows 11 machines (compositing
+// stalls with certain default GPU drivers), so it's removed — a robust boot
+// beats one fewer process. The dedicated GPU process (Chromium default) is
+// back. If GPU compositing itself is broken on a machine, the environment
+// variable AUTHNO_DISABLE_GPU=1 falls back to software rendering.
+if (process.env.AUTHNO_DISABLE_GPU === "1") app.disableHardwareAcceleration();
 
 // ── App icon switcher (desktop) ──────────────────────────────────────────────
 // Maps the icon ids used by the renderer to the on-disk assets. Persisted in
@@ -188,12 +192,12 @@ if (!gotTheLock) {
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
-      // Windows: show immediately — the window appears the instant the OS can
-      // draw it, painted in the theme background colour until the renderer's
-      // first frame (no white flash; backgroundColor below). Linux keeps
-      // ready-to-show because its window is transparent for rounded corners,
-      // and an unpainted transparent window is an invisible ghost.
-      show: !isLinux,
+      // Show only once the renderer has painted its first frame (ready-to-show),
+      // never before. beta.4 showed the Windows window immediately, which on a
+      // fresh/slow machine surfaced a blank dark window that "hung" while the
+      // renderer loaded. A watchdog below force-shows it if ready-to-show is
+      // slow, so the app can never sit invisibly forever either.
+      show: false,
       // Frameless — the app draws its own themed title bar (see TitleBar.jsx).
       // This is what makes the desktop app stop looking like "a website in a
       // window". Still resizable; dragging is handled via -webkit-app-region.
@@ -214,9 +218,6 @@ if (!gotTheLock) {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "Preload.js"), // safe — after handlers registered
-        // Compile-and-cache eagerly: slower very first boot by a hair, faster
-        // every boot after (V8 bytecode cache for the 1MB main bundle).
-        v8CacheOptions: "bypassHeatCheck",
       },
     });
 
@@ -235,11 +236,27 @@ if (!gotTheLock) {
       mainWindow.loadFile(path.join(__dirname, "build", "index.html"));
     }
 
-    // Linux only (transparent window) — Windows is already visible.
-    // openFilePath is delivered via get-pending-file IPC on renderer mount.
-    if (isLinux) mainWindow.once("ready-to-show", () => { mainWindow.show(); });
+    // Show once the renderer is ready to paint (the inline boot splash in
+    // index.html appears the moment the window does — no blank window). A
+    // watchdog guarantees the window surfaces even if ready-to-show never
+    // fires (a hung/failed renderer), so the app is never invisible forever.
+    let shown = false;
+    const reveal = () => {
+      if (shown || !mainWindow || mainWindow.isDestroyed()) return;
+      shown = true;
+      mainWindow.show();
+    };
+    mainWindow.once("ready-to-show", reveal);
+    const watchdog = setTimeout(reveal, 10000);
 
-    mainWindow.on("closed", () => (mainWindow = null));
+    // Surface a hard load failure instead of hanging on a blank window.
+    mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+      if (code === -3) return; // ERR_ABORTED — a benign in-flight nav, ignore
+      console.error(`[AuthNo] renderer failed to load (${code}): ${desc}`);
+      reveal();
+    });
+
+    mainWindow.on("closed", () => { clearTimeout(watchdog); mainWindow = null; });
   }
 
   // ✅ Properly wait for app ready, THEN load fileManager, THEN create window
