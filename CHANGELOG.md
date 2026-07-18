@@ -3,6 +3,28 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.5
+
+_A polish pass on the new onboarding: the funnel and paywall now match the
+intended design, and the guided tour is richer and stays on screen._
+
+### Onboarding & paywall design
+
+- The welcome funnel and the Pro paywall were restyled to their intended
+  look: a labelled chip above a bold headline, cleaner content blocks, and a
+  bottom action bar. The paywall's 7-day trial timeline (Day 1 unlocked →
+  Day 5 reminder → Day 7 first charge) is now a clear horizontal rail.
+
+### Guided tour
+
+- The tour now **opens the feature it's describing** — the Threads panel, the
+  streak calendar and the menu all open with the spotlight on them, so you
+  see the real thing rather than just its button.
+- Added stops for the Threads panel, the streak calendar up close, and the
+  full menu of Save / Rename / History / Export / Read aloud.
+- Tour cards no longer run off the edge of the screen — off-screen targets
+  scroll into view and every card is kept fully on screen.
+
 ## 1.1.18-beta.4
 
 _The onboarding funnel rebuilt properly, Material You as a real theme, and a

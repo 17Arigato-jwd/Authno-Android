@@ -84,14 +84,29 @@ export function buildTourSteps(android) {
       body: "Track plotlines, character arcs and TODOs. Anchor a thread to a passage and it follows the text as your draft grows.",
     },
     {
+      view: "editor", target: "threads-panel", action: "threads",
+      title: "Inside the Threads panel",
+      body: "Each thread is a plotline or arc with its own entries. Create one, anchor entries to passages, and tap an entry to jump straight to that spot in the text.",
+    },
+    {
       view: "editor", target: "streak",
       title: "Daily streak",
       body: "Set a word goal and keep the flame alive. Each book tracks its own progress and history.",
     },
     {
+      view: "editor", target: "streak-panel", action: "streak",
+      title: "Your streak, up close",
+      body: "Today's words sit against your goal, and the calendar lights up every day you hit it. The goal is per-book — tune it right from this panel.",
+    },
+    {
       view: "editor", target: "menu",
       title: "Save, export & more",
       body: "Save your book as an .authbook file, export to TXT / HTML / EPUB / PDF, rename it, or open the change History.",
+    },
+    {
+      view: "editor", target: "burger-menu", action: "menu",
+      title: "Everything in one menu",
+      body: "Save and Save As write your .authbook file, Rename retitles the book, History rewinds any change, Export publishes to TXT / HTML / EPUB / PDF, and Read aloud speaks the chapter.",
     },
     {
       view: "editor", target: null,
@@ -121,35 +136,59 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
   // Reset when a tour starts.
   useEffect(() => { if (active) setStepIndex(0); }, [active]);
 
-  // Navigate + locate the step's target.
+  // Navigate + open/close tour-driven surfaces + locate the step's target.
   useEffect(() => {
     if (!active || !step) return undefined;
     onNavigate?.(step.view);
+    // Steps can open a real surface (threads panel, streak calendar, burger
+    // menu) so the tour explains the thing itself, not just its button. The
+    // owners of that state are scattered (editor chrome, FlameButton, App),
+    // so a document event is the seam; action: null closes everything.
+    document.dispatchEvent(new CustomEvent("authno-tour-action", { detail: { action: step.action ?? null } }));
     elRef.current = null;
     setRect(null);
     if (!step.target) { setSearching(false); return undefined; }
     setSearching(true);
 
     let tries = 0;
+    let scrolled = false;
     const find = () => {
       const el = document.querySelector(`[data-tour="${step.target}"]`);
       if (el) {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
           elRef.current = el;
-          setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+          // Off-screen targets (long chapter lists, buttons below the fold)
+          // get scrolled into view once, so the spotlight is always visible.
+          if (!scrolled) {
+            scrolled = true;
+            if (r.top < 0 || r.bottom > window.innerHeight || r.left < 0 || r.right > window.innerWidth) {
+              try { el.scrollIntoView({ block: "center", inline: "nearest" }); } catch { /* ignore */ }
+            }
+          }
+          setRect((prev) => (prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height)
+            ? prev
+            : { top: r.top, left: r.left, width: r.width, height: r.height });
           setSearching(false);
-          clearInterval(pollRef.current);
+          // Deliberately keep polling: sheets and menus animate into place
+          // with transforms, which fire no scroll events — the interval keeps
+          // the spotlight glued to them for the whole step (85ms is cheap).
           return;
         }
       }
       // Screen transitions take ~400ms; give up after ~2.5s and center the card.
-      if (++tries > 30) { setSearching(false); clearInterval(pollRef.current); }
+      if (!elRef.current && ++tries > 30) { setSearching(false); clearInterval(pollRef.current); }
     };
     find();
     pollRef.current = setInterval(find, 85);
     return () => clearInterval(pollRef.current);
   }, [active, stepIndex, step, onNavigate]);
+
+  // Whatever the tour opened must not outlive it.
+  useEffect(() => {
+    if (!active) return undefined;
+    return () => { document.dispatchEvent(new CustomEvent("authno-tour-action", { detail: { action: null } })); };
+  }, [active]);
 
   // Keep the spotlight glued to the element through resize/scroll.
   useEffect(() => {
@@ -193,17 +232,27 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
   };
 
   // Card placement: under the target when there's room, else above; centered
-  // when there's no target. Clamped to the viewport.
+  // when there's no target. Everything is computed numerically and clamped to
+  // the viewport — the old centered branch used a translate(-50%,-50%) style
+  // transform that framer-motion's enter animation overwrote, which anchored
+  // the card at the 50% mark and pushed half of it off narrow screens.
   const CARD_W = Math.min(330, window.innerWidth - 24);
+  const CARD_H_EST = 250; // vertical clamp estimate — real cards run 200-260px
   let cardStyle;
   if (hole) {
     const below = hole.top + hole.height + 14;
     const spaceBelow = window.innerHeight - below;
-    const top = spaceBelow > 220 ? below : Math.max(12, hole.top - 14 - 210);
+    let top = spaceBelow > CARD_H_EST ? below : hole.top - 14 - CARD_H_EST;
+    top = Math.max(12, Math.min(top, window.innerHeight - CARD_H_EST - 12));
     const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
     cardStyle = { position: "fixed", top, left, width: CARD_W };
   } else {
-    cardStyle = { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: CARD_W };
+    cardStyle = {
+      position: "fixed",
+      top: Math.max(12, (window.innerHeight - CARD_H_EST) / 2),
+      left: Math.max(12, (window.innerWidth - CARD_W) / 2),
+      width: CARD_W,
+    };
   }
 
   return createPortal(

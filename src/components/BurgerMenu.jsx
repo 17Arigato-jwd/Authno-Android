@@ -321,6 +321,7 @@ export default function BurgerMenu({
               />
               <motion.div
                 ref={menuRef}
+                data-tour="burger-menu"
                 variants={V.sheet} initial="hidden" animate="show" exit="exit"
                 style={{
                   position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999,
@@ -346,6 +347,7 @@ export default function BurgerMenu({
             <motion.div
               key="burger-dropdown"
               ref={menuRef}
+              data-tour="burger-menu"
               initial={{ opacity: 0, scale: 0.96, y: -4 }}
               animate={{ opacity: 1, scale: 1, y: 0, transition: T.fast }}
               exit={{ opacity: 0, scale: 0.97, y: -2, transition: { duration: 0.1 } }}

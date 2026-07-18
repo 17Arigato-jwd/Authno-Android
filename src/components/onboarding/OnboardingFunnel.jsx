@@ -1,23 +1,23 @@
 /**
- * OnboardingFunnel.jsx — the five-step first-run funnel (v1.1.18-beta.4 rebuild).
+ * OnboardingFunnel.jsx — the five-step first-run funnel.
  *
  * Welcome → About you → Guided tour → Your name → Creator's note.
  *
- * Rendered as a full-screen portal in the old Onboarding's visual language:
- * scrim + blur backdrop, FloatingBlobs, a centered frosted-glass card, and the
- * .onb theme shim so the white/black utilities follow light themes. The first
- * version rendered inline in the app layout with CSS vars that don't exist in
- * this app — never again.
+ * Visual language follows the approved HTML prototype: a chip label above a
+ * left-aligned title, content blocks, then a bottom action bar (circular back
+ * button + big accent CTA) with "Skip for now" beneath. Rendered as a
+ * full-screen portal over a blurred scrim with FloatingBlobs and the .onb
+ * theme shim so light themes work.
  *
- * Step 3 (guided tour) hands off to the REAL GuidedTour over the REAL app:
- * the funnel chrome unmounts, the spotlight walks home → book → editor with
- * "The Good Knight" demo book sitting in the library, then the funnel returns
- * for the name step. No mock screens.
+ * Step 3 (guided tour) hands off to the REAL GuidedTour over the REAL app —
+ * "The Good Knight" sits in the library while the spotlight walks
+ * home → book → editor (now including opened Threads / streak / menu steps),
+ * then the funnel resumes for the name step.
  *
- * Lifecycle: demo book added on mount and removed on unmount/finish; profile
+ * Lifecycle: demo book added on mount, removed on unmount/finish; profile
  * saved as the user advances; the 7-day trial starts on finish or skip
  * (startTrialMock never resets an existing clock or downgrades Pro); the
- * paywall is NOT part of the funnel — App opens it just after completion.
+ * paywall opens from App just after completion.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -25,7 +25,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { T } from "../../utils/motion";
 import { DSIcons } from "../../DesignSystem";
-import { FloatingBlobs, ONB_THEME_CSS, FeatureLine } from "../Onboarding";
+import { FloatingBlobs, ONB_THEME_CSS } from "../Onboarding";
 import GuidedTour from "../GuidedTour";
 import { createDemoBook } from "../../data/demoBook";
 import { getProfile, setProfile } from "../../utils/profile";
@@ -80,7 +80,7 @@ export function OnboardingFunnel({
   const saveProgress = () => {
     setProfile({
       name: name.trim(),
-      username: username.trim(),
+      username: username.trim().replace(/^@+/, ""),
       writingGoal: { type: goalType, audience: experience, wordCount: wordGoal },
     });
   };
@@ -99,6 +99,7 @@ export function OnboardingFunnel({
 
   const next = () => {
     if (step === 1) saveProgress();
+    if (step === 3 && !name.trim()) return;
     if (step < TOTAL - 1) setStep(step + 1);
     else finish();
   };
@@ -132,7 +133,24 @@ export function OnboardingFunnel({
     );
   }
 
-  const chip = (active) => ({
+  // ── Prototype design tokens ────────────────────────────────────────────────
+  const chipStyle = {
+    display: "inline-flex", alignItems: "center", gap: 6,
+    padding: "6px 12px", borderRadius: 999,
+    border: "1px solid var(--border-sm)", background: "var(--surface)",
+    fontSize: 10.5, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase",
+    color: "var(--text-3)",
+  };
+  const titleStyle = { fontSize: 26, fontWeight: 800, lineHeight: 1.15, letterSpacing: -0.4, color: "var(--text-1)", margin: "14px 0 8px" };
+  const subStyle = { fontSize: 14, color: "var(--text-3)", lineHeight: 1.6, margin: 0 };
+  const sectionLabel = { fontSize: 12.5, fontWeight: 700, color: "var(--text-1)", margin: "0 0 8px" };
+  const inputStyle = {
+    width: "100%", boxSizing: "border-box", padding: "13px 14px",
+    borderRadius: 12, background: "var(--input-bg, var(--surface))",
+    border: "1px solid var(--input-border, var(--border))",
+    color: "var(--text-1)", fontSize: 14.5, outline: "none",
+  };
+  const optChip = (active) => ({
     display: "inline-flex", alignItems: "center", gap: 8,
     padding: "10px 14px", borderRadius: 999, cursor: "pointer",
     fontSize: 13, fontWeight: 600,
@@ -141,172 +159,201 @@ export function OnboardingFunnel({
     color: active ? "var(--text-1)" : "var(--text-3)",
     transition: "all 0.15s",
   });
-
-  const inputStyle = {
-    width: "100%", boxSizing: "border-box", padding: "12px 14px",
-    borderRadius: 12, background: "var(--input-bg, var(--surface))",
-    border: "1px solid var(--input-border, var(--border))",
-    color: "var(--text-1)", fontSize: 14.5, outline: "none",
+  const infoCard = {
+    display: "flex", gap: 10, alignItems: "flex-start",
+    padding: "13px 14px", borderRadius: 14,
+    border: "1px solid var(--border-sm)", background: "var(--surface)",
+    fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.55,
   };
 
-  const primaryBtn = {
-    width: "100%", padding: "13px 0", borderRadius: 14, border: "none",
-    background: accentHex, color: "#fff", fontSize: 14.5, fontWeight: 800,
-    cursor: "pointer", boxShadow: `0 6px 18px ${accentHex}55`,
-  };
-
-  const sectionLabel = { fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "var(--text-4)", marginBottom: 8 };
-
-  // ── Step content ───────────────────────────────────────────────────────────
+  // ── Step content (chip · title · body · CTA label) ────────────────────────
   const pages = [
     // 0 — Welcome
     {
       key: "welcome",
+      chip: { icon: DSIcons.Sparkle, label: "Welcome" },
+      cta: "Get started",
+      canContinue: true,
       render: () => (
         <>
-          <IconTile accentHex={accentHex}><DSIcons.Sparkle size={28} color={accentHex} /></IconTile>
-          <h2 className="mb-2 text-center text-2xl font-bold tracking-tight text-white">Welcome to AuthNo</h2>
-          <p className="mb-6 text-center text-sm text-white/65" style={{ lineHeight: 1.6 }}>
-            Write your story. Your way. Your device.
+          <h2 style={titleStyle}>Write your story.<br />Your way. Your device.</h2>
+          <p style={{ ...subStyle, marginBottom: 22 }}>
+            AuthNo is an offline-first home for books and long-form writing. No account, no cloud, no one watching over your shoulder.
           </p>
-          <div className="mb-7 flex flex-col gap-2.5">
-            <FeatureLine icon={(p) => <DSIcons.Shield {...p} />} text="Works offline. Everything stays on your device." accentHex={accentHex} />
-            <FeatureLine icon={(p) => <DSIcons.Lock {...p} />} text="Your stories stay yours — no account wall." accentHex={accentHex} />
-            <FeatureLine icon={(p) => <DSIcons.Lightning {...p} />} text="Fast, focused, distraction-free writing." accentHex={accentHex} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              { icon: DSIcons.Shield, text: "Works offline. Everything stays on your device." },
+              { icon: DSIcons.Lock, text: "Your stories stay yours — no account wall." },
+              { icon: DSIcons.Lightning, text: "Fast, focused, distraction-free writing." },
+            ].map(({ icon: Icon, text }) => (
+              <div key={text} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10" style={{ background: `${accentHex}18` }}>
+                  <Icon size={16} color={accentHex} />
+                </div>
+                <div className="text-sm text-white/75">{text}</div>
+              </div>
+            ))}
           </div>
-          <button style={primaryBtn} onClick={next}>Get started</button>
         </>
       ),
     },
     // 1 — About you
     {
       key: "about",
+      chip: { icon: DSIcons.User, label: "About you" },
+      cta: "Continue",
+      canContinue: true,
       render: () => (
         <>
-          <IconTile accentHex={accentHex}><DSIcons.User size={28} color={accentHex} /></IconTile>
-          <h2 className="mb-2 text-center text-2xl font-bold tracking-tight text-white">What brings you here?</h2>
-          <p className="mb-6 text-center text-sm text-white/65" style={{ lineHeight: 1.6 }}>
+          <h2 style={titleStyle}>What brings you here?</h2>
+          <p style={{ ...subStyle, marginBottom: 22 }}>
             We pre-picked the common answers — tap to change anything.
           </p>
-
           <div style={{ marginBottom: 18 }}>
             <div style={sectionLabel}>I want to write…</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {WRITING_TYPES.map((t) => (
-                <button key={t.id} style={chip(goalType === t.id)} onClick={() => setGoalType(t.id)}>
+                <button key={t.id} style={optChip(goalType === t.id)} onClick={() => setGoalType(t.id)}>
                   {t.icon({ size: 14, color: goalType === t.id ? accentHex : "currentColor" })}
                   {t.label}
                 </button>
               ))}
             </div>
           </div>
-
           <div style={{ marginBottom: 18 }}>
             <div style={sectionLabel}>My experience</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {EXPERIENCE.map((t) => (
-                <button key={t.id} style={chip(experience === t.id)} onClick={() => setExperience(t.id)}>{t.label}</button>
+                <button key={t.id} style={optChip(experience === t.id)} onClick={() => setExperience(t.id)}>{t.label}</button>
               ))}
             </div>
           </div>
-
-          <div style={{ marginBottom: 26 }}>
+          <div>
             <div style={sectionLabel}>On a good day I write</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {WORD_GOALS.map((t) => (
-                <button key={t.id} style={chip(wordGoal === t.id)} onClick={() => setWordGoal(t.id)}>{t.label}</button>
+                <button key={t.id} style={optChip(wordGoal === t.id)} onClick={() => setWordGoal(t.id)}>{t.label}</button>
               ))}
             </div>
           </div>
-
-          <button style={primaryBtn} onClick={next}>Continue</button>
         </>
       ),
     },
     // 2 — handled above (GuidedTour)
-    { key: "tour", render: () => null },
+    { key: "tour", chip: null, cta: "", canContinue: true, render: () => null },
     // 3 — Your name
     {
       key: "name",
+      chip: { icon: DSIcons.User, label: "Almost there" },
+      cta: "Create profile",
+      canContinue: !!name.trim(),
       render: () => (
         <>
-          <IconTile accentHex={accentHex}><DSIcons.Edit size={28} color={accentHex} /></IconTile>
-          <h2 className="mb-2 text-center text-2xl font-bold tracking-tight text-white">What should we call you?</h2>
-          <p className="mb-6 text-center text-sm text-white/65" style={{ lineHeight: 1.6 }}>
-            Shown on your home screen and your books' author line. Stored only on this device.
+          <h2 style={titleStyle}>What should we call you?</h2>
+          <p style={{ ...subStyle, marginBottom: 22 }}>
+            A name for your greeting, and a handle to save your spot. It all stays on this device.
           </p>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 26 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <div style={sectionLabel}>Your name</div>
               <input
                 autoFocus value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Alex Wong" style={inputStyle}
+                placeholder="Jane" style={inputStyle}
                 onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) next(); }}
               />
             </div>
             <div>
-              <div style={sectionLabel}>Pen name <span style={{ opacity: 0.6, textTransform: "none" }}>(optional)</span></div>
+              <div style={sectionLabel}>Pick a username <span style={{ fontWeight: 500, color: "var(--text-4)" }}>(optional)</span></div>
               <input
                 value={username} onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. midnightink" style={inputStyle}
+                placeholder="@janewrites" style={inputStyle}
                 onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) next(); }}
               />
             </div>
+            {/* Recap of the About-you picks */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <span style={{ ...optChip(false), cursor: "default", padding: "7px 12px", fontSize: 12 }}>
+                <DSIcons.BookOpen size={12} color="currentColor" />
+                {WRITING_TYPES.find((t) => t.id === goalType)?.label ?? "A novel"}
+              </span>
+              <span style={{ ...optChip(false), cursor: "default", padding: "7px 12px", fontSize: 12 }}>
+                <DSIcons.Target size={12} color="currentColor" />
+                {WORD_GOALS.find((t) => t.id === wordGoal)?.label ?? "~300 words"}/day
+              </span>
+            </div>
+            <div style={infoCard}>
+              <DSIcons.Upload size={14} color="var(--text-4)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>
+                Saved on this device. Cloud accounts are coming — when they land, this profile
+                carries over automatically. No email needed today.
+              </span>
+            </div>
           </div>
-
-          <button
-            style={{ ...primaryBtn, opacity: name.trim() ? 1 : 0.45, cursor: name.trim() ? "pointer" : "default" }}
-            disabled={!name.trim()} onClick={next}
-          >
-            Continue
-          </button>
         </>
       ),
     },
-    // 4 — Creator's note
+    // 4 — Creator's note. Copy is final prototype text; [your name] and
+    // [signature] are placeholders for the creator's real name + photo.
     {
       key: "note",
+      chip: null,
+      cta: "Start writing",
+      canContinue: true,
+      hideSkip: true,
       render: () => (
         <>
-          {/* Photo placeholder — swap for the real creator photo when provided */}
-          <div className="mb-5 flex items-center justify-center">
-            <div
-              className="flex h-20 w-20 items-center justify-center rounded-full border border-white/10"
-              style={{ background: `linear-gradient(135deg, ${accentHex}55, ${accentHex}18)` }}
-            >
-              <DSIcons.User size={34} color={accentHex} />
+          {/* Photo — swap the icon circle for the real photo when provided */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+            <div style={{ position: "relative" }}>
+              <div
+                className="flex h-20 w-20 items-center justify-center rounded-full border border-white/10"
+                style={{ background: `linear-gradient(135deg, ${accentHex}, ${accentHex}55)` }}
+              >
+                <span style={{ fontSize: 30, fontWeight: 800, color: "#fff" }}>A</span>
+              </div>
+              <div
+                className="absolute flex items-center justify-center rounded-full border border-white/10"
+                style={{ right: -2, bottom: -2, width: 26, height: 26, background: "var(--modal-bg)" }}
+              >
+                <DSIcons.Camera size={13} color="var(--text-3)" />
+              </div>
             </div>
           </div>
-          <h2 className="mb-4 text-center text-2xl font-bold tracking-tight text-white">
-            {name.trim() ? `Hey ${name.trim().split(" ")[0]} —` : "One last thing —"}
+          <h2 style={{ ...titleStyle, textAlign: "center", fontSize: 22, margin: "0 0 16px" }}>
+            Hey{name.trim() ? ` ${name.trim().split(" ")[0]}` : ""} — I'm [your name].
           </h2>
-          <p className="mb-3 text-sm text-white/75" style={{ lineHeight: 1.7 }}>
-            I built AuthNo because I wanted a writing app that respects the writer: no cloud wall,
-            no subscription treadmill, no distractions. Just you and the page.
+          <p className="text-white/75" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 12px" }}>
+            I built AuthNo because I wanted somewhere to write that felt calm and completely mine —
+            no accounts, no distractions, no one watching over my shoulder. Just a page and the words.
           </p>
-          <p className="mb-5 text-sm text-white/75" style={{ lineHeight: 1.7 }}>
-            Everything you write here lives on your device, in a format built to survive. I hope it
-            becomes the home of stories you're proud of.
+          <p className="text-white/75" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 16px" }}>
+            It's a one-person project. Every theme, every animation, every little detail is something
+            I sweated over because I use this app every day too.
           </p>
-
           <div
-            className="mb-5 rounded-2xl border px-4 py-3.5"
-            style={{ borderColor: `${accentHex}55`, background: `${accentHex}14` }}
+            style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              padding: "13px 14px", borderRadius: 14, marginBottom: 16,
+              background: "var(--color-success-bg, rgba(34,197,94,0.08))",
+              border: "1px solid var(--color-success, #22c55e)",
+            }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <DSIcons.Star size={14} color={accentHex} />
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text-1)" }}>Your 7-day trial starts now</span>
-            </div>
-            <div className="text-white/65" style={{ fontSize: 12.5, lineHeight: 1.55 }}>
-              Every Pro feature is unlocked, free, for a week — no card needed. If AuthNo earns its
-              place, Pro is a single one-time purchase. Yours forever.
+            <DSIcons.Star size={15} color="var(--color-success, #22c55e)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-1)", marginBottom: 2 }}>
+                Everything's unlocked, free, for 7 days.
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>
+                Try the whole thing. If it's not for you, no charge — ever.
+              </div>
             </div>
           </div>
-
-          <p className="mb-6 text-right text-sm italic text-white/55">— the creator of AuthNo</p>
-
-          <button style={primaryBtn} onClick={next}>Start writing</button>
+          <p style={{ fontSize: 13, color: "var(--text-3)", textAlign: "center", lineHeight: 1.6, margin: "0 0 6px" }}>
+            Thanks for giving it a shot. I hope you write something you're proud of.
+          </p>
+          <p style={{ fontSize: 15, color: "var(--text-2)", textAlign: "right", fontStyle: "italic", fontFamily: "Georgia, serif", margin: 0 }}>
+            — [signature]
+          </p>
         </>
       ),
     },
@@ -324,7 +371,7 @@ export function OnboardingFunnel({
 
       <div className="min-h-full px-4 py-4 sm:px-6 sm:py-8 flex items-center justify-center">
         <div className="relative z-10 w-full max-w-md" style={{ animation: "panelPop 0.22s ease-out" }}>
-          {/* Progress rail + skip */}
+          {/* Progress rail */}
           <div className="mb-4 flex items-center gap-3">
             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
               {Array.from({ length: TOTAL }).map((_, i) => (
@@ -339,22 +386,16 @@ export function OnboardingFunnel({
               <div style={{ height: "100%", width: `${((step + 1) / TOTAL) * 100}%`, background: accentHex, transition: "width 0.3s ease", borderRadius: 2 }} />
             </div>
             <span className="text-xs text-white/55" style={{ whiteSpace: "nowrap" }}>{step + 1} / {TOTAL}</span>
-            <button
-              onClick={() => finish(true)}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/55 backdrop-blur-md transition hover:text-white/80"
-            >
-              Skip
-            </button>
           </div>
 
           {/* Card */}
           <div
             className="rounded-[28px] border border-white/10 bg-black/35 shadow-2xl backdrop-blur-xl"
-            style={{ boxShadow: "0 24px 80px rgba(0,0,0,0.58)", maxHeight: "min(84dvh, 760px)", overflow: "hidden" }}
+            style={{ boxShadow: "0 24px 80px rgba(0,0,0,0.58)", maxHeight: "min(86dvh, 780px)", overflow: "hidden", display: "flex", flexDirection: "column" }}
           >
             <div
-              className="overflow-y-auto px-5 py-6 sm:px-6 sm:py-7"
-              style={{ maxHeight: "min(84dvh, 760px)", WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
+              className="overflow-y-auto px-5 pt-6 sm:px-6 sm:pt-7"
+              style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y", flex: 1, minHeight: 0 }}
             >
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
@@ -363,20 +404,55 @@ export function OnboardingFunnel({
                   animate={{ opacity: 1, x: 0, transition: T.base }}
                   exit={{ opacity: 0, x: -14, transition: { duration: 0.1 } }}
                 >
-                  {current.render()}
-
-                  {/* Back link (not on the first step) */}
-                  {step > 0 && (
-                    <button
-                      onClick={back}
-                      className="mt-4 w-full text-center text-xs text-white/45 transition hover:text-white/70"
-                      style={{ background: "transparent", border: "none", cursor: "pointer", padding: 6 }}
-                    >
-                      ← Back
-                    </button>
+                  {current.chip && (
+                    <span style={chipStyle}>
+                      <current.chip.icon size={11} color="currentColor" />
+                      {current.chip.label}
+                    </span>
                   )}
+                  {current.render()}
+                  <div style={{ height: 20 }} />
                 </motion.div>
               </AnimatePresence>
+            </div>
+
+            {/* Bottom action bar — circular back + big CTA, skip beneath */}
+            <div className="px-5 pb-5 sm:px-6 sm:pb-6" style={{ flexShrink: 0, paddingTop: 12 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                {step > 0 && (
+                  <button
+                    onClick={back}
+                    aria-label="Back"
+                    className="flex items-center justify-center rounded-full border border-white/10 bg-white/5"
+                    style={{ width: 48, height: 48, flexShrink: 0, cursor: "pointer", color: "var(--text-2)" }}
+                  >
+                    <DSIcons.ChevronLeft size={18} color="currentColor" />
+                  </button>
+                )}
+                <button
+                  onClick={next}
+                  disabled={!current.canContinue}
+                  style={{
+                    flex: 1, height: 48, borderRadius: 14, border: "none",
+                    background: accentHex, color: "#fff", fontSize: 14.5, fontWeight: 800,
+                    cursor: current.canContinue ? "pointer" : "default",
+                    opacity: current.canContinue ? 1 : 0.45,
+                    boxShadow: current.canContinue ? `0 6px 18px ${accentHex}55` : "none",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  }}
+                >
+                  {current.cta} <DSIcons.ChevronRight size={15} color="currentColor" />
+                </button>
+              </div>
+              {!current.hideSkip && (
+                <button
+                  onClick={() => finish(true)}
+                  className="mt-3 w-full text-center text-xs text-white/45 transition hover:text-white/70"
+                  style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4 }}
+                >
+                  Skip for now
+                </button>
+              )}
             </div>
           </div>
 
@@ -390,18 +466,5 @@ export function OnboardingFunnel({
       </div>
     </div>,
     document.body
-  );
-}
-
-function IconTile({ children, accentHex }) {
-  return (
-    <div className="mb-5 flex items-center justify-center">
-      <div
-        className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10"
-        style={{ background: `${accentHex}18` }}
-      >
-        {children}
-      </div>
-    </div>
   );
 }

@@ -180,6 +180,14 @@ function Editor({
     return () => document.removeEventListener("authno-toggle-threads", h);
   }, [current]);
 
+  // Guided tour: the "Inside the Threads panel" step opens the real panel so
+  // the spotlight can explain it; any other step (or tour end) closes it.
+  useEffect(() => {
+    const h = (e) => { setThreadsOpen(e.detail?.action === "threads" && !!current); };
+    document.addEventListener("authno-tour-action", h);
+    return () => document.removeEventListener("authno-tour-action", h);
+  }, [current]);
+
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
   useEffect(() => {
     // Only overwrite the DOM when the incoming content actually differs from
@@ -519,6 +527,7 @@ function Editor({
     ) : (
       <motion.div
         key="threads-tiles"
+        data-tour="threads-panel"
         initial={{ width: 0, opacity: 0 }} animate={{ width: "auto", opacity: 1 }} exit={{ width: 0, opacity: 0 }}
         transition={T.base}
         style={{ display: "flex", flexShrink: 0, overflow: "hidden" }}
@@ -562,6 +571,14 @@ function AppInner({ navigateRef }) {
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
   const [menuOpen, setMenuOpen]   = useState(false);
+
+  // Guided tour: the "Everything in one menu" step opens the burger menu so
+  // the spotlight can walk its rows; any other step (or tour end) closes it.
+  useEffect(() => {
+    const h = (e) => { setMenuOpen(e.detail?.action === "menu"); };
+    document.addEventListener("authno-tour-action", h);
+    return () => document.removeEventListener("authno-tour-action", h);
+  }, []);
   const [lastSaved]               = useState(null);
   const [view, setView]           = useState("home");
   const [extPageState, setExtPageState] = useState(null);

@@ -36,11 +36,11 @@ function useWideLayout() {
 }
 
 const PRO_FEATURES = [
-  'Unlimited books & chapters',
-  'Custom downloadable themes (.thmbk)',
-  'Advanced export options',
-  'Priority extension features',
-  'Support independent development',
+  { t: 'Unlimited books & chapters', s: 'Write as much as you like, no caps' },
+  { t: 'Custom downloadable themes', s: 'Install and make your own .thmbk packs' },
+  { t: 'Advanced export', s: 'EPUB, PDF and more, with fine control' },
+  { t: 'Priority extension features', s: 'First access to new tools as they ship' },
+  { t: 'Support a solo developer', s: 'Keep an indie, offline-first app alive' },
 ];
 
 export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
@@ -88,12 +88,22 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 
   const featureColumn = (
     <div style={{ flex: wide ? '0 0 300px' : 'auto', width: wide ? 300 : '100%' }}>
-      <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-1)', margin: '0 0 14px' }}>Everything in Pro</h2>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+      <h2 style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--text-4)', margin: '0 0 14px' }}>What you unlock</h2>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {PRO_FEATURES.map((f) => (
-          <li key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 0', color: 'var(--text-2)', fontSize: 14 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accentHex} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 3 }}><polyline points="20 6 9 17 4 12" /></svg>
-            {f}
+          <li key={f.t} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{
+              width: 24, height: 24, borderRadius: 7, flexShrink: 0, marginTop: 1,
+              background: 'var(--color-success-bg, rgba(34,197,94,0.1))',
+              border: '1px solid var(--color-success, #22c55e)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-success, #22c55e)" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            </span>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-1)' }}>{f.t}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-4)', marginTop: 1 }}>{f.s}</div>
+            </div>
           </li>
         ))}
       </ul>
@@ -191,16 +201,29 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
         <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Demo checkout — no real payment is processed. Submitting unlocks Pro locally for testing.</span>
       </div>
 
-      {isTrial && status !== 'success' && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', borderRadius: 10, background: `${accentHex}12`, border: `1px solid ${accentHex}44`, marginBottom: 20 }}>
-          <StarIcon color={accentHex} size={15} />
-          <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
-            Free trial active — <b style={{ color: 'var(--text-1)' }}>{trialDaysLeft} {trialDaysLeft === 1 ? 'day' : 'days'} left</b> with everything unlocked.
+      {status !== 'success' && (
+        <div style={{ marginBottom: 24 }}>
+          {/* Green trial chip + headline — prototype design */}
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 999, marginBottom: 12,
+            background: 'var(--color-success-bg, rgba(34,197,94,0.1))',
+            border: '1px solid var(--color-success, #22c55e)',
+            fontSize: 10.5, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase',
+            color: 'var(--color-success, #22c55e)',
+          }}>
+            <StarIcon color="var(--color-success, #22c55e)" size={11} />
+            Your 7-day free trial{isTrial ? ` · ${trialDaysLeft} ${trialDaysLeft === 1 ? 'day' : 'days'} left` : ''}
           </span>
+          <h2 style={{ fontSize: 24, fontWeight: 800, letterSpacing: -0.4, color: 'var(--text-1)', margin: '0 0 8px' }}>
+            Try Pro free, then pay once.
+          </h2>
+          <p style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.6, margin: '0 0 20px' }}>
+            Here's how the trial works and everything it unlocks. It's a single purchase, never a subscription.
+          </p>
+          <TrialTimeline accentHex={accentHex} price={price.formatted} />
         </div>
       )}
-
-      {status !== 'success' && <TrialTimeline accentHex={accentHex} price={price.formatted} />}
 
       {status === 'success' ? (
         <div style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -223,17 +246,18 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 // ── Small building blocks ─────────────────────────────────────────────────────
 
 /**
- * TrialTimeline — the Day 1 / Day 5 / Day 7 rail.
- * Day 1: everything unlocked · Day 5: reminder before it expires ·
- * Day 7: the one-time charge. Mirrors the onboarding prototype.
+ * TrialTimeline — the horizontal Day 1 / Day 5 / Day 7 rail from the
+ * prototype: three circled milestone icons joined by a line, day labels
+ * beneath, then a bold title and a one-line sub per milestone.
  */
 function TrialTimeline({ accentHex, price }) {
   const MILESTONES = [
     {
-      day: 'Day 1',
-      title: 'Everything unlocked',
-      body: 'Full access to every Pro feature, right now.',
-      color: 'var(--color-success)',
+      day: 'DAY 1 · TODAY',
+      title: 'Unlocked',
+      body: 'Full Pro access, right now',
+      color: 'var(--color-success, #22c55e)',
+      fill: true,
       icon: (c) => (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" />
@@ -241,10 +265,10 @@ function TrialTimeline({ accentHex, price }) {
       ),
     },
     {
-      day: 'Day 5',
-      title: 'We remind you',
-      body: 'A heads-up before your trial ends — cancel anytime before then.',
-      color: 'var(--color-warning)',
+      day: 'DAY 5',
+      title: 'Reminder',
+      body: "We'll nudge you before it ends",
+      color: 'var(--text-4)',
       icon: (c) => (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
@@ -252,9 +276,9 @@ function TrialTimeline({ accentHex, price }) {
       ),
     },
     {
-      day: 'Day 7',
-      title: `First charge · ${price}`,
-      body: 'One payment. Pro is yours forever.',
+      day: 'DAY 7',
+      title: `First charge`,
+      body: `${price} — only if you stay`,
       color: accentHex,
       icon: (c) => (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -265,26 +289,26 @@ function TrialTimeline({ accentHex, price }) {
   ];
 
   return (
-    <div style={{ marginBottom: 22 }}>
-      <h2 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-1)', margin: '0 0 12px' }}>How your free trial works</h2>
-      <div style={{ position: 'relative', paddingLeft: 4 }}>
-        {/* vertical rail */}
-        <div style={{ position: 'absolute', left: 18, top: 14, bottom: 14, width: 2, background: 'var(--border)', borderRadius: 1 }} />
+    <div>
+      <h2 style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--text-4)', margin: '0 0 16px' }}>
+        How your free trial works
+      </h2>
+      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        {/* connecting line behind the milestone circles */}
+        <div style={{ position: 'absolute', top: 17, left: 'calc(16.66% + 18px)', right: 'calc(16.66% + 18px)', height: 2, background: 'var(--border)' }} />
         {MILESTONES.map((m) => (
-          <div key={m.day} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '7px 0', position: 'relative' }}>
+          <div key={m.day} style={{ textAlign: 'center', position: 'relative' }}>
             <div style={{
-              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-              background: 'var(--modal-bg)', border: `2px solid ${m.color}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1,
+              width: 36, height: 36, borderRadius: '50%', margin: '0 auto 8px',
+              background: m.fill ? 'var(--color-success-bg, rgba(34,197,94,0.12))' : 'var(--modal-bg)',
+              border: `2px solid ${m.color}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               {m.icon(m.color)}
             </div>
-            <div style={{ paddingTop: 2 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-1)' }}>
-                <span style={{ color: m.color }}>{m.day}</span> — {m.title}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{m.body}</div>
-            </div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, color: m.color, marginBottom: 3 }}>{m.day}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)', marginBottom: 2 }}>{m.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.4 }}>{m.body}</div>
           </div>
         ))}
       </div>
