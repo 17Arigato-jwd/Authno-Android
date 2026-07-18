@@ -21,6 +21,7 @@ import { unlockProMock, resetToFree } from '../utils/entitlements';
 import { useEntitlement } from '../utils/useEntitlement';
 import { getOneTimePrice } from '../utils/pricing';
 import { DSIcons, CloseButton } from '../DesignSystem';
+import { hapticSelect } from '../utils/haptics';
 
 // Desktop = a centered dialog with a two-column layout; mobile/portrait = a
 // full-screen sheet with a single column. This is the "not optimised for PC" fix.
@@ -40,7 +41,6 @@ const PRO_FEATURES = [
   { t: 'Custom downloadable themes', s: 'Install and make your own .thmbk packs' },
   { t: 'Advanced export', s: 'EPUB, PDF and more, with fine control' },
   { t: 'Priority extension features', s: 'First access to new tools as they ship' },
-  { t: 'Support a solo developer', s: 'Keep an indie, offline-first app alive' },
 ];
 
 export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
@@ -50,6 +50,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
   const upiAvailable = price.currency === 'INR';
   const [method, setMethod] = useState(upiAvailable ? 'upi' : 'card'); // 'upi' | 'card'
   const [status, setStatus] = useState('idle');       // idle | processing | success
+  const [revealed, setRevealed] = useState(false);    // payment stays hidden behind "Try now"
   const [upiId, setUpiId] = useState('');
   const [card, setCard] = useState({ number: '', name: '', expiry: '', cvv: '' });
 
@@ -107,6 +108,11 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
           </li>
         ))}
       </ul>
+
+      {/* The heart of it — this purchase keeps one person's indie app alive.
+          Given its own emphasized card so it reads as the real reason, not a
+          bullet lost in a feature list. */}
+      <SoloDevCallout accentHex={accentHex} />
     </div>
   );
 
@@ -128,68 +134,93 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
         </div>
       </div>
 
-      {/* Payment method toggle — UPI is India-only */}
-      {upiAvailable && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <MethodTab active={method === 'upi'} onClick={() => setMethod('upi')} label="UPI" accentHex={accentHex} />
-          <MethodTab active={method === 'card'} onClick={() => setMethod('card')} label="Card" accentHex={accentHex} />
-        </div>
-      )}
-
-      {method === 'upi' ? (
-        <div style={{ marginBottom: 20 }}>
-          <Label>UPI ID</Label>
-          <input
-            value={upiId} onChange={(e) => setUpiId(e.target.value)}
-            placeholder="yourname@bank" autoCapitalize="none" autoCorrect="off"
-            style={inputStyle}
-          />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            {['@oksbi', '@okhdfcbank', '@okaxis', '@ybl', '@paytm'].map(s => (
-              <button key={s} onClick={() => setUpiId((v) => (v.split('@')[0] || 'name') + s)}
-                style={{ fontSize: 11.5, padding: '5px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-3)', cursor: 'pointer' }}>
-                {s}
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 10 }}>You’ll receive a collect request in your UPI app (simulated).</p>
+      {!revealed ? (
+        // Payment is hidden until the user chooses to start. The trial is the
+        // headline action; the card/UPI form only appears once they tap in.
+        <div>
+          <button
+            onClick={() => { hapticSelect(); setRevealed(true); }}
+            style={{
+              width: '100%', padding: '15px 0', borderRadius: 14, border: 'none',
+              background: accentHex, color: '#fff', fontSize: 15.5, fontWeight: 800,
+              cursor: 'pointer', boxShadow: `0 8px 22px ${accentHex}55`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            }}>
+            <DSIcons.Gift size={19} color="#fff" /> Try now — free for 7 days
+          </button>
+          <p style={{ fontSize: 12, color: 'var(--text-4)', textAlign: 'center', marginTop: 12, lineHeight: 1.6 }}>
+            Nothing is charged today. You'll only pay {price.formatted}, once, if you're still here after day 7 —
+            {upiAvailable ? ' UPI or card' : ' card'}, your choice.
+          </p>
         </div>
       ) : (
-        <div style={{ marginBottom: 20, display: 'grid', gap: 10 }}>
-          <div>
-            <Label>Card number</Label>
-            <input value={card.number} onChange={(e) => setCard({ ...card, number: formatCard(e.target.value) })} placeholder="1234 5678 9012 3456" inputMode="numeric" style={inputStyle} />
-          </div>
-          <div>
-            <Label>Name on card</Label>
-            <input value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} placeholder="Full name" style={inputStyle} />
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <Label>Expiry</Label>
-              <input value={card.expiry} onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })} placeholder="MM/YY" inputMode="numeric" style={inputStyle} />
+        <>
+          {/* Payment method toggle — UPI is India-only */}
+          {upiAvailable && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <MethodTab active={method === 'upi'} onClick={() => setMethod('upi')} label="UPI" accentHex={accentHex} />
+              <MethodTab active={method === 'card'} onClick={() => setMethod('card')} label="Card" accentHex={accentHex} />
             </div>
-            <div style={{ flex: 1 }}>
-              <Label>CVV</Label>
-              <input value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="•••" inputMode="numeric" style={inputStyle} />
-            </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      <button
-        onClick={handlePay} disabled={!canPay || status === 'processing'}
-        style={{
-          width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
-          background: canPay ? accentHex : 'var(--surface-md)',
-          color: canPay ? '#fff' : 'var(--text-5)',
-          fontSize: 15, fontWeight: 800, cursor: canPay && status === 'idle' ? 'pointer' : 'default',
-          boxShadow: canPay ? `0 6px 18px ${accentHex}55` : 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}>
-        {status === 'processing' ? (<><Spinner /> Processing…</>) : `Pay ${price.formatted} with ${method === 'upi' ? 'UPI' : 'Card'}`}
-      </button>
-      <p style={{ fontSize: 11, color: 'var(--text-5)', textAlign: 'center', marginTop: 12 }}>Simulated secure checkout · no real charge</p>
+          {method === 'upi' ? (
+            <div style={{ marginBottom: 20 }}>
+              <Label>UPI ID</Label>
+              <input
+                value={upiId} onChange={(e) => setUpiId(e.target.value)}
+                placeholder="yourname@bank" autoCapitalize="none" autoCorrect="off"
+                style={inputStyle}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {['@oksbi', '@okhdfcbank', '@okaxis', '@ybl', '@paytm'].map(s => (
+                  <button key={s} onClick={() => setUpiId((v) => (v.split('@')[0] || 'name') + s)}
+                    style={{ fontSize: 11.5, padding: '5px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-3)', cursor: 'pointer' }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 10 }}>You’ll receive a collect request in your UPI app (simulated).</p>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 20, display: 'grid', gap: 10 }}>
+              <div>
+                <Label>Card number</Label>
+                <input value={card.number} onChange={(e) => setCard({ ...card, number: formatCard(e.target.value) })} placeholder="1234 5678 9012 3456" inputMode="numeric" style={inputStyle} />
+              </div>
+              <div>
+                <Label>Name on card</Label>
+                <input value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} placeholder="Full name" style={inputStyle} />
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <Label>Expiry</Label>
+                  <input value={card.expiry} onChange={(e) => setCard({ ...card, expiry: formatExpiry(e.target.value) })} placeholder="MM/YY" inputMode="numeric" style={inputStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <Label>CVV</Label>
+                  <input value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="•••" inputMode="numeric" style={inputStyle} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handlePay} disabled={!canPay || status === 'processing'}
+            style={{
+              width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
+              background: canPay ? accentHex : 'var(--surface-md)',
+              color: canPay ? '#fff' : 'var(--text-5)',
+              fontSize: 15, fontWeight: 800, cursor: canPay && status === 'idle' ? 'pointer' : 'default',
+              boxShadow: canPay ? `0 6px 18px ${accentHex}55` : 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+            {status === 'processing' ? (<><Spinner /> Processing…</>) : `Start trial with ${method === 'upi' ? 'UPI' : 'Card'}`}
+          </button>
+          <p style={{ fontSize: 11, color: 'var(--text-5)', textAlign: 'center', marginTop: 12 }}>
+            Free for 7 days, then {price.formatted} once · simulated · no real charge
+          </p>
+        </>
+      )}
     </div>
   );
 
@@ -311,6 +342,39 @@ function TrialTimeline({ accentHex, price }) {
             <div style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.4 }}>{m.body}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * SoloDevCallout — the "you're keeping one person's app alive" block. Deliberately
+ * warmer and more prominent than the feature bullets: a soft accent-tinted card
+ * with a heart, so the human reason to buy doesn't read like just another perk.
+ */
+function SoloDevCallout({ accentHex }) {
+  return (
+    <div style={{
+      marginTop: 18, padding: '14px 15px', borderRadius: 14,
+      background: `${accentHex}12`, border: `1px solid ${accentHex}44`,
+      display: 'flex', gap: 12, alignItems: 'flex-start',
+    }}>
+      <span style={{
+        width: 30, height: 30, borderRadius: 9, flexShrink: 0, marginTop: 1,
+        background: `${accentHex}22`, border: `1px solid ${accentHex}66`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <DSIcons.HeartFill size={15} color={accentHex} />
+      </span>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)', marginBottom: 2 }}>
+          You're supporting a solo developer
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.55 }}>
+          AuthNo is built and maintained by one person — no investors, no ads, no
+          selling your writing. Going Pro is what keeps an independent, offline-first
+          app going.
+        </div>
       </div>
     </div>
   );

@@ -17,12 +17,13 @@
  * gates, and spotlights the real controls so the user learns by doing.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { T } from "../utils/motion";
 import { hapticSelect } from "../utils/haptics";
 import { DSIcons } from "../DesignSystem";
+import { computeTourCard } from "../utils/tourPlacement";
 import { chapterWords } from "./BookDashboard";
 import { getThreadsData } from "../utils/threads";
 import {
@@ -97,7 +98,7 @@ function buildSteps(android) {
       body: "This is your streak — pick how many words a day feels right and the flame keeps score. Each book tracks its own. Skip it if goals aren't your thing.",
     },
     {
-      key: "write", view: "editor", target: "editor", optional: false, pause: true,
+      key: "write", view: "editor", target: "editor", optional: false, pause: true, float: true,
       title: "Now — write a few words",
       body: "Here's the page your chapter lives on. Write whatever you like — even a sentence. This step waits for you: close the app, come back tomorrow, and pick up right here.",
       hint: "Write a few words to continue — no rush.",
@@ -177,6 +178,8 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
   const [rect, setRect] = useState(null);
   const [searching, setSearching] = useState(false);
   const [allowSkip, setAllowSkip] = useState(false);
+  const [cardH, setCardH] = useState(300);
+  const cardRef = useRef(null);
   const steps = useRef(null);
   if (steps.current === null || steps.current.android !== android) {
     steps.current = { android, list: buildSteps(android) };
@@ -228,7 +231,7 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
     if (step.ensureBook) onEnsureBook?.();
     onNavigate?.(step.view);
     document.dispatchEvent(new CustomEvent("authno-tour-action", { detail: { action: step.action ?? null } }));
-    const targetList = step.targets ?? (step.target ? [step.target] : []);
+    const targetList = step.float ? [] : (step.targets ?? (step.target ? [step.target] : []));
     elRef.current = null;
     setRect(null);
     if (targetList.length === 0) { setSearching(false); return undefined; }
@@ -309,43 +312,36 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Measure the real card so placement uses true height (threads step adds the
+  // type list, hints add rows) — guarded against sub-pixel loops.
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (h && Math.abs(h - cardH) > 4) setCardH(h);
+  });
+
   if (!active || typeof document === "undefined" || !step) return null;
 
   const PAD = 6;
-  const hole = rect && { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 };
+  const hole = !step.float && rect && { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 };
 
+  // Card sits in a gutter beside the spotlight (never over it); floats into a
+  // corner without dimming for the writing step and when a target fills the
+  // screen. See utils/tourPlacement.js.
   const CARD_W = Math.min(340, window.innerWidth - 24);
-  const CARD_H = 320;
-  let cardStyle;
-  if (hole) {
-    // When the spotlight covers most of the screen (the editor page, an open
-    // panel/form), any "next to the target" placement sits ON the content the
-    // user is reading or filling in. Dock to the bottom-left corner instead —
-    // out of the way of prose (left-aligned reading starts at the top) and of
-    // right-side panels.
-    const holeArea = hole.width * hole.height;
-    const viewArea = window.innerWidth * window.innerHeight;
-    if (holeArea > viewArea * 0.5) {
-      cardStyle = { position: "fixed", left: 12, bottom: 12, width: CARD_W };
-    } else {
-      const below = hole.top + hole.height + 14;
-      const spaceBelow = window.innerHeight - below;
-      let top = spaceBelow > CARD_H ? below : hole.top - 14 - CARD_H;
-      top = Math.max(12, Math.min(top, window.innerHeight - CARD_H - 12));
-      const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
-      cardStyle = { position: "fixed", top, left, width: CARD_W };
-    }
-  } else {
-    cardStyle = { position: "fixed", top: Math.max(12, (window.innerHeight - CARD_H) / 2), left: Math.max(12, (window.innerWidth - CARD_W) / 2), width: CARD_W };
-  }
+  const { style: cardStyle, dim } = computeTourCard({
+    hole, cardW: CARD_W, cardH, vw: window.innerWidth, vh: window.innerHeight, float: step.float,
+  });
 
   const compulsory = !step.optional;
 
   return createPortal(
     <div style={{ position: "fixed", inset: 0, zIndex: Z, pointerEvents: "none" }}>
       {/* Dim + spotlight. pointerEvents:none on the wrapper so the user can
-          actually USE the highlighted control — this tour needs real clicks. */}
-      {hole ? (
+          actually USE the highlighted control — this tour needs real clicks.
+          Float steps (writing) render no dim so the page stays fully usable. */}
+      {dim && (hole ? (
         <div style={{
           position: "fixed", top: hole.top, left: hole.left, width: hole.width, height: hole.height,
           borderRadius: 12, boxShadow: "0 0 0 200vmax rgba(0,0,0,0.55)",
@@ -354,12 +350,13 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
         }} />
       ) : (
         !searching && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", pointerEvents: "none" }} />
-      )}
+      ))}
 
       {/* Step card — this is the only interactive layer */}
       <AnimatePresence mode="wait">
         <motion.div
           key={stepIndex}
+          ref={cardRef}
           initial={{ opacity: 0, y: 10, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -6, scale: 0.99 }}
