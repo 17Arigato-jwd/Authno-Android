@@ -98,6 +98,7 @@
       "main.js",
       "Preload.js",
       "fileManager.js",
+      "linuxIconTheme.js",
       "package.json"
     ],
     "directories": {

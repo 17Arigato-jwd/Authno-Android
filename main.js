@@ -2,6 +2,10 @@
 const { app, BrowserWindow, Menu, ipcMain, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { applyLinuxLauncherIcon } = require("./linuxIconTheme");
+// Basename of the installed .desktop entry (see package.json > desktopName).
+let DESKTOP_NAME = "authno.desktop";
+try { DESKTOP_NAME = require("./package.json").desktopName || DESKTOP_NAME; } catch { /* keep default */ }
 
 let mainWindow;
 let openFilePath = null;
@@ -144,12 +148,29 @@ if (!gotTheLock) {
     }
     return resolveAsset("authno.ico");
   }
+  // On Linux the window icon isn't what the app menu / dash shows — that's the
+  // installed .desktop's Icon=. Mirror the pick into a per-user .desktop
+  // override so the launcher icon changes too (best-effort; see linuxIconTheme).
+  function syncLinuxLauncherIcon(id) {
+    if (!isLinux) return;
+    try {
+      const res = applyLinuxLauncherIcon({
+        id,
+        iconSourcePath: resolveAsset(ICON_ASSETS[id] || ICON_ASSETS.default),
+        desktopName: DESKTOP_NAME,
+      });
+      if (res && res.ok === false && res.error) console.error("[linux launcher icon]", res.error);
+    } catch (e) { console.error("[linux launcher icon]", e); }
+  }
+
   ipcMain.handle("get-app-icon", () => readIconPref());
   ipcMain.handle("set-app-icon", (_e, id) => {
     try {
+      const norm = id in ICON_ASSETS ? id : "default";
       const img = iconImage(id);
       if (img && mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(img);
-      writeIconPref(id in ICON_ASSETS ? id : "default");
+      writeIconPref(norm);
+      syncLinuxLauncherIcon(norm);
       return { ok: !!img };
     } catch (err) {
       return { ok: false, error: String(err && err.message || err) };
@@ -157,10 +178,13 @@ if (!gotTheLock) {
   });
   // Persist the pick and relaunch so the new icon takes effect everywhere
   // (window + taskbar + running icon). This is the desktop path the renderer
-  // uses — a live swap looked flaky on Windows (reported).
+  // uses — a live swap looked flaky on Windows (reported). On Linux we also
+  // rewrite the launcher .desktop icon before relaunching.
   ipcMain.handle("set-app-icon-relaunch", (_e, id) => {
     try {
-      writeIconPref(id in ICON_ASSETS ? id : "default");
+      const norm = id in ICON_ASSETS ? id : "default";
+      writeIconPref(norm);
+      syncLinuxLauncherIcon(norm);
       app.relaunch();
       app.exit(0);
       return { ok: true };
