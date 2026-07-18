@@ -3,6 +3,35 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.7
+
+_A fixes-and-flow pass on both onboarding tours, from first desktop testing._
+
+### Onboarding fixes & restructure
+
+- **Metadata save no longer crashes the app.** Saving book details during the
+  first-book walkthrough could crash: the walkthrough checked authors as plain
+  text while the editor saves them as structured entries. The check now
+  understands both shapes, and every step-completion check is hardened so a
+  faulty check can never take the app down with it.
+- **Tour cards stay on screen.** The Next button could land out of bounds and
+  the long row of step dots overflowed the card. Both tours now use a slim
+  progress bar instead of dots, and cards are always clamped to the viewport.
+- **Read while you tour.** The guided tour no longer blocks the app behind an
+  invisible click shield — you can scroll and read *The Good Knight* (its
+  first chapter now has a proper name: "Chapter 1: Good Night"), type, and
+  click freely while a tour card is up. When a step highlights most of the
+  screen, the card tucks into the bottom-left corner out of the way.
+- **Both tours restructured so each step leads into the next.** The intro
+  tour is now 8 compact steps (welcome → create → import → your shelf → 
+  chapters → read the page → the menu → "Create My First Book" hand-off).
+  The first-book walkthrough flows in writing order: import → details →
+  name a chapter → streak goal → write → cover → save → threads → history →
+  export.
+- The first-book walkthrough now visibly **opens the streak calendar** during
+  the streak step, and the metadata step highlights the actual details panel
+  once it's open.
+
 ## 1.1.18-beta.6
 
 _A hands-on first-book walkthrough, and a fix for a desktop startup hang._

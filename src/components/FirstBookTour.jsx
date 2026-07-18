@@ -39,40 +39,48 @@ const wordsInBook = (book) => (book?.chapters || []).reduce((n, c) => n + chapte
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 // view:    'home' | 'book' | 'editor'  — screen the app must be showing.
-// target:  data-tour anchor to spotlight (null = centred card).
+// target:  data-tour anchor to spotlight (null = centred card). `targets`
+//          lists fallbacks in priority order (e.g. the open metadata panel,
+//          else the button that opens it).
 // optional:true = Continue always enabled; false = gated on done(ctx).
-// done:    (ctx) => bool — compulsory completion test.
+// done:    (ctx) => bool — compulsory completion test (never trusted to throw).
+// action:  opens a real surface via the shared 'authno-tour-action' event.
 // ensureBook: run onEnsureBook() when advancing INTO this step (first book step).
+//
+// Order tells one continuous story: get your material in (import) → give the
+// book its identity (details, chapter name) → set your pace (goal) → WRITE →
+// dress it (cover) → protect it (save) → organise it (threads) → rewind it
+// (history) → share it (export).
 function buildSteps(android) {
+  const hasAuthor = (a) => (typeof a === "string" ? a.trim() : (a && typeof a.name === "string" && a.name.trim()));
   return [
     {
       key: "intro", view: "home", target: null, optional: true,
       title: "Let's make your first book",
-      body: "I'll walk you through it, start to finish — importing, writing, threads, saving and more. Do each step yourself; I'll wait. You can leave any time and pick up where you stopped.",
+      body: "I'll walk you through it, start to finish — do each step yourself, and I'll wait. You can leave any time and pick up exactly where you stopped.",
       cta: "Let's go",
     },
     {
       key: "import", view: "home", target: "import-book", optional: true,
-      title: "Start from a draft (optional)",
+      title: "Got a draft already?",
       body: android
-        ? "Already have something written? Import turns TXT, Markdown, DOCX, ODT, EPUB or PDF into a book — chapters and all. Or just skip to start with a blank page."
-        : "Already have something written? Import turns TXT, Markdown, DOCX, ODT, EPUB or PDF into a book. Or skip to start with a blank page.",
+        ? "Import turns TXT, Markdown, DOCX, ODT, EPUB or PDF into a book — chapters and all. Nothing to import? Continue and we'll start you with a blank one."
+        : "Import turns TXT, Markdown, DOCX, ODT, EPUB or PDF into a book — chapters and all. Nothing to import? Continue and we'll start you with a blank one.",
     },
     {
-      key: "streak", view: "book", target: "streak-pill", optional: true, ensureBook: true,
-      title: "Set a daily goal (optional)",
-      body: "Tap the flame to set how many words you want to write a day. Hit it and your streak grows — each book tracks its own. You can always change it later.",
-    },
-    {
-      key: "metadata", view: "book", target: "edit-metadata", optional: false,
-      title: "Add your book's details",
-      body: "Open Edit metadata and fill in a bit — author, genre, a one-line description. It travels inside the .authbook file and shows up in exports.",
-      hint: "Fill in at least one detail to continue.",
-      done: (b) => !!(b && ((b.authors && b.authors.some((a) => a && a.trim())) || (b.genre && b.genre.trim()) || (b.description && b.description.trim()))),
+      key: "metadata", view: "book", targets: ["metadata-panel", "edit-metadata"], optional: false, ensureBook: true,
+      title: "Here's your book — give it its details",
+      body: "Open Edit metadata and fill in a bit: your author name, a genre, a one-line description. It travels inside the .authbook file and shows up in exports.",
+      hint: "Fill in at least one detail, then Save.",
+      done: (b) => !!(b && (
+        (Array.isArray(b.authors) && b.authors.some(hasAuthor)) ||
+        (typeof b.genre === "string" && b.genre.trim()) ||
+        (typeof b.description === "string" && b.description.trim())
+      )),
     },
     {
       key: "chapter", view: "book", target: "chapters", optional: false,
-      title: "Name your first chapter",
+      title: "Details done — now name your first chapter",
       body: "Every book opens with Chapter 1. Give it a real title — tap the chapter to rename it (or add another with New chapter). A name makes it yours.",
       hint: "Rename the chapter (or add one) to continue.",
       done: (b, ctx) => {
@@ -84,16 +92,21 @@ function buildSteps(android) {
       },
     },
     {
+      key: "streak", view: "book", targets: ["streak-panel", "streak-pill"], action: "streak", optional: true,
+      title: "Before you write: set a pace (optional)",
+      body: "This is your streak — pick how many words a day feels right and the flame keeps score. Each book tracks its own. Skip it if goals aren't your thing.",
+    },
+    {
       key: "write", view: "editor", target: "editor", optional: false, pause: true,
-      title: "Write a few words",
-      body: "Here's the page. Write whatever you like — even a sentence. This step waits for you: close the app, come back tomorrow, and pick up right here.",
+      title: "Now — write a few words",
+      body: "Here's the page your chapter lives on. Write whatever you like — even a sentence. This step waits for you: close the app, come back tomorrow, and pick up right here.",
       hint: "Write a few words to continue — no rush.",
       done: (b) => wordsInBook(b) >= 5,
     },
     {
       key: "cover", view: "book", target: "add-cover", optional: true,
-      title: "Add a cover (optional)",
-      body: "Give the book a face. Add cover lets you pick a colour or an image — it shows on your shelf and on the book screen. Skip it if you'd rather not.",
+      title: "It reads like a book — make it look like one (optional)",
+      body: "Add cover puts a face on what you just wrote — it shows on your shelf and the book screen. Skip it if you'd rather keep writing.",
     },
     {
       key: "save", view: "book", target: "menu", optional: false,
@@ -201,20 +214,32 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
   }, [active, stepIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ctx = { signals: signalsRef.current, entryChapterTitle: entryRef.current.entryChapterTitle };
-  const isDone = step?.optional || !step?.done || step.done(book, ctx);
+  // A gate must never be able to crash the app (beta.6: the metadata gate
+  // assumed authors were strings, MetadataPanel saves {name} objects, and the
+  // resulting TypeError took the whole tree down on Save). Broken gate = open.
+  let isDone;
+  try { isDone = step?.optional || !step?.done || step.done(book, ctx); }
+  catch (e) { console.error('[FirstBookTour] gate error', e); isDone = true; }
 
-  // Navigate + ensure the real book exists + locate the spotlight target.
+  // Navigate + ensure the real book exists + open any tour-driven surface +
+  // locate the spotlight target (first match wins across step.targets).
   useEffect(() => {
     if (!active || !step) return undefined;
     if (step.ensureBook) onEnsureBook?.();
     onNavigate?.(step.view);
+    document.dispatchEvent(new CustomEvent("authno-tour-action", { detail: { action: step.action ?? null } }));
+    const targetList = step.targets ?? (step.target ? [step.target] : []);
     elRef.current = null;
     setRect(null);
-    if (!step.target) { setSearching(false); return undefined; }
+    if (targetList.length === 0) { setSearching(false); return undefined; }
     setSearching(true);
     let tries = 0, scrolled = false;
     const find = () => {
-      const el = document.querySelector(`[data-tour="${step.target}"]`);
+      let el = null;
+      for (const t of targetList) {
+        el = document.querySelector(`[data-tour="${t}"]`);
+        if (el) break;
+      }
       if (el) {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
@@ -237,6 +262,12 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
     pollRef.current = setInterval(find, 90);
     return () => clearInterval(pollRef.current);
   }, [active, stepIndex, step, onNavigate, onEnsureBook]);
+
+  // Whatever the coach opened must not outlive it.
+  useEffect(() => {
+    if (!active) return undefined;
+    return () => { document.dispatchEvent(new CustomEvent("authno-tour-action", { detail: { action: null } })); };
+  }, [active]);
 
   // Keep the spotlight glued through resize/scroll.
   useEffect(() => {
@@ -287,12 +318,23 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
   const CARD_H = 320;
   let cardStyle;
   if (hole) {
-    const below = hole.top + hole.height + 14;
-    const spaceBelow = window.innerHeight - below;
-    let top = spaceBelow > CARD_H ? below : hole.top - 14 - CARD_H;
-    top = Math.max(12, Math.min(top, window.innerHeight - CARD_H - 12));
-    const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
-    cardStyle = { position: "fixed", top, left, width: CARD_W };
+    // When the spotlight covers most of the screen (the editor page, an open
+    // panel/form), any "next to the target" placement sits ON the content the
+    // user is reading or filling in. Dock to the bottom-left corner instead —
+    // out of the way of prose (left-aligned reading starts at the top) and of
+    // right-side panels.
+    const holeArea = hole.width * hole.height;
+    const viewArea = window.innerWidth * window.innerHeight;
+    if (holeArea > viewArea * 0.5) {
+      cardStyle = { position: "fixed", left: 12, bottom: 12, width: CARD_W };
+    } else {
+      const below = hole.top + hole.height + 14;
+      const spaceBelow = window.innerHeight - below;
+      let top = spaceBelow > CARD_H ? below : hole.top - 14 - CARD_H;
+      top = Math.max(12, Math.min(top, window.innerHeight - CARD_H - 12));
+      const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
+      cardStyle = { position: "fixed", top, left, width: CARD_W };
+    }
   } else {
     cardStyle = { position: "fixed", top: Math.max(12, (window.innerHeight - CARD_H) / 2), left: Math.max(12, (window.innerWidth - CARD_W) / 2), width: CARD_W };
   }
@@ -366,11 +408,11 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
             </div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14 }}>
-            <div style={{ display: "flex", gap: 4, flex: 1 }}>
-              {list.map((_, i) => (
-                <span key={i} style={{ width: i === stepIndex ? 14 : 5, height: 5, borderRadius: 3, background: i <= stepIndex ? accentHex : "var(--border)", transition: "all 0.25s" }} />
-              ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+            {/* One slim bar, not a dot per step — 12 dots crowded the row and
+                pushed the buttons out of the card. A bar can never overflow. */}
+            <div style={{ flex: 1, minWidth: 0, height: 3, borderRadius: 2, background: "var(--border-sm)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${((stepIndex + 1) / list.length) * 100}%`, background: accentHex, borderRadius: 2, transition: "width 0.3s ease" }} />
             </div>
             {stepIndex > 0 && (
               <button onClick={back} style={{ padding: "8px 12px", borderRadius: 9, border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", cursor: "pointer", fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}>

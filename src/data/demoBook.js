@@ -70,7 +70,9 @@ export function createDemoBook() {
     updated: now,
     _demo: true, // identifies the demo book so it can be filtered out
 
-    authors: ['AuthNo'],
+    // Same shape MetadataPanel reads/writes ({ name }) — plain strings here
+    // rendered as a blank Authors field when the panel opened on this book.
+    authors: [{ name: 'AuthNo' }],
     genre: 'Fantasy',
     description: 'The tale of the knight Eclas and Princess Penelope — a demo story to explore AuthNo with.',
     language: 'English',
@@ -81,7 +83,7 @@ export function createDemoBook() {
     chapters: [
       {
         chap_idx: 0,
-        title: 'Chapter 1',
+        title: 'Chapter 1: Good Night',
         order: 0,
         content: CHAPTER_1_HTML,
         created: now,

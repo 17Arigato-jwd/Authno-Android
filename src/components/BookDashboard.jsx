@@ -315,6 +315,7 @@ export function MetadataPanel({ session, accentHex, onClose, onSave }) {
         paddingTop: '24px',
       }} onClick={onClose}>
       <motion.div
+        data-tour="metadata-panel"
         initial={{ opacity: 0, scale: 0.97, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
         style={{

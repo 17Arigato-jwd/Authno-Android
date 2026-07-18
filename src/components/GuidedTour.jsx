@@ -20,100 +20,57 @@ import { DSIcons } from "../DesignSystem";
 // ── Step definitions ─────────────────────────────────────────────────────────
 // view: which screen the app must show ('home' | 'book' | 'editor').
 // target: data-tour attribute to spotlight (null = centered card).
+//
+// Deliberately COMPACT (8 stops). This is the welcome tour: a look around and
+// an invitation to read "The Good Knight". The deep features — threads,
+// streaks, history, metadata, export — are taught hands-on by the
+// "Create My First Book" coach, where the user actually uses them. Teaching
+// them twice made the welcome a 17-step marathon.
 export function buildTourSteps(android) {
   return [
     {
       view: "home", target: null,
       title: "Welcome to AuthNo",
-      body: "A quick tour of how writing here works — from a blank page to a finished book. It takes about a minute, and you can skip out any time.",
+      body: "A quick look around — it takes under a minute, and there's a story waiting for you at the end. Skip out any time.",
     },
     {
       view: "home", target: "new-book",
-      title: "Create a book",
+      title: "Books start here",
       body: android
-        ? "Every story starts here. “Create a New Book” makes a fresh book and drops you straight into it. You can also import TXT, DOCX, EPUB, PDF and more."
-        : "Every story starts here — “New book” creates one and opens it. You can also open an existing .authbook or import TXT, DOCX, EPUB, PDF and more.",
+        ? "“Create a New Book” makes a fresh book and drops you straight into it."
+        : "“New book” creates a fresh book and opens it. Ctrl+N does the same from anywhere.",
+    },
+    {
+      view: "home", target: "import-book",
+      title: "…or bring a draft with you",
+      body: "Import turns TXT, Markdown, DOCX, ODT, EPUB and even PDF into a proper AuthNo book — chapters and all.",
     },
     {
       view: "home", target: "library",
       title: "Your library",
-      body: android
-        ? "Books you create or import are collected here. Tap one to open it; long-press rows in the drawer for more options."
-        : "Books you create or import are collected here. Click a cover to open it, or right-click for options like removing a book.",
-    },
-    {
-      view: "home", target: "import-book",
-      title: "Bring your writing with you",
-      body: "Already have a draft somewhere else? Import turns TXT, Markdown, DOCX, ODT, EPUB and even PDF into a proper AuthNo book — chapters and all.",
+      body: "Everything you create or import lives here — including “The Good Knight”, a short story we've put on your shelf to explore.",
     },
     {
       view: "book", target: "chapters",
-      title: "Chapters",
+      title: "A book is chapters",
       body: android
-        ? "Each book is organised into chapters. Tap a chapter to write in it, and use the synopsis line to remember what happens where."
-        : "Each book is organised into chapters. Double-click one to write in it; Ctrl/Shift-click selects several at once. Every chapter can carry a short synopsis.",
-    },
-    {
-      view: "book", target: "add-chapter",
-      title: "Add chapters as you go",
-      body: "New chapters land at the end and open ready to type. You can reorder or delete them later — deletions always ask first.",
-    },
-    {
-      view: "book", target: "book-meta",
-      title: "Cover & details",
-      body: "Give the book a cover and fill in genre, description and the rest — it all exports with the book and lives inside the .authbook file.",
-    },
-    {
-      view: "book", target: "export-book",
-      title: "Export anywhere",
-      body: "Your book is never locked in. Export to TXT, HTML, EPUB or PDF any time — ready for readers, editors, or publishing.",
+        ? "Tap a chapter to read or write in it. Each one can carry a short synopsis so you remember what happens where."
+        : "Double-click a chapter to read or write in it. Each one can carry a short synopsis so you remember what happens where.",
     },
     {
       view: "editor", target: "editor",
-      title: "Write",
-      body: "This is where the words go. Just type — your work autosaves, and AuthNo remembers where you left off so you can resume in one tap.",
-    },
-    {
-      view: "editor", target: "toolbar",
-      title: "Format your prose",
-      body: "Bold, italics, headings, lists, fonts and sizes. Select text to see the selection tools, too.",
-    },
-    {
-      view: "editor", target: "threads",
-      title: "Threads",
-      body: "Track plotlines, character arcs and TODOs. Anchor a thread to a passage and it follows the text as your draft grows.",
-    },
-    {
-      view: "editor", target: "threads-panel", action: "threads",
-      title: "Inside the Threads panel",
-      body: "Each thread is a plotline or arc with its own entries. Create one, anchor entries to passages, and tap an entry to jump straight to that spot in the text.",
-    },
-    {
-      view: "editor", target: "streak",
-      title: "Daily streak",
-      body: "Set a word goal and keep the flame alive. Each book tracks its own progress and history.",
-    },
-    {
-      view: "editor", target: "streak-panel", action: "streak",
-      title: "Your streak, up close",
-      body: "Today's words sit against your goal, and the calendar lights up every day you hit it. The goal is per-book — tune it right from this panel.",
+      title: "The page — go ahead, read a little",
+      body: "This is The Good Knight, open for real. Scroll and read as much as you like — the tour waits, and this card stays out of the way. When you write, everything autosaves.",
     },
     {
       view: "editor", target: "menu",
       title: "Save, export & more",
-      body: "Save your book as an .authbook file, export to TXT / HTML / EPUB / PDF, rename it, or open the change History.",
-    },
-    {
-      view: "editor", target: "burger-menu", action: "menu",
-      title: "Everything in one menu",
-      body: "Save and Save As write your .authbook file, Rename retitles the book, History rewinds any change, Export publishes to TXT / HTML / EPUB / PDF, and Read aloud speaks the chapter.",
+      body: "Saving, exporting to EPUB/PDF, renaming and change History all live in this menu. You'll use them for real when you make your own book.",
     },
     {
       view: "editor", target: null,
-      title: "You're all set",
-      body: android
-        ? "That's the whole loop: create, write, save. Tip — the menu's History entry shows your recent changes, and you can restore any of them."
-        : "That's the whole loop: create, write, save. Pro tips — Ctrl+K jumps to any book or chapter, and Ctrl+Shift+Z opens the change History.",
+      title: "That's the lay of the land",
+      body: "When setup ends, look for “Create My First Book” on the home screen — it walks you through making yours, hands-on: details, chapters, writing, threads, saving and more.",
     },
   ];
 }
@@ -215,6 +172,10 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
   useEffect(() => {
     if (!active) return undefined;
     const onKey = (e) => {
+      // The app is interactive during the tour now — never steal keys from
+      // someone typing in an input or the editor itself.
+      const typing = e.target?.tagName === "INPUT" || e.target?.tagName === "TEXTAREA" || e.target?.isContentEditable;
+      if (typing) return;
       if (e.key === "Escape") { e.preventDefault(); finish(); }
       else if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); next(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }
@@ -232,20 +193,25 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
   };
 
   // Card placement: under the target when there's room, else above; centered
-  // when there's no target. Everything is computed numerically and clamped to
-  // the viewport — the old centered branch used a translate(-50%,-50%) style
-  // transform that framer-motion's enter animation overwrote, which anchored
-  // the card at the 50% mark and pushed half of it off narrow screens.
+  // when there's no target; docked to the bottom-left corner when the
+  // spotlight covers most of the screen (the editor page) so the card never
+  // sits on the prose the user was just invited to read. Everything is
+  // computed numerically and clamped to the viewport.
   const CARD_W = Math.min(330, window.innerWidth - 24);
   const CARD_H_EST = 250; // vertical clamp estimate — real cards run 200-260px
   let cardStyle;
   if (hole) {
-    const below = hole.top + hole.height + 14;
-    const spaceBelow = window.innerHeight - below;
-    let top = spaceBelow > CARD_H_EST ? below : hole.top - 14 - CARD_H_EST;
-    top = Math.max(12, Math.min(top, window.innerHeight - CARD_H_EST - 12));
-    const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
-    cardStyle = { position: "fixed", top, left, width: CARD_W };
+    const holeArea = hole.width * hole.height;
+    if (holeArea > window.innerWidth * window.innerHeight * 0.5) {
+      cardStyle = { position: "fixed", left: 12, bottom: 12, width: CARD_W };
+    } else {
+      const below = hole.top + hole.height + 14;
+      const spaceBelow = window.innerHeight - below;
+      let top = spaceBelow > CARD_H_EST ? below : hole.top - 14 - CARD_H_EST;
+      top = Math.max(12, Math.min(top, window.innerHeight - CARD_H_EST - 12));
+      const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
+      cardStyle = { position: "fixed", top, left, width: CARD_W };
+    }
   } else {
     cardStyle = {
       position: "fixed",
@@ -256,9 +222,11 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
   }
 
   return createPortal(
-    <div style={{ position: "fixed", inset: 0, zIndex: Z }}>
-      {/* Click shield — the tour is Next-driven; stray taps shouldn't derail it. */}
-      <div style={{ position: "absolute", inset: 0 }} onClick={next} />
+    // pointerEvents:none on the wrapper (the card re-enables its own): the
+    // app stays fully usable during the tour, so the user can scroll and
+    // READ The Good Knight mid-step. The old full-screen click shield made
+    // every stray tap advance the tour and blocked reading entirely.
+    <div style={{ position: "fixed", inset: 0, zIndex: Z, pointerEvents: "none" }}>
 
       {/* Spotlight: the giant shadow dims everything except the cut-out. */}
       {hole ? (
@@ -282,7 +250,7 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
           transition={T.base}
           onClick={(e) => e.stopPropagation()}
           style={{
-            ...cardStyle,
+            ...cardStyle, pointerEvents: "auto",
             background: "var(--modal-bg)", color: "var(--text-1)",
             border: "1px solid var(--border)", borderRadius: 16,
             padding: "16px 18px", boxShadow: "0 20px 60px rgba(0,0,0,0.55)",
@@ -300,16 +268,11 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
           </div>
           <div style={{ fontSize: 15.5, fontWeight: 700, marginBottom: 6 }}>{step.title}</div>
           <div style={{ fontSize: 13, color: "var(--text-3)", lineHeight: 1.6, marginBottom: 14 }}>{step.body}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* Progress dots */}
-            <div style={{ display: "flex", gap: 4, flex: 1 }}>
-              {list.map((_, i) => (
-                <span key={i} style={{
-                  width: i === stepIndex ? 14 : 5, height: 5, borderRadius: 3,
-                  background: i <= stepIndex ? accentHex : "var(--border)",
-                  transition: "all 0.25s",
-                }} />
-              ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* One slim bar, not a dot per step — the dot row overflowed the
+                card once the tour grew, pushing Next out of bounds. */}
+            <div style={{ flex: 1, minWidth: 0, height: 3, borderRadius: 2, background: "var(--border-sm)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${((stepIndex + 1) / list.length) * 100}%`, background: accentHex, borderRadius: 2, transition: "width 0.3s ease" }} />
             </div>
             {stepIndex > 0 && (
               <button onClick={back}
