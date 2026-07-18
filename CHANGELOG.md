@@ -3,6 +3,27 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.9
+
+_Branding, Linux packaging, and app-icon polish._
+
+### App icons
+
+- **Changing your app icon now updates the Linux launcher too.** Previously the
+  pick only changed the window/taskbar icon; the applications menu / dash kept
+  the default. AuthNo now writes a per-user launcher entry so the chosen icon
+  shows everywhere, and switching back to Default restores the original.
+- **The alternate app icons no longer get over-cropped on phones.** The light,
+  gold and retro icons were drawn edge-to-edge, so Android's icon mask cut a
+  large part of the α on some launchers. They're re-sized so the whole letter
+  stays visible while keeping the "just off the edge" look.
+
+### Branding & Linux packages
+
+- Consistent **VCHS Studios** name across the app, copyright and package
+  metadata, with a real maintainer/vendor, homepage and license on the Linux
+  `.deb`/`.rpm`, and an enriched software-center (AppStream) listing.
+
 ## 1.1.18-beta.8
 
 _Tour cards that never cover what they point at, and a friendlier paywall._
