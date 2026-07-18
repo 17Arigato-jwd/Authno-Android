@@ -77,7 +77,7 @@ function getRandom(min, max) {
   return min + Math.random() * (max - min);
 }
 
-function FloatingBlobs({ accentHex = "#5a00d9" }) {
+export function FloatingBlobs({ accentHex = "#5a00d9" }) {
   const blobs = useMemo(() => {
     const palette = [
       accentHex,
@@ -203,7 +203,7 @@ function PageBadge({ index, total }) {
   );
 }
 
-function Pill({ children, accentHex }) {
+export function Pill({ children, accentHex }) {
   return (
     <div
       className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs text-white/70"
@@ -214,7 +214,7 @@ function Pill({ children, accentHex }) {
   );
 }
 
-function FeatureLine({ icon: Icon, text, accentHex }) {
+export function FeatureLine({ icon: Icon, text, accentHex }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left">
       <div
@@ -234,7 +234,7 @@ function FeatureLine({ icon: Icon, text, accentHex }) {
 // hardcoded colours and ignored every theme. Rather than rewrite 40+ class
 // strings, this component-scoped stylesheet remaps exactly the utilities used
 // here onto the theme variables — correct in all five themes and any .thmbk.
-const ONB_THEME_CSS = `
+export const ONB_THEME_CSS = `
 .onb .text-white      { color: var(--text-1); }
 .onb .text-white\\/85 { color: var(--text-1); }
 .onb .text-white\\/80 { color: var(--text-2); }

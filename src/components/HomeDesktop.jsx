@@ -199,7 +199,9 @@ export default function HomeDesktop({
         <div data-tour="new-book" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {actionBtn(<DSIcons.FilePlus size={14} color="#fff" />, 'New book', onNewBook, true)}
           {actionBtn(<DSIcons.FolderOpen size={14} />, 'Open…', openExisting)}
-          {actionBtn(<DSIcons.Download size={14} />, 'Import a book', () => importInputRef.current?.click())}
+          <span data-tour="import-book" style={{ display: 'inline-flex' }}>
+            {actionBtn(<DSIcons.Download size={14} />, 'Import a book', () => importInputRef.current?.click())}
+          </span>
           {isSpeechSupported() && actionBtn(<DSIcons.Volume size={14} />, 'Read aloud', onReadAloud)}
           {/* Settings intentionally absent — the sidebar (always visible on
               desktop) and Ctrl+, cover it; three entry points was clutter. */}

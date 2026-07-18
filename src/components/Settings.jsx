@@ -565,13 +565,24 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
         <Toggle on={settings.reduceMotion ?? false} onChange={(v) => onChange({ reduceMotion: v })} accentHex={accentHex} />
       </SettingRow>
 
-      {/* Material You (Android 12+ only — row hidden where dynamic colour
-          doesn't exist). System wallpaper accent overrides the custom accent. */}
-      {materialYouSupported && (
+      {/* Material You (Android only). Previously the whole row was hidden
+          unless the support probe succeeded — so any probe failure made the
+          feature invisible with no way to tell why. Now the row always shows
+          on Android; unsupported devices get a disabled toggle + reason. */}
+      {isAndroid() && (
         <>
           <div style={{ height: 16 }} />
-          <SettingRow icon={DSIcons.Palette} title="Material You colour" description="Use your wallpaper's system colour as the app accent (Android 12+)" accentHex={accentHex}>
-            <Toggle on={settings.materialYou ?? false} onChange={(v) => onChange({ materialYou: v })} accentHex={accentHex} />
+          <SettingRow
+            icon={DSIcons.Palette}
+            title="Material You colour"
+            description={materialYouSupported
+              ? "Use your wallpaper's system colour as the app accent"
+              : "Not available on this device — requires Android 12 or newer"}
+            accentHex={accentHex}
+          >
+            <div style={{ opacity: materialYouSupported ? 1 : 0.4, pointerEvents: materialYouSupported ? 'auto' : 'none' }}>
+              <Toggle on={settings.materialYou ?? false} onChange={(v) => onChange({ materialYou: v })} accentHex={accentHex} />
+            </div>
           </SettingRow>
         </>
       )}

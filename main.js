@@ -223,13 +223,13 @@ if (!gotTheLock) {
     }
 
     mainWindow.once("ready-to-show", () => {
-      setTimeout(() => {
-        if (splash && !splash.isDestroyed()) splash.close();
-        mainWindow.show();
+      // Show the moment the renderer has painted. The old fixed 1500ms wait
+      // added 1.5s of dead time to EVERY boot on top of the real load.
+      if (splash && !splash.isDestroyed()) splash.close();
+      mainWindow.show();
 
-        // openFilePath is delivered via get-pending-file IPC on renderer mount
-        // No need to send here — avoids double delivery
-      }, 1500);
+      // openFilePath is delivered via get-pending-file IPC on renderer mount
+      // No need to send here — avoids double delivery
     });
 
     mainWindow.on("closed", () => (mainWindow = null));

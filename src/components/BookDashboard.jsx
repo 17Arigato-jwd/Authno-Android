@@ -716,7 +716,7 @@ export default function BookDashboard({
             </div>
 
             {/* Export button */}
-            <button onClick={() => setShowExport(true)} style={{
+            <button data-tour="export-book" onClick={() => setShowExport(true)} style={{
               width: '100%', padding: '15px', borderRadius: '14px', border: 'none',
               background: accentHex, color: '#fff', fontSize: '15px', fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',

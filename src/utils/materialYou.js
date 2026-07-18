@@ -27,11 +27,15 @@ export async function getMaterialYouColors(fresh = false) {
   if (_cache && !fresh) return _cache;
   try {
     const res = await MaterialYou.getColors();
-    _cache = res?.supported ? res : { supported: false };
+    // Only SUCCESS is cached. A transient failure (bridge hiccup, first call
+    // racing startup) used to latch { supported:false } for the whole session,
+    // which hid the Settings toggle and made the feature look dead even on
+    // supported devices. Unsupported devices just re-answer cheaply.
+    if (res?.supported) { _cache = res; return _cache; }
+    return { supported: false };
   } catch {
-    _cache = { supported: false };
+    return { supported: false };
   }
-  return _cache;
 }
 
 /** Convenience: the headline accent hex, or null when unavailable. */

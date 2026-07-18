@@ -27,7 +27,6 @@ import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
-import GuidedTour from "./components/GuidedTour";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import FileIntegrityModal from "./components/FileIntegrityModal";
@@ -600,7 +599,6 @@ function AppInner({ navigateRef }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
-  const [tourActive, setTourActive] = useState(false);             // guided tour (v1.1.18)
   const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
   const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
   const [chapterInfoIdx, setChapterInfoIdx] = useState(null);      // explicit chapter for ChapterInfoModal (BookStudio info button)
@@ -629,7 +627,9 @@ function AppInner({ navigateRef }) {
         .then((hex) => { if (alive) setSystemAccent(hex); })
         .catch(() => { if (alive) setSystemAccent(null); });
     };
-    fetchAccent(false);
+    // Always fetch fresh: the palette call is cheap, and a cached miss from
+    // startup must not be able to mask a supported device (Material You bug).
+    fetchAccent(true);
     // Re-check on app resume via @capacitor/app — the document-level 'resume'
     // event is a Cordova convention Capacitor doesn't reliably emit.
     let sub = null;
@@ -1543,6 +1543,9 @@ function AppInner({ navigateRef }) {
       )}
       {showOnboarding && (
         <OnboardingFunnel
+          accentHex={customization.accentHex}
+          android={android}
+          onTourNavigate={handleTourNavigate}
           onComplete={() => {
             setShowOnboarding(false);
             openBilling();
@@ -1731,13 +1734,8 @@ function AppInner({ navigateRef }) {
         />
       )}
 
-      {/* Guided tour — spotlight walkthrough of the real screens (v1.1.18) */}
-      <GuidedTour
-        active={tourActive} android={android}
-        accentHex={customization.accentHex}
-        onNavigate={handleTourNavigate}
-        onDone={() => setTourActive(false)}
-      />
+      {/* The guided tour now lives inside OnboardingFunnel (step 3) — the
+          Settings/About "Guided tour" buttons launch the whole funnel. */}
 
       {/* Read aloud — book & chapter picker (home screens + Ctrl+Shift+R) */}
       <ReadAloudPicker
@@ -1807,7 +1805,7 @@ function AppInner({ navigateRef }) {
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
         sessions={sessions} onSessionChange={handleSessionChange}
         onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
-        onStartTour={() => { setSettingsOpen(false); setTourActive(true); }}
+        onStartTour={() => { setSettingsOpen(false); setShowOnboarding(true); }}
         onReplayWelcome={() => { setSettingsOpen(false); setShowOnboarding(true); }}
       />
 
