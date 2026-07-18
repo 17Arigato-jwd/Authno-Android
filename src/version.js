@@ -2,6 +2,6 @@
 export const APP_VERSION = "1.1.18-beta.8";
 export const APP_NAME = "AuthNo";
 export const APP_AUTHOR = "VCHS Studios";
-export const APP_SUPPORT_EMAIL = "blader.ultramate@gmail.com";
+export const APP_SUPPORT_EMAIL = "varchas.mishra@gmail.com";
 export const APP_REPOSITORY = "https://github.com/17arigato-jwd/authno-android";
 export const APP_BUILD_DATE = "2026-07-18";

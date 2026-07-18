@@ -4,8 +4,9 @@
   "description": "AuthNo — offline story editor",
   "author": {
     "name": "VCHS Studios",
-    "email": "blader.ultramate@gmail.com"
+    "email": "varchas.mishra@gmail.com"
   },
+  "license": "SEE LICENSE IN LICENSE.txt",
   "homepage": "./",
   "desktopName": "authno.desktop",
   "repository": {
@@ -90,7 +91,7 @@
   "build": {
     "appId": "com.aurorastudios.authno",
     "productName": "AuthNo",
-    "copyright": "© 2026 AS Code Studios",
+    "copyright": "© 2026 VCHS Studios",
     "files": [
       "build/**/*",
       "public/**/*",
@@ -104,7 +105,8 @@
       "output": "dist-electron"
     },
     "extraMetadata": {
-      "main": "main.js"
+      "main": "main.js",
+      "homepage": "https://authno.pages.dev"
     },
     "fileAssociations": [
       {
@@ -140,7 +142,7 @@
           ]
         }
       ],
-      "legalTrademarks": "AS Code Studios"
+      "legalTrademarks": "VCHS Studios"
     },
     "nsis": {
       "oneClick": false,
@@ -161,6 +163,8 @@
         "rpm"
       ],
       "executableName": "authno",
+      "maintainer": "VCHS Studios <varchas.mishra@gmail.com>",
+      "vendor": "VCHS Studios",
       "category": "Office;WordProcessor;",
       "icon": "public/authno-512.png",
       "synopsis": "Offline story editor",

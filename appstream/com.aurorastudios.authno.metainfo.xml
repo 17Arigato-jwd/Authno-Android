@@ -17,9 +17,10 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
 
-  <developer id="dev.aurorastudios">
-    <name>Aurora Studios</name>
+  <developer id="dev.vchsstudios">
+    <name>VCHS Studios</name>
   </developer>
+  <update_contact>varchas.mishra_AT_gmail.com</update_contact>
 
   <description>
     <p>
@@ -55,10 +56,27 @@
 
   <url type="homepage">https://authno.pages.dev</url>
   <url type="bugtracker">https://github.com/17Arigato-jwd/Authno-Android/issues</url>
+  <url type="vcs-browser">https://github.com/17Arigato-jwd/Authno-Android</url>
+  <url type="contribute">https://github.com/17Arigato-jwd/Authno-Android</url>
+  <url type="contact">https://authno.pages.dev</url>
 
   <content_rating type="oars-1.1" />
 
+  <!-- Brand accent used by GNOME Software / KDE Discover for the store page. -->
+  <branding>
+    <color type="primary" scheme_preference="light">#5a00d9</color>
+    <color type="primary" scheme_preference="dark">#7b3fe4</color>
+  </branding>
+
   <releases>
+    <release version="1.1.18-beta.8" date="2026-07-18">
+      <url type="details">https://github.com/17Arigato-jwd/Authno-Android/releases/tag/v1.1.18-beta.8</url>
+      <description>
+        <p>New onboarding funnel and first-book coach, a one-time-purchase Pro
+        upgrade with a 7-day free trial, a Material You theme, and a large round
+        of editor, history and desktop polish.</p>
+      </description>
+    </release>
     <release version="1.1.16-beta.4" date="2026-07-11">
       <description>
         <p>Resume-writing path, share-to-AuthNo, launcher shortcuts, a Docs-style
