@@ -181,7 +181,7 @@ export default function BookStudio({
           {session?.title || 'Untitled Book'}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {streakEnabled && <FlameButton current={session} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} />}
+          {streakEnabled && <span data-tour="streak-pill" style={{ display: 'inline-flex' }}><FlameButton current={session} accentHex={accentHex} goalWords={goalWords} onStreakUpdate={onStreakUpdate} /></span>}
           <button ref={burgerBtnRef} onClick={onToggleMenu} aria-label="Menu"
             style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', display: 'flex' }}>
             <DSIcons.MoreVertical size={20} color="var(--text-1)" />
@@ -228,7 +228,7 @@ export default function BookStudio({
 
           <div data-tour="add-chapter" style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 'auto' }}>
             {smallBtn('New chapter', <DSIcons.Plus size={13} color="#fff" />, onNewChapter, true)}
-            {smallBtn('Edit metadata', <DSIcons.Edit size={13} />, () => setShowMetadata(true))}
+            <span data-tour="edit-metadata" style={{ display: 'flex', flexDirection: 'column' }}>{smallBtn('Edit metadata', <DSIcons.Edit size={13} />, () => setShowMetadata(true))}</span>
             <span data-tour="export-book" style={{ display: 'flex', flexDirection: 'column' }}>
               {smallBtn('Export…', <DSIcons.Upload size={13} />, () => setShowExport(true))}
             </span>

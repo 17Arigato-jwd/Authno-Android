@@ -17,6 +17,7 @@ import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
 import { isSpeechSupported } from "../utils/readAloud";
 import { hapticSave } from "../utils/haptics";
+import { emitTourSignal } from "../utils/firstBookTour";
 
 // ── DesignSystem ──────────────────────────────────────────────────────────────
 import { Divider, COLORS, DSIcons } from "../DesignSystem";
@@ -115,6 +116,7 @@ export default function BurgerMenu({
         );
       }
       setStatus("saved");
+      emitTourSignal("save"); // first-book coach: satisfies the Save step gate
       hapticSave();
     } catch (err) {
       showError("saveBook", err, { sessionTitle: current?.title });

@@ -42,6 +42,7 @@ export default function HomeDesktop({
   sessions = [], accentHex, onNewBook, onSelect, onDelete,
   onToggleMenu, burgerBtnRef,
   resumeInfo, onResume, onReadAloud, onOpenSettings, onOpenSearch,
+  showFirstBookBanner = false, onStartFirstBook = () => {},
 }) {
   const { showError } = useError();
   const motionOK = useMotionEnabled();
@@ -157,9 +158,10 @@ export default function HomeDesktop({
 
         {/* Hero row: continue-writing + stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(230px, 1fr)', gap: 14 }}>
-          {/* Continue writing hero */}
+          {/* Continue writing hero — doubles as the first-book coach launcher
+              for brand-new users (no books yet, tour not done). */}
           <motion.button
-            onClick={resumeInfo ? onResume : onNewBook}
+            onClick={showFirstBookBanner ? onStartFirstBook : (resumeInfo ? onResume : onNewBook)}
             whileTap={motionOK ? PRESS : undefined}
             whileHover={motionOK ? { scale: 1.005 } : undefined}
             style={{
@@ -169,16 +171,18 @@ export default function HomeDesktop({
             }}
           >
             <span style={{ width: 46, height: 46, borderRadius: 12, background: accentHex, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 8px 22px ${accentHex}44` }}>
-              {resumeInfo ? <DSIcons.Flame size={22} color="#fff" /> : <DSIcons.FilePlus size={22} color="#fff" />}
+              {resumeInfo && !showFirstBookBanner ? <DSIcons.Flame size={22} color="#fff" /> : <DSIcons.FilePlus size={22} color="#fff" />}
             </span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, letterSpacing: '0.08em', color: accentHex, textTransform: 'uppercase', marginBottom: 4 }}>
-                {resumeInfo ? 'Continue writing' : 'Start writing'}
+                {showFirstBookBanner ? 'New here?' : (resumeInfo ? 'Continue writing' : 'Start writing')}
               </span>
               <span style={{ display: 'block', fontSize: 19, fontWeight: 800, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {resumeInfo ? resumeInfo.title : 'Create your first book'}
+                {showFirstBookBanner ? 'Create My First Book' : (resumeInfo ? resumeInfo.title : 'Create your first book')}
               </span>
-              {resumeInfo?.chapter && (
+              {showFirstBookBanner ? (
+                <span style={{ display: 'block', fontSize: 12.5, color: 'var(--text-4)', marginTop: 3 }}>A guided, hands-on walkthrough — start to finish</span>
+              ) : resumeInfo?.chapter && (
                 <span style={{ display: 'block', fontSize: 12.5, color: 'var(--text-4)', marginTop: 3 }}>{resumeInfo.chapter}</span>
               )}
             </span>
