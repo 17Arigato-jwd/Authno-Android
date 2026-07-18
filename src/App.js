@@ -542,7 +542,7 @@ function Editor({
 /* ── App ────────────────────────────────────────────────────────────────── */
 function AppInner({ navigateRef }) {
   const { showError } = useError();
-  const { theme } = useTheme(); // ← active theme object; passed to BackgroundRouter
+  const { theme, switchTheme } = useTheme(); // ← active theme object; passed to BackgroundRouter
   const [sessions, setSessions]   = useState([]);
   // Flips true once the initial localStorage session load has settled, so the
   // startup-behavior effect fires exactly once with a known session set (even
@@ -607,44 +607,66 @@ function AppInner({ navigateRef }) {
   const [billingOpen, setBillingOpen] = useState(false);
   useEffect(() => subscribeBilling(() => setBillingOpen(true)), []);
   const [settings, setSettings] = useState(() => _safeParse("writerSettings", DEFAULT_SETTINGS));
-  const [customization, setCustomization] = useState(() => _safeParse("writerCustomization", DEFAULT_CUSTOMIZATION));
+  const [customizationBase, setCustomization] = useState(() => _safeParse("writerCustomization", DEFAULT_CUSTOMIZATION));
 
   const burgerBtnRef  = useRef(null);
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
 
-  // ── Material You (Android 12+) ────────────────────────────────────────────
-  // When the setting is on and the device supports dynamic colour, the system
-  // (wallpaper-derived) accent wins over the custom accent. Re-fetched on app
-  // resume so a wallpaper change lands without a restart.
+  // ── Material You — a THEME now, not a toggle (the beta.3 toggle fought the
+  // custom-accent override and visibly did nothing). While the material-you
+  // theme is active: fetch the wallpaper accent (refetched on app resume),
+  // follow the device light/dark preference live, and re-apply the rebuilt
+  // theme on either change. On Android < 12 the accent fetch yields nothing
+  // and the theme still follows device light/dark.
+  const isMaterialYou = theme?.meta?.id === 'material-you';
   const [systemAccent, setSystemAccent] = useState(null);
   useEffect(() => {
-    if (!settings.materialYou || !android) { setSystemAccent(null); return undefined; }
+    if (!isMaterialYou || !android) { setSystemAccent(null); return undefined; }
     let alive = true;
-    const fetchAccent = (fresh) => {
-      import('./utils/materialYou')
-        .then(({ getMaterialYouAccent }) => getMaterialYouAccent(fresh))
-        .then((hex) => { if (alive) setSystemAccent(hex); })
-        .catch(() => { if (alive) setSystemAccent(null); });
+    const reapply = async () => {
+      const { buildMaterialYouTheme } = await import('./theme/ThemeMaterialYou');
+      if (alive) switchTheme(buildMaterialYouTheme());
     };
-    // Always fetch fresh: the palette call is cheap, and a cached miss from
-    // startup must not be able to mask a supported device (Material You bug).
-    fetchAccent(true);
-    // Re-check on app resume via @capacitor/app — the document-level 'resume'
-    // event is a Cordova convention Capacitor doesn't reliably emit.
+    const refresh = async (fresh) => {
+      try {
+        const { getMaterialYouAccent } = await import('./utils/materialYou');
+        const hex = await getMaterialYouAccent(fresh);
+        if (!alive) return;
+        const { setMaterialYouAccent } = await import('./theme/ThemeMaterialYou');
+        setMaterialYouAccent(hex);
+        setSystemAccent(hex);
+        await reapply();
+      } catch { /* palette unavailable — theme keeps its base accent */ }
+    };
+    refresh(true);
+    // System dark/light flips re-base the theme without a restart.
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const onMq = () => { reapply(); };
+    mq?.addEventListener?.('change', onMq);
+    // Wallpaper changes land on the next app resume.
     let sub = null;
     import('@capacitor/app')
-      .then(({ App: CapApp }) => CapApp.addListener('resume', () => fetchAccent(true)))
+      .then(({ App: CapApp }) => CapApp.addListener('resume', () => refresh(true)))
       .then((s) => { if (alive) sub = s; else s?.remove?.(); })
       .catch(() => { /* plugin unavailable — startup fetch already ran */ });
-    return () => { alive = false; sub?.remove?.(); };
-  }, [settings.materialYou, android]);
+    return () => { alive = false; mq?.removeEventListener?.('change', onMq); sub?.remove?.(); };
+  }, [isMaterialYou, android, switchTheme]);
 
-  // Keep var(--accent) in sync with the user's chosen accent colour (see
+  // The one accent every consumer sees. Prop readers get it via this derived
+  // customization object; var() readers via applyAccent below. Material You
+  // substitutes the system accent WITHOUT touching customizationBase — the
+  // user's own pick persists and returns when they switch themes back.
+  const customization = useMemo(() => (
+    isMaterialYou && systemAccent
+      ? { ...customizationBase, accentHex: systemAccent }
+      : customizationBase
+  ), [customizationBase, isMaterialYou, systemAccent]);
+
+  // Keep var(--accent) in sync with the effective accent colour (see
   // ThemeBase.applyAccent). Without this, every var()-reading component showed
   // the theme's default accent while prop-reading ones showed the custom one.
-  // Material You's system accent (when active) outranks the custom pick.
-  useEffect(() => { applyAccent(systemAccent ?? customization.accentHex); }, [customization.accentHex, systemAccent]);
+  useEffect(() => { applyAccent(customization.accentHex); }, [customization.accentHex]);
 
   // Desktop shell: flag Electron so the custom title bar shows and the app-root
   // height accounts for it (see index.css .is-electron / TitleBar.jsx).
@@ -1839,6 +1861,12 @@ function AppInner({ navigateRef }) {
 }
 
 /* ── Root export wrapped in ErrorProvider + ExtensionProvider ──────────────── */
+// Migration: the short-lived beta.3 "Material You" toggle is now a theme —
+// carry the old flag over to the theme choice once, then it's inert.
+try {
+  const _ws = JSON.parse(localStorage.getItem('writerSettings') || '{}');
+  if (_ws?.materialYou) localStorage.setItem('authno_theme_id', 'material-you');
+} catch { /* ignore */ }
 const _savedThemeId = (() => { try { return localStorage.getItem('authno_theme_id') ?? 'dark-default'; } catch { return 'dark-default'; } })();
 const _initialTheme = themeById(_savedThemeId);
 injectThemeFonts(_initialTheme);
