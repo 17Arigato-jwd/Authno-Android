@@ -1,7 +1,7 @@
 {
   "short_name": "AuthNo",
   "name": "AuthNo — Story Editor",
-  "description": "Offline story editor by Aurora Studios",
+  "description": "Offline story editor by VCHS Studios",
   "icons": [
     { "src": "favicon.ico",    "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" },
     { "src": "authno-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "any maskable" },
