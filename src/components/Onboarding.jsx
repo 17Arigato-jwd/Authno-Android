@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "11";
+const UPDATE_VERSION = "12";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -574,9 +574,14 @@ const UPDATE_NOTES = [
     body: "The new tour explores a real short story — the tale of the knight Eclas and Princess Penelope — so first-time writers see a finished book before creating their own. It appears only during setup and cleans itself up after.",
   },
   {
-    icon: (p) => <DSIcons.User {...p} />,
-    title: "A local profile, ready for the future",
-    body: "AuthNo now keeps a small local profile — your name and writing preferences — stored only on this device. When cloud accounts arrive in a future release, this is what they'll build on. Nothing leaves your device today.",
+    icon: (p) => <DSIcons.Palette {...p} />,
+    title: "Material You, done right",
+    body: "On Android, pick the new Material You theme in Settings → Appearance: the app follows your device's light/dark setting and takes its accent from your wallpaper — live. Your own accent pick is kept safe underneath.",
+  },
+  {
+    icon: (p) => <DSIcons.Lightning {...p} />,
+    title: "Faster from the first frame",
+    body: "The desktop splash screen that loaded slower than the app is gone. AuthNo now opens instantly with a clean boot screen that paints in a single frame, fewer background processes, and less code loaded at startup.",
   },
 ];
 
