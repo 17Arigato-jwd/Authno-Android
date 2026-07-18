@@ -1,5 +1,5 @@
 import { BackgroundRouter, DSIcons, injectDesignSystemFonts, ToastContainer, toast } from "./DesignSystem";
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { APP_VERSION } from "./version";
 
 import { App as CapApp } from '@capacitor/app';
@@ -17,7 +17,6 @@ import { FontCustomizer } from "./components/FontCustomizer";
 import { DEFAULT_FONTS } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ChapterInfoModal from "./components/ChapterInfoModal";
-import ShareImportSheet from "./components/ShareImportSheet";
 import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
 import { updateAppShortcuts } from "./utils/appShortcuts";
 import ThreadsPanel, { ThreadsTilesDesktop } from "./components/ThreadsPanel";
@@ -27,10 +26,8 @@ import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
-import GuidedTour from "./components/GuidedTour";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
-import FileIntegrityModal from "./components/FileIntegrityModal";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
 import { MotionProvider, screenVariants, T } from "./utils/motion";
@@ -43,15 +40,23 @@ import BookStudio from "./components/BookStudio";
 import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
-import BillingPage from "./components/BillingPage";
 import { subscribeBilling, openBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
-import { OnboardingFunnel } from "./components/onboarding/OnboardingFunnel";
 import { getProfile, setProfile } from "./utils/profile";
 import { startTrialMock } from "./utils/entitlements";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
+
+// ── Code-split surfaces (boot-time diet) ─────────────────────────────────────
+// These render behind a condition that is false on a normal boot, so their
+// code has no business in the main bundle: the paywall, the first-run funnel
+// (which drags in the guided tour + demo book), the share-import sheet and
+// the corrupt-file modal all load on first use instead.
+const BillingPage      = lazy(() => import("./components/BillingPage"));
+const OnboardingFunnel = lazy(() => import("./components/onboarding/OnboardingFunnel").then(m => ({ default: m.OnboardingFunnel })));
+const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
+const FileIntegrityModalLazy = lazy(() => import("./components/FileIntegrityModal"));
 
 // ── DesignSystem ─────────────────────────────────────────────────────────────
 // BackgroundRouter replaces the old <Background /> import.
@@ -543,7 +548,7 @@ function Editor({
 /* ── App ────────────────────────────────────────────────────────────────── */
 function AppInner({ navigateRef }) {
   const { showError } = useError();
-  const { theme } = useTheme(); // ← active theme object; passed to BackgroundRouter
+  const { theme, switchTheme } = useTheme(); // ← active theme object; passed to BackgroundRouter
   const [sessions, setSessions]   = useState([]);
   // Flips true once the initial localStorage session load has settled, so the
   // startup-behavior effect fires exactly once with a known session set (even
@@ -600,7 +605,6 @@ function AppInner({ navigateRef }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
-  const [tourActive, setTourActive] = useState(false);             // guided tour (v1.1.18)
   const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
   const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
   const [chapterInfoIdx, setChapterInfoIdx] = useState(null);      // explicit chapter for ChapterInfoModal (BookStudio info button)
@@ -608,43 +612,77 @@ function AppInner({ navigateRef }) {
   const [chapterInfoOpen, setChapterInfoOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   useEffect(() => subscribeBilling(() => setBillingOpen(true)), []);
+
+  // Fade out the inline boot splash (public/index.html) — it painted with the
+  // renderer's first frame and its job ends the moment React is on screen.
+  useEffect(() => {
+    const el = document.getElementById('boot-splash');
+    if (!el) return undefined;
+    el.style.opacity = '0';
+    const t = setTimeout(() => el.remove(), 300);
+    return () => clearTimeout(t);
+  }, []);
   const [settings, setSettings] = useState(() => _safeParse("writerSettings", DEFAULT_SETTINGS));
-  const [customization, setCustomization] = useState(() => _safeParse("writerCustomization", DEFAULT_CUSTOMIZATION));
+  const [customizationBase, setCustomization] = useState(() => _safeParse("writerCustomization", DEFAULT_CUSTOMIZATION));
 
   const burgerBtnRef  = useRef(null);
   const autoSaveTimer = useRef(null);
   const android = isAndroid();
 
-  // ── Material You (Android 12+) ────────────────────────────────────────────
-  // When the setting is on and the device supports dynamic colour, the system
-  // (wallpaper-derived) accent wins over the custom accent. Re-fetched on app
-  // resume so a wallpaper change lands without a restart.
+  // ── Material You — a THEME now, not a toggle (the beta.3 toggle fought the
+  // custom-accent override and visibly did nothing). While the material-you
+  // theme is active: fetch the wallpaper accent (refetched on app resume),
+  // follow the device light/dark preference live, and re-apply the rebuilt
+  // theme on either change. On Android < 12 the accent fetch yields nothing
+  // and the theme still follows device light/dark.
+  const isMaterialYou = theme?.meta?.id === 'material-you';
   const [systemAccent, setSystemAccent] = useState(null);
   useEffect(() => {
-    if (!settings.materialYou || !android) { setSystemAccent(null); return undefined; }
+    if (!isMaterialYou || !android) { setSystemAccent(null); return undefined; }
     let alive = true;
-    const fetchAccent = (fresh) => {
-      import('./utils/materialYou')
-        .then(({ getMaterialYouAccent }) => getMaterialYouAccent(fresh))
-        .then((hex) => { if (alive) setSystemAccent(hex); })
-        .catch(() => { if (alive) setSystemAccent(null); });
+    const reapply = async () => {
+      const { buildMaterialYouTheme } = await import('./theme/ThemeMaterialYou');
+      if (alive) switchTheme(buildMaterialYouTheme());
     };
-    fetchAccent(false);
-    // Re-check on app resume via @capacitor/app — the document-level 'resume'
-    // event is a Cordova convention Capacitor doesn't reliably emit.
+    const refresh = async (fresh) => {
+      try {
+        const { getMaterialYouAccent } = await import('./utils/materialYou');
+        const hex = await getMaterialYouAccent(fresh);
+        if (!alive) return;
+        const { setMaterialYouAccent } = await import('./theme/ThemeMaterialYou');
+        setMaterialYouAccent(hex);
+        setSystemAccent(hex);
+        await reapply();
+      } catch { /* palette unavailable — theme keeps its base accent */ }
+    };
+    refresh(true);
+    // System dark/light flips re-base the theme without a restart.
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const onMq = () => { reapply(); };
+    mq?.addEventListener?.('change', onMq);
+    // Wallpaper changes land on the next app resume.
     let sub = null;
     import('@capacitor/app')
-      .then(({ App: CapApp }) => CapApp.addListener('resume', () => fetchAccent(true)))
+      .then(({ App: CapApp }) => CapApp.addListener('resume', () => refresh(true)))
       .then((s) => { if (alive) sub = s; else s?.remove?.(); })
       .catch(() => { /* plugin unavailable — startup fetch already ran */ });
-    return () => { alive = false; sub?.remove?.(); };
-  }, [settings.materialYou, android]);
+    return () => { alive = false; mq?.removeEventListener?.('change', onMq); sub?.remove?.(); };
+  }, [isMaterialYou, android, switchTheme]);
 
-  // Keep var(--accent) in sync with the user's chosen accent colour (see
+  // The one accent every consumer sees. Prop readers get it via this derived
+  // customization object; var() readers via applyAccent below. Material You
+  // substitutes the system accent WITHOUT touching customizationBase — the
+  // user's own pick persists and returns when they switch themes back.
+  const customization = useMemo(() => (
+    isMaterialYou && systemAccent
+      ? { ...customizationBase, accentHex: systemAccent }
+      : customizationBase
+  ), [customizationBase, isMaterialYou, systemAccent]);
+
+  // Keep var(--accent) in sync with the effective accent colour (see
   // ThemeBase.applyAccent). Without this, every var()-reading component showed
   // the theme's default accent while prop-reading ones showed the custom one.
-  // Material You's system accent (when active) outranks the custom pick.
-  useEffect(() => { applyAccent(systemAccent ?? customization.accentHex); }, [customization.accentHex, systemAccent]);
+  useEffect(() => { applyAccent(customization.accentHex); }, [customization.accentHex]);
 
   // Desktop shell: flag Electron so the custom title bar shows and the app-root
   // height accounts for it (see index.css .is-electron / TitleBar.jsx).
@@ -1532,7 +1570,9 @@ function AppInner({ navigateRef }) {
       <ToastContainer position="bottom-center" />
       <InstallSheet accentHex={customization.accentHex} />
       {billingOpen && (
-        <BillingPage accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
+        <Suspense fallback={null}>
+          <BillingPage accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
+        </Suspense>
       )}
       {readAloudSession && (
         <ReadAloudBar
@@ -1542,7 +1582,11 @@ function AppInner({ navigateRef }) {
         />
       )}
       {showOnboarding && (
+        <Suspense fallback={null}>
         <OnboardingFunnel
+          accentHex={customization.accentHex}
+          android={android}
+          onTourNavigate={handleTourNavigate}
           onComplete={() => {
             setShowOnboarding(false);
             openBilling();
@@ -1556,16 +1600,19 @@ function AppInner({ navigateRef }) {
             setSessions(prev => prev.filter(s => !s?._demo));
           }}
         />
+        </Suspense>
       )}
       {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
 
       {brokenFiles.length > 0 && (
-        <FileIntegrityModal
-          brokenSessions={brokenFiles} accentHex={customization.accentHex}
-          onRemove={(id) => { setSessions(prev => prev.filter(s => s.id !== id)); setBrokenFiles(prev => prev.filter(s => s.id !== id)); }}
-          onSaveAs={async (session) => { await saveAsBook(session); setBrokenFiles(prev => prev.filter(s => s.id !== session.id)); }}
-          onDismiss={() => setBrokenFiles([])}
-        />
+        <Suspense fallback={null}>
+          <FileIntegrityModalLazy
+            brokenSessions={brokenFiles} accentHex={customization.accentHex}
+            onRemove={(id) => { setSessions(prev => prev.filter(s => s.id !== id)); setBrokenFiles(prev => prev.filter(s => s.id !== id)); }}
+            onSaveAs={async (session) => { await saveAsBook(session); setBrokenFiles(prev => prev.filter(s => s.id !== session.id)); }}
+            onDismiss={() => setBrokenFiles([])}
+          />
+        </Suspense>
       )}
 
       {/*
@@ -1731,13 +1778,8 @@ function AppInner({ navigateRef }) {
         />
       )}
 
-      {/* Guided tour — spotlight walkthrough of the real screens (v1.1.18) */}
-      <GuidedTour
-        active={tourActive} android={android}
-        accentHex={customization.accentHex}
-        onNavigate={handleTourNavigate}
-        onDone={() => setTourActive(false)}
-      />
+      {/* The guided tour now lives inside OnboardingFunnel (step 3) — the
+          Settings/About "Guided tour" buttons launch the whole funnel. */}
 
       {/* Read aloud — book & chapter picker (home screens + Ctrl+Shift+R) */}
       <ReadAloudPicker
@@ -1779,12 +1821,14 @@ function AppInner({ navigateRef }) {
       />
 
       {sharedImport && (
-        <ShareImportSheet
-          text={sharedImport.text} subject={sharedImport.subject}
-          sessions={sessions} accentHex={customization.accentHex}
-          onClose={() => setSharedImport(null)}
-          onImport={handleSharedImport}
-        />
+        <Suspense fallback={null}>
+          <ShareImportSheetLazy
+            text={sharedImport.text} subject={sharedImport.subject}
+            sessions={sessions} accentHex={customization.accentHex}
+            onClose={() => setSharedImport(null)}
+            onImport={handleSharedImport}
+          />
+        </Suspense>
       )}
 
       <AnimatePresence>
@@ -1807,7 +1851,7 @@ function AppInner({ navigateRef }) {
         onClearSessions={() => { setSessions([]); localStorage.removeItem("offlineWriterSessions"); }}
         sessions={sessions} onSessionChange={handleSessionChange}
         onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
-        onStartTour={() => { setSettingsOpen(false); setTourActive(true); }}
+        onStartTour={() => { setSettingsOpen(false); setShowOnboarding(true); }}
         onReplayWelcome={() => { setSettingsOpen(false); setShowOnboarding(true); }}
       />
 
@@ -1841,6 +1885,12 @@ function AppInner({ navigateRef }) {
 }
 
 /* ── Root export wrapped in ErrorProvider + ExtensionProvider ──────────────── */
+// Migration: the short-lived beta.3 "Material You" toggle is now a theme —
+// carry the old flag over to the theme choice once, then it's inert.
+try {
+  const _ws = JSON.parse(localStorage.getItem('writerSettings') || '{}');
+  if (_ws?.materialYou) localStorage.setItem('authno_theme_id', 'material-you');
+} catch { /* ignore */ }
 const _savedThemeId = (() => { try { return localStorage.getItem('authno_theme_id') ?? 'dark-default'; } catch { return 'dark-default'; } })();
 const _initialTheme = themeById(_savedThemeId);
 injectThemeFonts(_initialTheme);

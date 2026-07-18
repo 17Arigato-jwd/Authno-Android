@@ -351,7 +351,13 @@ export default function BurgerMenu({
               exit={{ opacity: 0, scale: 0.97, y: -2, transition: { duration: 0.1 } }}
               style={{
                 position: "fixed", top: pos.top, right: pos.right,
-                zIndex: 9999, width: 200,
+                zIndex: 9999,
+                // Size to the content — the rows declare minWidth 236, so a
+                // fixed 200px card pushed the right-aligned shortcut hints
+                // clean out of the menu. Clamp to the viewport instead.
+                width: "max-content",
+                minWidth: 236,
+                maxWidth: "min(320px, calc(100vw - 24px))",
                 borderRadius: 14, padding: 12,
                 background: bg,
                 border: "1px solid var(--border)",

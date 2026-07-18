@@ -1,13 +1,21 @@
 // main.js
-const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, nativeImage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
 let mainWindow;
-let splash;
 let openFilePath = null;
 
 const isLinux = process.platform === "linux";
+
+// ── Process diet ─────────────────────────────────────────────────────────────
+// The app is a single window with its own title bar and shortcut system, so
+// the default application menu (and its accelerator table) is pure overhead.
+Menu.setApplicationMenu(null);
+// Windows: run the GPU service inside the main process instead of spawning a
+// dedicated GPU process — one fewer Chromium process (~50-80 MB). Kept off
+// Linux where in-process GPU is flaky across drivers.
+if (process.platform === "win32") app.commandLine.appendSwitch("in-process-gpu");
 
 // ── App icon switcher (desktop) ──────────────────────────────────────────────
 // Maps the icon ids used by the renderer to the on-disk assets. Persisted in
@@ -170,22 +178,22 @@ if (!gotTheLock) {
   }
 
   function createWindow() {
-    splash = new BrowserWindow({
-      width: 400,
-      height: 300,
-      frame: false,
-      transparent: false,
-      alwaysOnTop: true,
-      resizable: false,
-      icon: resolveAsset("authno.ico"),
-    });
-
-    splash.loadFile(resolveAsset("splash.html"));
-
+    // No splash window any more. It was a SECOND Chromium renderer process:
+    // the reported "blank box -> white -> gradient -> late logo" staging was
+    // that process spawning, painting pre-CSS, then fetching its logo <img> —
+    // and the real app regularly finished booting before it did. Its job is
+    // now done by the inline boot splash in index.html (zero extra requests,
+    // paints with the renderer's first frame) plus the instant themed window
+    // below.
     mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
-      show: false,
+      // Windows: show immediately — the window appears the instant the OS can
+      // draw it, painted in the theme background colour until the renderer's
+      // first frame (no white flash; backgroundColor below). Linux keeps
+      // ready-to-show because its window is transparent for rounded corners,
+      // and an unpainted transparent window is an invisible ghost.
+      show: !isLinux,
       // Frameless — the app draws its own themed title bar (see TitleBar.jsx).
       // This is what makes the desktop app stop looking like "a website in a
       // window". Still resizable; dragging is handled via -webkit-app-region.
@@ -199,11 +207,16 @@ if (!gotTheLock) {
       // frameless windows via DWM, and transparency there disables the drop
       // shadow, so it's Linux-only.
       transparent: isLinux,
-      backgroundColor: isLinux ? "#00000000" : "#000000",
+      // Matches the app's dark background so the pre-renderer window is a
+      // seamless part of the boot sequence, not a white/black flash.
+      backgroundColor: isLinux ? "#00000000" : "#060606",
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "Preload.js"), // safe — after handlers registered
+        // Compile-and-cache eagerly: slower very first boot by a hair, faster
+        // every boot after (V8 bytecode cache for the 1MB main bundle).
+        v8CacheOptions: "bypassHeatCheck",
       },
     });
 
@@ -222,15 +235,9 @@ if (!gotTheLock) {
       mainWindow.loadFile(path.join(__dirname, "build", "index.html"));
     }
 
-    mainWindow.once("ready-to-show", () => {
-      setTimeout(() => {
-        if (splash && !splash.isDestroyed()) splash.close();
-        mainWindow.show();
-
-        // openFilePath is delivered via get-pending-file IPC on renderer mount
-        // No need to send here — avoids double delivery
-      }, 1500);
-    });
+    // Linux only (transparent window) — Windows is already visible.
+    // openFilePath is delivered via get-pending-file IPC on renderer mount.
+    if (isLinux) mainWindow.once("ready-to-show", () => { mainWindow.show(); });
 
     mainWindow.on("closed", () => (mainWindow = null));
   }

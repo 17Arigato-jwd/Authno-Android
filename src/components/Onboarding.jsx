@@ -9,7 +9,7 @@ import { requestFullStoragePermission } from "../utils/storage";
 const ONBOARDING_KEY = "authno_onboarding_v1";
 
 // ── Update onboarding — bump UPDATE_VERSION each release that warrants a notice
-const UPDATE_VERSION = "11";
+const UPDATE_VERSION = "12";
 const UPDATE_KEY = `authno_update_v${UPDATE_VERSION}`;
 
 // ─── Storage helpers (Capacitor Preferences → localStorage fallback) ──────────
@@ -77,7 +77,7 @@ function getRandom(min, max) {
   return min + Math.random() * (max - min);
 }
 
-function FloatingBlobs({ accentHex = "#5a00d9" }) {
+export function FloatingBlobs({ accentHex = "#5a00d9" }) {
   const blobs = useMemo(() => {
     const palette = [
       accentHex,
@@ -203,7 +203,7 @@ function PageBadge({ index, total }) {
   );
 }
 
-function Pill({ children, accentHex }) {
+export function Pill({ children, accentHex }) {
   return (
     <div
       className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs text-white/70"
@@ -214,7 +214,7 @@ function Pill({ children, accentHex }) {
   );
 }
 
-function FeatureLine({ icon: Icon, text, accentHex }) {
+export function FeatureLine({ icon: Icon, text, accentHex }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left">
       <div
@@ -234,7 +234,7 @@ function FeatureLine({ icon: Icon, text, accentHex }) {
 // hardcoded colours and ignored every theme. Rather than rewrite 40+ class
 // strings, this component-scoped stylesheet remaps exactly the utilities used
 // here onto the theme variables — correct in all five themes and any .thmbk.
-const ONB_THEME_CSS = `
+export const ONB_THEME_CSS = `
 .onb .text-white      { color: var(--text-1); }
 .onb .text-white\\/85 { color: var(--text-1); }
 .onb .text-white\\/80 { color: var(--text-2); }
@@ -574,9 +574,14 @@ const UPDATE_NOTES = [
     body: "The new tour explores a real short story — the tale of the knight Eclas and Princess Penelope — so first-time writers see a finished book before creating their own. It appears only during setup and cleans itself up after.",
   },
   {
-    icon: (p) => <DSIcons.User {...p} />,
-    title: "A local profile, ready for the future",
-    body: "AuthNo now keeps a small local profile — your name and writing preferences — stored only on this device. When cloud accounts arrive in a future release, this is what they'll build on. Nothing leaves your device today.",
+    icon: (p) => <DSIcons.Palette {...p} />,
+    title: "Material You, done right",
+    body: "On Android, pick the new Material You theme in Settings → Appearance: the app follows your device's light/dark setting and takes its accent from your wallpaper — live. Your own accent pick is kept safe underneath.",
+  },
+  {
+    icon: (p) => <DSIcons.Lightning {...p} />,
+    title: "Faster from the first frame",
+    body: "The desktop splash screen that loaded slower than the app is gone. AuthNo now opens instantly with a clean boot screen that paints in a single frame, fewer background processes, and less code loaded at startup.",
   },
 ];
 

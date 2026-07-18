@@ -3,6 +3,51 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.4
+
+_The onboarding funnel rebuilt properly, Material You as a real theme, and a
+serious boot-speed round._
+
+### Onboarding, actually good this time
+
+- beta.3's funnel rendered inline beside the live app with broken styling —
+  rebuilt as a **full-screen experience** in the app's design language:
+  blurred scrim, floating colour blobs, frosted-glass card, progress rail,
+  smooth step transitions, full keyboard nav.
+- The tour step now runs the **real guided tour over the real app** — "The
+  Good Knight" sits in your actual library while the spotlight walks
+  home → book → editor — then the funnel resumes for your name.
+- **New tour steps for Import and Export**: bring existing drafts in (TXT,
+  Markdown, DOCX, ODT, EPUB, PDF) and see that books export anywhere.
+- **Settings → Guided tour now replays the entire welcome experience**, not
+  just the spotlight walkthrough.
+
+### Material You is a theme now
+
+- Pick **"Material You" in the theme grid** (Android): the app follows your
+  device's light/dark setting live and takes its accent from your wallpaper.
+  Wallpaper changes land on the next app open; system dark/light flips apply
+  instantly. Your own accent pick is kept underneath and returns when you
+  switch back. (The beta.3 toggle fought the custom accent and visibly did
+  nothing — removed.)
+
+### Boot speed (desktop)
+
+- **The splash window is gone.** It was a second browser process whose
+  loading screen (blank box → white → gradient → late logo) regularly lost
+  the race against the app itself. A new inline splash paints complete in
+  the first frame — on desktop, Android and web.
+- **The window appears instantly** on Windows, painted in the theme colour,
+  and beta.3 already removed a hidden 1.5-second wait.
+- Fewer processes (no splash renderer; GPU merged into main on Windows), no
+  default menu, eager script caching, and ~100 KB less JavaScript parsed at
+  startup (paywall, funnel, import sheet and recovery modal now load on
+  first use).
+
+### Fixes
+
+- Desktop burger menu no longer clips its keyboard-shortcut hints.
+
 ## 1.1.18-beta.3
 
 _Onboarding rebuilt as a five-step funnel, and Pro reframed from subscription

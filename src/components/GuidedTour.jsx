@@ -42,6 +42,11 @@ export function buildTourSteps(android) {
         : "Books you create or import are collected here. Click a cover to open it, or right-click for options like removing a book.",
     },
     {
+      view: "home", target: "import-book",
+      title: "Bring your writing with you",
+      body: "Already have a draft somewhere else? Import turns TXT, Markdown, DOCX, ODT, EPUB and even PDF into a proper AuthNo book — chapters and all.",
+    },
+    {
       view: "book", target: "chapters",
       title: "Chapters",
       body: android
@@ -57,6 +62,11 @@ export function buildTourSteps(android) {
       view: "book", target: "book-meta",
       title: "Cover & details",
       body: "Give the book a cover and fill in genre, description and the rest — it all exports with the book and lives inside the .authbook file.",
+    },
+    {
+      view: "book", target: "export-book",
+      title: "Export anywhere",
+      body: "Your book is never locked in. Export to TXT, HTML, EPUB or PDF any time — ready for readers, editors, or publishing.",
     },
     {
       view: "editor", target: "editor",

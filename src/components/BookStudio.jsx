@@ -229,7 +229,9 @@ export default function BookStudio({
           <div data-tour="add-chapter" style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 'auto' }}>
             {smallBtn('New chapter', <DSIcons.Plus size={13} color="#fff" />, onNewChapter, true)}
             {smallBtn('Edit metadata', <DSIcons.Edit size={13} />, () => setShowMetadata(true))}
-            {smallBtn('Export…', <DSIcons.Upload size={13} />, () => setShowExport(true))}
+            <span data-tour="export-book" style={{ display: 'flex', flexDirection: 'column' }}>
+              {smallBtn('Export…', <DSIcons.Upload size={13} />, () => setShowExport(true))}
+            </span>
             {/* Greyed until a chapter is picked — it reads from that chapter on. */}
             {isSpeechSupported() && smallBtn('Read aloud', <DSIcons.Volume size={13} />, () => onReadAloud?.(selectedIdx), false, {
               disabled: selectedIdx == null,

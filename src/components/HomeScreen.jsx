@@ -1,5 +1,5 @@
 // HomeScreen.jsx
-import { useState, useRef, useCallback } from 'react';
+import { Fragment, useState, useRef, useCallback } from 'react';
 
 
 import { DSIcons, toast } from '../DesignSystem';
@@ -371,7 +371,7 @@ export default function HomeScreen({
     // Read Aloud only shows where speech synthesis actually exists (some
     // WebViews / devices ship no TTS engine — the tile did nothing there).
     ...(isSpeechSupported() ? [{ icon: <DSIcons.Volume size={28} color="currentColor" />, label: 'Read Aloud', onClick: onReadAloud }] : []),
-    { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleImportBook },
+    { icon: <DSIcons.Download size={28} color="currentColor" />, label: 'Import a Book', onClick: handleImportBook, tour: 'import-book' },
     { icon: <DSIcons.Extension size={28} color="currentColor" />, label: 'Extensions', onClick: onOpenExtensions },
   ];
 
@@ -468,10 +468,17 @@ export default function HomeScreen({
             <motion.div className="home-actions"
               variants={staggerContainer()} initial="hidden" animate="show"
               style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-              {actions.map((a, i) => (
-                <ActionTile key={i} icon={a.icon} label={a.label} onClick={a.onClick}
-                  accentHex={accentHex} comingSoon={a.comingSoon} theme={theme} />
-              ))}
+              {actions.map((a, i) => {
+                const tile = (
+                  <ActionTile icon={a.icon} label={a.label} onClick={a.onClick}
+                    accentHex={accentHex} comingSoon={a.comingSoon} theme={theme} />
+                );
+                // Guided-tour anchor (e.g. import-book) — the tour spotlights
+                // the wrapping span, so it must size to the tile.
+                return a.tour
+                  ? <span key={i} data-tour={a.tour} style={{ display: 'inline-flex', flexShrink: 0 }}>{tile}</span>
+                  : <Fragment key={i}>{tile}</Fragment>;
+              })}
             </motion.div>
           </div>
         </div>

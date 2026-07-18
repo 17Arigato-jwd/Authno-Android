@@ -75,7 +75,7 @@ const SETTINGS_INDEX = [
   ['general', 'Interface scale'],
   ['appearance', 'Theme'], ['appearance', 'Accent colour'], ['appearance', 'Background effect'],
   ['appearance', 'Fonts'], ['appearance', 'App icon'], ['appearance', 'Reduce animations'],
-  ['appearance', 'Material You colour'],
+  ['appearance', 'Material You theme'],
   ['editor', 'Spell check'], ['editor', 'Manuscript width'], ['editor', 'Editor text size'],
   ['editor', 'Line spacing'], ['editor', 'Auto-save delay'], ['editor', 'Default chapter sort'],
   ['writing', 'Daily word goal'], ['writing', 'Writing streaks'],
@@ -409,15 +409,24 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
     return subscribeThemes((all) => setThemes(all.slice()));
   }, []);
 
-  // Material You availability (Android 12+ only; the row is hidden elsewhere).
-  const [materialYouSupported, setMaterialYouSupported] = useState(false);
+  // Material You is a THEME now (see theme/ThemeMaterialYou.js). Prefetch the
+  // system accent here so its picker card previews the real wallpaper colour
+  // instead of the default violet.
   useEffect(() => {
     if (!isAndroid()) return undefined;
     let alive = true;
-    import('../utils/materialYou')
-      .then(({ getMaterialYouColors }) => getMaterialYouColors())
-      .then((c) => { if (alive) setMaterialYouSupported(!!c.supported); })
-      .catch(() => { /* plugin missing (old APK) — keep hidden */ });
+    (async () => {
+      try {
+        const [{ getMaterialYouAccent }, { setMaterialYouAccent }] = await Promise.all([
+          import('../utils/materialYou'),
+          import('../theme/ThemeMaterialYou'),
+        ]);
+        const hex = await getMaterialYouAccent();
+        if (!alive) return;
+        setMaterialYouAccent(hex);
+        setThemes(getAllThemes()); // re-read: the Material You card is rebuilt with the real colour
+      } catch { /* plugin missing — card keeps the base preview */ }
+    })();
     return () => { alive = false; };
   }, []);
 
@@ -565,16 +574,10 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
         <Toggle on={settings.reduceMotion ?? false} onChange={(v) => onChange({ reduceMotion: v })} accentHex={accentHex} />
       </SettingRow>
 
-      {/* Material You (Android 12+ only — row hidden where dynamic colour
-          doesn't exist). System wallpaper accent overrides the custom accent. */}
-      {materialYouSupported && (
-        <>
-          <div style={{ height: 16 }} />
-          <SettingRow icon={DSIcons.Palette} title="Material You colour" description="Use your wallpaper's system colour as the app accent (Android 12+)" accentHex={accentHex}>
-            <Toggle on={settings.materialYou ?? false} onChange={(v) => onChange({ materialYou: v })} accentHex={accentHex} />
-          </SettingRow>
-        </>
-      )}
+      {/* Material You lives in the theme grid above now — selecting the
+          "Material You" theme follows the device light/dark and wallpaper
+          accent. The old toggle here fought the custom accent and did
+          nothing visible. */}
 
       <div style={{ height: 16 }} />
 
@@ -1262,7 +1265,8 @@ export const DEFAULT_SETTINGS = {
   dailyWordGoal: 500,
   hapticsEnabled: true,
   reduceMotion: false,         // when true (or OS reduce-motion), animations are minimised
-  materialYou: false,          // Android 12+: use the wallpaper's system colour as accent
+  // materialYou toggle removed in beta.4 — Material You is a theme now
+  // (theme/ThemeMaterialYou.js); the old flag migrates to authno_theme_id.
   // Editor tab (v1.1.18-beta.1) — all live-wired:
   spellcheck: true,            // contentEditable spellCheck attribute
   editorWidth: 'full',         // 'full' | 'focused' (desktop manuscript column)
