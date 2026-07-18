@@ -3,6 +3,32 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.8
+
+_Tour cards that never cover what they point at, and a friendlier paywall._
+
+### Onboarding
+
+- **The tour card never overlaps the thing it's highlighting anymore.** Instead
+  of always sitting below the target (and covering it whenever the target was
+  tall or centred), the card now drops into the free band beside the spotlight —
+  below, right, left or above, whichever fits. Filling in book details, the card
+  tucks into the sidebar gutter with the whole metadata panel left clear.
+- **Reading and writing steps are fully lit.** The "read The Good Knight" and
+  "write a few words" steps no longer dim the page or spotlight it — the page
+  stays at full brightness and the card floats compactly in a corner, out of the
+  way of the prose.
+
+### Pro / paywall
+
+- **Payment is now hidden behind a single "Try now" button** with a gift icon —
+  the upgrade screen leads with the free-trial invitation, and the card/UPI
+  fields only appear once you choose to set them up.
+- **UPI is offered alongside card** for India (collect-request flow).
+- **"You're supporting a solo developer" is now a highlighted callout**, not just
+  another bullet — AuthNo is one person's independent, offline-first app, and the
+  screen says so plainly.
+
 ## 1.1.18-beta.7
 
 _A fixes-and-flow pass on both onboarding tours, from first desktop testing._

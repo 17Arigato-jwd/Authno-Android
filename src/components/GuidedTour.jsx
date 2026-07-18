@@ -10,12 +10,13 @@
  * is skippable at every step, and can be replayed from Settings.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { T } from "../utils/motion";
 import { hapticSelect } from "../utils/haptics";
 import { DSIcons } from "../DesignSystem";
+import { computeTourCard } from "../utils/tourPlacement";
 
 // ── Step definitions ─────────────────────────────────────────────────────────
 // view: which screen the app must show ('home' | 'book' | 'editor').
@@ -58,7 +59,7 @@ export function buildTourSteps(android) {
         : "Double-click a chapter to read or write in it. Each one can carry a short synopsis so you remember what happens where.",
     },
     {
-      view: "editor", target: "editor",
+      view: "editor", target: "editor", float: true,
       title: "The page — go ahead, read a little",
       body: "This is The Good Knight, open for real. Scroll and read as much as you like — the tour waits, and this card stays out of the way. When you write, everything autosaves.",
     },
@@ -81,6 +82,8 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [cardH, setCardH] = useState(240);
+  const cardRef = useRef(null);
   const steps = useRef(null);
   if (steps.current === null || steps.current.android !== android) {
     steps.current = { android, list: buildTourSteps(android) };
@@ -104,7 +107,8 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
     document.dispatchEvent(new CustomEvent("authno-tour-action", { detail: { action: step.action ?? null } }));
     elRef.current = null;
     setRect(null);
-    if (!step.target) { setSearching(false); return undefined; }
+    // Float steps (reading) show no spotlight at all — nothing to locate.
+    if (!step.target || step.float) { setSearching(false); return undefined; }
     setSearching(true);
 
     let tries = 0;
@@ -184,42 +188,30 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Measure the real card so placement uses true height (content varies per
+  // step) — guarded so it never loops on sub-pixel jitter.
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (h && Math.abs(h - cardH) > 4) setCardH(h);
+  });
+
   if (!active || typeof document === "undefined") return null;
 
   const PAD = 6;
-  const hole = rect && {
+  const hole = !step.float && rect && {
     top: rect.top - PAD, left: rect.left - PAD,
     width: rect.width + PAD * 2, height: rect.height + PAD * 2,
   };
 
-  // Card placement: under the target when there's room, else above; centered
-  // when there's no target; docked to the bottom-left corner when the
-  // spotlight covers most of the screen (the editor page) so the card never
-  // sits on the prose the user was just invited to read. Everything is
-  // computed numerically and clamped to the viewport.
+  // Card placement: sits in a gutter beside the spotlight, never on top of it;
+  // floats into a corner (no dim) for reading steps or when the target fills
+  // the screen. See utils/tourPlacement.js.
   const CARD_W = Math.min(330, window.innerWidth - 24);
-  const CARD_H_EST = 250; // vertical clamp estimate — real cards run 200-260px
-  let cardStyle;
-  if (hole) {
-    const holeArea = hole.width * hole.height;
-    if (holeArea > window.innerWidth * window.innerHeight * 0.5) {
-      cardStyle = { position: "fixed", left: 12, bottom: 12, width: CARD_W };
-    } else {
-      const below = hole.top + hole.height + 14;
-      const spaceBelow = window.innerHeight - below;
-      let top = spaceBelow > CARD_H_EST ? below : hole.top - 14 - CARD_H_EST;
-      top = Math.max(12, Math.min(top, window.innerHeight - CARD_H_EST - 12));
-      const left = Math.min(Math.max(12, hole.left + hole.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 12);
-      cardStyle = { position: "fixed", top, left, width: CARD_W };
-    }
-  } else {
-    cardStyle = {
-      position: "fixed",
-      top: Math.max(12, (window.innerHeight - CARD_H_EST) / 2),
-      left: Math.max(12, (window.innerWidth - CARD_W) / 2),
-      width: CARD_W,
-    };
-  }
+  const { style: cardStyle, dim } = computeTourCard({
+    hole, cardW: CARD_W, cardH, vw: window.innerWidth, vh: window.innerHeight, float: step.float,
+  });
 
   return createPortal(
     // pointerEvents:none on the wrapper (the card re-enables its own): the
@@ -228,8 +220,9 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
     // every stray tap advance the tour and blocked reading entirely.
     <div style={{ position: "fixed", inset: 0, zIndex: Z, pointerEvents: "none" }}>
 
-      {/* Spotlight: the giant shadow dims everything except the cut-out. */}
-      {hole ? (
+      {/* Spotlight: the giant shadow dims everything except the cut-out. Float
+          steps (reading) render no dim at all so the page stays fully visible. */}
+      {dim && (hole ? (
         <div style={{
           position: "fixed", top: hole.top, left: hole.left, width: hole.width, height: hole.height,
           borderRadius: 12, boxShadow: "0 0 0 200vmax rgba(0,0,0,0.62)",
@@ -238,12 +231,13 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
         }} />
       ) : (
         !searching && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.62)", pointerEvents: "none" }} />
-      )}
+      ))}
 
       {/* Step card */}
       <AnimatePresence mode="wait">
         <motion.div
           key={stepIndex}
+          ref={cardRef}
           initial={{ opacity: 0, y: 10, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -6, scale: 0.99 }}
