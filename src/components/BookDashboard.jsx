@@ -376,7 +376,7 @@ export function CoverPicker({ onPick, accentHex = 'var(--accent)' }) {
   return (
     <>
       <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleChange} />
-      <button onClick={() => inputRef.current?.click()}
+      <button data-tour="add-cover" onClick={() => inputRef.current?.click()}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
           padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -576,8 +576,10 @@ export default function BookDashboard({
           </button>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {streakEnabled && (
-              <FlameButton current={session} accentHex={accentHex}
-                goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+              <span data-tour="streak-pill" style={{ display: 'inline-flex' }}>
+                <FlameButton current={session} accentHex={accentHex}
+                  goalWords={goalWords} onStreakUpdate={onStreakUpdate} />
+              </span>
             )}
             <button ref={burgerBtnRef} onClick={onToggleMenu}
               style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', transition: 'background 0.15s' }}>
@@ -656,7 +658,7 @@ export default function BookDashboard({
             )}
 
             {/* Metadata quick-edit link */}
-            <button onClick={() => setShowMetadata(true)} style={{
+            <button data-tour="edit-metadata" onClick={() => setShowMetadata(true)} style={{
               display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '14px',
               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
               color: accentHex, fontSize: '13px', fontWeight: 600,

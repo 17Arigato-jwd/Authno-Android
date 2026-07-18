@@ -44,6 +44,9 @@ import { subscribeBilling, openBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
 import { startTrialMock } from "./utils/entitlements";
+import {
+  getTourState, startFirstBookTour, setTourBookId, emitTourSignal, subscribeTour,
+} from "./utils/firstBookTour";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
@@ -55,6 +58,7 @@ import ExtensionPage from "./components/ExtensionPage";
 // the corrupt-file modal all load on first use instead.
 const BillingPage      = lazy(() => import("./components/BillingPage"));
 const OnboardingFunnel = lazy(() => import("./components/onboarding/OnboardingFunnel").then(m => ({ default: m.OnboardingFunnel })));
+const FirstBookTour    = lazy(() => import("./components/FirstBookTour"));
 const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
 const FileIntegrityModalLazy = lazy(() => import("./components/FileIntegrityModal"));
 
@@ -356,6 +360,7 @@ function Editor({
           {current && !android && onOpenHistory && (
             <button
               data-history-opener
+              data-tour="history"
               onClick={() => { flushPendingEdit(); onOpenHistory(); }}
               title="History — recent changes (Ctrl+Shift+Z)"
               aria-label="History"
@@ -612,6 +617,9 @@ function AppInner({ navigateRef }) {
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // First-book coach (interactive "Create My First Book" walkthrough).
+  const [firstTour, setFirstTour] = useState(() => getTourState());
+  useEffect(() => subscribeTour(setFirstTour), []);
   const [resumePointState, setResumePointState] = useState(null); // pending Resume Writing target
   const [sharedImport, setSharedImport] = useState(null);         // text shared from another app
   const [showUpdateOnboarding, setShowUpdateOnboarding] = useState(false);
@@ -1146,6 +1154,44 @@ function AppInner({ navigateRef }) {
     setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
     if (android) setDrawerOpen(false);
   };
+  // ── First-book coach handlers ──────────────────────────────────────────────
+  const firstTourBookRef = useRef(null);
+  const startFirstBook = useCallback(() => {
+    firstTourBookRef.current = null;
+    startFirstBookTour(null);
+    if (android) setDrawerOpen(false);
+    setView("home");
+  }, [android]);
+
+  // Create the coach's real book the first time a book-bound step is reached.
+  // Guarded by a ref so the tour's effect re-running can't spawn duplicates.
+  const ensureFirstBook = useCallback(() => {
+    const state = getTourState();
+    if (state.bookId && sessions.some((s) => s.id === state.bookId)) return;
+    if (firstTourBookRef.current) return;
+    const id = Date.now().toString(), now = new Date().toISOString();
+    firstTourBookRef.current = id;
+    const firstChap = { chap_idx: 1, title: "Chapter 1", order: 1, content: "", created: now, updated: now };
+    setSessions((s) => [{ id, title: "My First Book", preview: "", content: "", type: "book", created: now, updated: now, chapters: [firstChap], authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "" }, ...s]);
+    setTourBookId(id);
+    setCurrentId(id); setCurrentChapterIdx(null);
+  }, [sessions]);
+
+  // Navigate the app for the coach: home / book screen / editor of the tour book.
+  const firstTourNavigate = useCallback((dest) => {
+    if (dest === "home") { setView("home"); return; }
+    const bookId = getTourState().bookId || firstTourBookRef.current;
+    const book = bookId && sessions.find((s) => s.id === bookId);
+    if (!book) { setView("home"); return; }
+    setCurrentId(book.id);
+    if (dest === "book") { setCurrentChapterIdx(null); setView("book-dashboard"); }
+    else if (dest === "editor") {
+      const first = [...(book.chapters || [])].sort((a, b) => a.order - b.order)[0];
+      setCurrentChapterIdx(first?.chap_idx ?? 1);
+      setView("editor");
+    }
+  }, [sessions]);
+
   const newStoryboard = () => {
     // Storyboards are intentionally deferred: there is no storyboard editor yet,
     // so creating one previously produced an un-openable session. Route the
@@ -1400,7 +1446,10 @@ function AppInner({ navigateRef }) {
   const handleExportTxt  = useCallback(async () => { if (!current) return; const { exportAsTxt }  = await import('./utils/storage'); try { await exportAsTxt(current);  } catch (e) { showError('exportTxt',  e); } }, [current, showError]);
   const handleExportHtml = useCallback(async () => { if (!current) return; const { exportAsHtml } = await import('./utils/storage'); try { await exportAsHtml(current); } catch (e) { showError('exportHtml', e); } }, [current, showError]);
   const handleExportEpub = useCallback(async () => { if (!current) return; const { exportAsEpub } = await import('./utils/storage'); try { await exportAsEpub(current); } catch (e) { showError('exportEpub', e); } }, [current, showError]);
-  const handleExportPdf  = useCallback(async () => { if (!current) return; const { exportAsPdf }  = await import('./utils/storage'); try { await exportAsPdf(current); } catch (e) { showError('exportPdf', e); } }, [current, showError]);
+  const handleExportPdf  = useCallback(async () => { if (!current) return; const { exportAsPdf }  = await import('./utils/storage'); try { await exportAsPdf(current); emitTourSignal('export'); } catch (e) { showError('exportPdf', e); } }, [current, showError]);
+
+  // First-book coach: signal History opening (satisfies that step's gate).
+  useEffect(() => { if (historyOpen) emitTourSignal('history-open'); }, [historyOpen]);
 
   const handleToggleMenu = () => {
     if (burgerBtnRef.current) {
@@ -1621,6 +1670,21 @@ function AppInner({ navigateRef }) {
       )}
       {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
 
+      {/* Interactive "Create My First Book" coach — hands-on, action-gated. */}
+      {firstTour.status === 'active' && (
+        <Suspense fallback={null}>
+          <FirstBookTour
+            active
+            android={android}
+            accentHex={customization.accentHex}
+            book={sessions.find((s) => s.id === firstTour.bookId) ?? null}
+            onNavigate={firstTourNavigate}
+            onEnsureBook={ensureFirstBook}
+            onFinish={() => { setFirstTour(getTourState()); setView("home"); }}
+          />
+        </Suspense>
+      )}
+
       {brokenFiles.length > 0 && (
         <Suspense fallback={null}>
           <FileIntegrityModalLazy
@@ -1708,6 +1772,8 @@ function AppInner({ navigateRef }) {
             return { title: b.title || 'Untitled Book', chapter: ch?.title || null };
           })()}
           onResume={() => resumeWriting()}
+          showFirstBookBanner={firstTour.status === 'idle' && sessions.filter(s => !s?._demo).length === 0}
+          onStartFirstBook={startFirstBook}
         />
         ) : (
         <HomeDesktop
@@ -1726,6 +1792,8 @@ function AppInner({ navigateRef }) {
             return { title: b.title || 'Untitled Book', chapter: ch?.title || null };
           })()}
           onResume={() => resumeWriting()}
+          showFirstBookBanner={firstTour.status === 'idle' && sessions.filter(s => !s?._demo).length === 0}
+          onStartFirstBook={startFirstBook}
         />
         )
       ) : view === "book-dashboard" ? (

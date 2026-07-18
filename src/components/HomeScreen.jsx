@@ -304,6 +304,8 @@ export default function HomeScreen({
   onOpenExtensions = () => {},
   resumeInfo = null,
   onResume = () => {},
+  showFirstBookBanner = false,
+  onStartFirstBook = () => {},
 }) {
   const { showError } = useError();
   const [activeTab, setActiveTab] = useState('recent');
@@ -418,6 +420,41 @@ export default function HomeScreen({
 
       {/* Content */}
       <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+
+        {/* First-book coach banner — mirrors the Continue-writing hero, shown
+            to brand-new users (no books yet) to launch the hands-on tour. */}
+        {showFirstBookBanner && (
+          <button
+            onClick={onStartFirstBook}
+            style={{
+              padding: '16px 20px', width: '100%',
+              display: 'flex', alignItems: 'center', gap: 14,
+              cursor: 'pointer', textAlign: 'left', borderRadius: 16,
+              background: `linear-gradient(135deg, ${accentHex}26, ${accentHex}0d)`,
+              border: `1px solid ${accentHex}66`,
+            }}
+          >
+            <span style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: accentHex,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <DSIcons.FilePlus size={22} color="#fff" />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: accentHex, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                New here?
+              </span>
+              <span style={{ display: 'block', fontSize: 16, fontWeight: 700, color: 'var(--text-1)', marginTop: 2 }}>
+                Create My First Book
+              </span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--text-4)', marginTop: 1 }}>
+                A guided, hands-on walkthrough — start to finish
+              </span>
+            </span>
+            <DSIcons.ChevronRight size={18} color="var(--text-4)" />
+          </button>
+        )}
 
         {/* Continue writing — the zero-resistance path back into the editor.
             One tap reopens the last book at the recorded chapter and caret. */}
