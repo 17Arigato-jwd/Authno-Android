@@ -1,5 +1,5 @@
 import { BackgroundRouter, DSIcons, injectDesignSystemFonts, ToastContainer, toast } from "./DesignSystem";
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { APP_VERSION } from "./version";
 
 import { App as CapApp } from '@capacitor/app';
@@ -17,7 +17,6 @@ import { FontCustomizer } from "./components/FontCustomizer";
 import { DEFAULT_FONTS } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ChapterInfoModal from "./components/ChapterInfoModal";
-import ShareImportSheet from "./components/ShareImportSheet";
 import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
 import { updateAppShortcuts } from "./utils/appShortcuts";
 import ThreadsPanel, { ThreadsTilesDesktop } from "./components/ThreadsPanel";
@@ -29,7 +28,6 @@ import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHisto
 import HistoryPanel from "./components/HistoryPanel";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
-import FileIntegrityModal from "./components/FileIntegrityModal";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
 import { MotionProvider, screenVariants, T } from "./utils/motion";
@@ -42,15 +40,23 @@ import BookStudio from "./components/BookStudio";
 import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
-import BillingPage from "./components/BillingPage";
 import { subscribeBilling, openBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
-import { OnboardingFunnel } from "./components/onboarding/OnboardingFunnel";
 import { getProfile, setProfile } from "./utils/profile";
 import { startTrialMock } from "./utils/entitlements";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import ExtensionPage from "./components/ExtensionPage";
+
+// ── Code-split surfaces (boot-time diet) ─────────────────────────────────────
+// These render behind a condition that is false on a normal boot, so their
+// code has no business in the main bundle: the paywall, the first-run funnel
+// (which drags in the guided tour + demo book), the share-import sheet and
+// the corrupt-file modal all load on first use instead.
+const BillingPage      = lazy(() => import("./components/BillingPage"));
+const OnboardingFunnel = lazy(() => import("./components/onboarding/OnboardingFunnel").then(m => ({ default: m.OnboardingFunnel })));
+const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
+const FileIntegrityModalLazy = lazy(() => import("./components/FileIntegrityModal"));
 
 // ── DesignSystem ─────────────────────────────────────────────────────────────
 // BackgroundRouter replaces the old <Background /> import.
@@ -606,6 +612,16 @@ function AppInner({ navigateRef }) {
   const [chapterInfoOpen, setChapterInfoOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
   useEffect(() => subscribeBilling(() => setBillingOpen(true)), []);
+
+  // Fade out the inline boot splash (public/index.html) — it painted with the
+  // renderer's first frame and its job ends the moment React is on screen.
+  useEffect(() => {
+    const el = document.getElementById('boot-splash');
+    if (!el) return undefined;
+    el.style.opacity = '0';
+    const t = setTimeout(() => el.remove(), 300);
+    return () => clearTimeout(t);
+  }, []);
   const [settings, setSettings] = useState(() => _safeParse("writerSettings", DEFAULT_SETTINGS));
   const [customizationBase, setCustomization] = useState(() => _safeParse("writerCustomization", DEFAULT_CUSTOMIZATION));
 
@@ -1554,7 +1570,9 @@ function AppInner({ navigateRef }) {
       <ToastContainer position="bottom-center" />
       <InstallSheet accentHex={customization.accentHex} />
       {billingOpen && (
-        <BillingPage accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
+        <Suspense fallback={null}>
+          <BillingPage accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
+        </Suspense>
       )}
       {readAloudSession && (
         <ReadAloudBar
@@ -1564,6 +1582,7 @@ function AppInner({ navigateRef }) {
         />
       )}
       {showOnboarding && (
+        <Suspense fallback={null}>
         <OnboardingFunnel
           accentHex={customization.accentHex}
           android={android}
@@ -1581,16 +1600,19 @@ function AppInner({ navigateRef }) {
             setSessions(prev => prev.filter(s => !s?._demo));
           }}
         />
+        </Suspense>
       )}
       {!showOnboarding && showUpdateOnboarding && <UpdateOnboarding accentHex={customization.accentHex} onDone={() => setShowUpdateOnboarding(false)} />}
 
       {brokenFiles.length > 0 && (
-        <FileIntegrityModal
-          brokenSessions={brokenFiles} accentHex={customization.accentHex}
-          onRemove={(id) => { setSessions(prev => prev.filter(s => s.id !== id)); setBrokenFiles(prev => prev.filter(s => s.id !== id)); }}
-          onSaveAs={async (session) => { await saveAsBook(session); setBrokenFiles(prev => prev.filter(s => s.id !== session.id)); }}
-          onDismiss={() => setBrokenFiles([])}
-        />
+        <Suspense fallback={null}>
+          <FileIntegrityModalLazy
+            brokenSessions={brokenFiles} accentHex={customization.accentHex}
+            onRemove={(id) => { setSessions(prev => prev.filter(s => s.id !== id)); setBrokenFiles(prev => prev.filter(s => s.id !== id)); }}
+            onSaveAs={async (session) => { await saveAsBook(session); setBrokenFiles(prev => prev.filter(s => s.id !== session.id)); }}
+            onDismiss={() => setBrokenFiles([])}
+          />
+        </Suspense>
       )}
 
       {/*
@@ -1799,12 +1821,14 @@ function AppInner({ navigateRef }) {
       />
 
       {sharedImport && (
-        <ShareImportSheet
-          text={sharedImport.text} subject={sharedImport.subject}
-          sessions={sessions} accentHex={customization.accentHex}
-          onClose={() => setSharedImport(null)}
-          onImport={handleSharedImport}
-        />
+        <Suspense fallback={null}>
+          <ShareImportSheetLazy
+            text={sharedImport.text} subject={sharedImport.subject}
+            sessions={sessions} accentHex={customization.accentHex}
+            onClose={() => setSharedImport(null)}
+            onImport={handleSharedImport}
+          />
+        </Suspense>
       )}
 
       <AnimatePresence>
