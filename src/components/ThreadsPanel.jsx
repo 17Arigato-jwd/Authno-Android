@@ -516,6 +516,7 @@ export default function ThreadsPanel({
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
           style={{ position: 'fixed', inset: 0, zIndex: 2380, background: 'var(--modal-overlay-bg, rgba(0,0,0,0.5))' }} onClick={onClose} />
         <motion.div
+          data-tour="threads-panel"
           initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
           transition={{ type: 'spring', stiffness: 340, damping: 32 }}
           style={{

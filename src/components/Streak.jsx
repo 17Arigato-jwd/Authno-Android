@@ -238,6 +238,7 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
 
   return createPortal(
     <motion.div ref={popRef}
+      data-tour="streak-panel"
       initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.98 }}
       transition={{ duration: 0.15, ease: [0.22, 0.61, 0.36, 1] }}
       style={{
@@ -320,6 +321,14 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
 export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, onStreakUpdate }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [shaking, setShaking]           = useState(false);
+
+  // Guided tour: the "Your streak, up close" step opens the calendar so the
+  // spotlight can walk through it; any other step (or tour end) closes it.
+  useEffect(() => {
+    const h = (e) => { setCalendarOpen(e.detail?.action === 'streak' && !!current); };
+    document.addEventListener('authno-tour-action', h);
+    return () => document.removeEventListener('authno-tour-action', h);
+  }, [current]);
   const buttonRef      = useRef(null);
   const hwRef          = useRef(0);
   const baselineSetRef = useRef(null);
