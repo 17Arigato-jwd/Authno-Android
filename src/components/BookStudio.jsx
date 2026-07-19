@@ -44,7 +44,7 @@ const paneBorder = '1px solid var(--border)';
 
 export default function BookStudio({
   session, accentHex, onBack, onEditChapter, onNewChapter, onUpdateSession,
-  onDeleteChapter, onMoveChapter,
+  onDeleteChapter, onMoveChapter, onRenameChapter,
   onExportTxt, onExportHtml, onExportEpub, onExportPdf,
   onReadAloud, onToggleMenu, burgerBtnRef,
   goalWords, onStreakUpdate, streakEnabled,
@@ -108,6 +108,7 @@ export default function BookStudio({
   // v1.1.18: chapter deletes confirm through the shared styled dialog instead
   // of window.confirm. `confirmDel` = { idxs: [chap_idx…], label } or null.
   const [confirmDel, setConfirmDel] = useState(null);
+  const [renameT, setRenameT] = useState(null);   // { chapIdx, value } — rename dialog
 
   const bulkDelete = () => {
     const count = multiSel.size;
@@ -304,6 +305,15 @@ export default function BookStudio({
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: focused ? 700 : 500, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {chap.title || 'Untitled'}
                     </span>
+                    {onRenameChapter && (
+                      <button
+                        data-tour={pos === 0 ? 'rename-chapter' : undefined}
+                        onClick={(e) => { e.stopPropagation(); setRenameT({ chapIdx: chap.chap_idx, value: chap.title || '' }); }}
+                        title="Rename chapter" aria-label={`Rename ${chap.title || 'chapter'}`}
+                        style={{ flexShrink: 0, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-4)', cursor: 'pointer', padding: 0 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </button>
+                    )}
                     <span style={{ fontSize: 10.5, color: 'var(--text-5)', flexShrink: 0 }}>{timeAgo(chap.updated || chap.created)}</span>
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text-5)', marginTop: 2 }}>
@@ -334,6 +344,14 @@ export default function BookStudio({
                       {formatWords(chapterWords(selected))} words · updated {timeAgo(selected.updated || selected.created)}
                     </div>
                   </div>
+                  {onRenameChapter && (
+                    <motion.button whileTap={motionOK ? PRESS : undefined}
+                      onClick={() => setRenameT({ chapIdx: selected.chap_idx, value: selected.title || '' })}
+                      title="Rename chapter" aria-label="Rename chapter"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 9, borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0 }}>
+                      <DSIcons.Text size={15} color="currentColor" />
+                    </motion.button>
+                  )}
                   {onChapterInfo && (
                     <motion.button whileTap={motionOK ? PRESS : undefined} onClick={() => onChapterInfo(selected.chap_idx)}
                       title="Chapter info (Ctrl+Alt+I)" aria-label="Chapter info"
@@ -412,6 +430,7 @@ export default function BookStudio({
         onClose={() => setCtx(null)}
         items={ctx && [
           { label: 'Open in editor', icon: <DSIcons.Edit size={14} />, onClick: () => onEditChapter(ctx.chap.chap_idx) },
+          onRenameChapter && { label: 'Rename…', icon: <DSIcons.Text size={14} />, onClick: () => setRenameT({ chapIdx: ctx.chap.chap_idx, value: ctx.chap.title || '' }) },
           { label: 'Move up', icon: <DSIcons.ChevronUp size={14} />, disabled: ctx.pos === 0, onClick: () => onMoveChapter?.(ctx.chap.chap_idx, sortOrder === 'newest' ? 1 : -1) },
           { label: 'Move down', icon: <DSIcons.ChevronDown size={14} />, disabled: ctx.pos === visible.length - 1, onClick: () => onMoveChapter?.(ctx.chap.chap_idx, sortOrder === 'newest' ? -1 : 1) },
           (session?.chapters || []).length > 1 && { label: 'Delete chapter', icon: <DSIcons.Trash size={14} />, danger: true, onClick: () => setConfirmDel({ idxs: [ctx.chap.chap_idx], label: `"${ctx.chap.title}"` }) },
@@ -429,6 +448,37 @@ export default function BookStudio({
         onCancel={() => setConfirmDel(null)}
         onConfirm={runConfirmedDelete}
       />
+
+      {/* Rename chapter dialog */}
+      {renameT && (
+        <div
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setRenameT(null); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ width: 'min(420px, 92vw)', background: 'var(--modal-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 24px 70px rgba(0,0,0,0.5)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>Rename chapter</h3>
+            <input
+              autoFocus
+              value={renameT.value}
+              onChange={(e) => setRenameT((r) => ({ ...r, value: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameT.value.trim()) { onRenameChapter?.(renameT.chapIdx, renameT.value.trim()); setRenameT(null); }
+                else if (e.key === 'Escape') setRenameT(null);
+              }}
+              placeholder="Chapter title"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--text-1)', fontSize: 14, outline: 'none' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+              <button onClick={() => setRenameT(null)} style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+              <button
+                disabled={!renameT.value.trim()}
+                onClick={() => { if (renameT.value.trim()) { onRenameChapter?.(renameT.chapIdx, renameT.value.trim()); setRenameT(null); } }}
+                style={{ padding: '9px 16px', borderRadius: 10, border: 'none', background: accentHex, color: '#fff', fontSize: 13, fontWeight: 700, cursor: renameT.value.trim() ? 'pointer' : 'default', opacity: renameT.value.trim() ? 1 : 0.5 }}>
+                Rename
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

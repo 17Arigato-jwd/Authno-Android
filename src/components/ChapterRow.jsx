@@ -54,12 +54,23 @@ export function ChapterRow({
   onDeleteConfirm,
   onDeleteCancel,
   onSynopsisChange,
+  onRename,
 }) {
   const [editingSynopsis, setEditingSynopsis] = useState(false);
   const [draft, setDraft] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
 
   const synopsis = (chap.synopsis || '').trim();
   const canEditSynopsis = typeof onSynopsisChange === 'function';
+  const canRename = typeof onRename === 'function';
+
+  const startRename = () => { setTitleDraft(chap.title || ''); setEditingTitle(true); };
+  const commitRename = () => {
+    setEditingTitle(false);
+    const next = titleDraft.trim();
+    if (next && next !== (chap.title || '')) onRename(next);
+  };
 
   const startEdit = () => { setDraft(chap.synopsis || ''); setEditingSynopsis(true); };
   const commit = () => {
@@ -135,23 +146,61 @@ export function ChapterRow({
           )}
 
           {/* Title + synopsis column */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            {/* Title + timestamp — tappable to open editor */}
-            <button onClick={onEdit} style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
-              minWidth: 0,
-            }}>
-              <span style={{
-                fontSize: '15px', fontWeight: 600, color: 'var(--text-1)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {chap.title}
-              </span>
-              <span style={{ fontSize: '13px', color: 'var(--text-5)', flexShrink: 0, marginLeft: '12px' }}>
-                {timeAgo(chap.updated || chap.created)}
-              </span>
-            </button>
+          <div data-tour="chapter-row" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {/* Title + timestamp — tappable to open editor, with a rename pencil */}
+            {editingTitle ? (
+              <input
+                autoFocus
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                  else if (e.key === 'Escape') { e.preventDefault(); setEditingTitle(false); }
+                }}
+                placeholder="Chapter title"
+                style={{
+                  width: '100%', boxSizing: 'border-box', fontSize: '15px', fontWeight: 600,
+                  color: 'var(--text-1)', background: light ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${subtleBorder}`, borderRadius: '8px', padding: '5px 8px', outline: 'none',
+                }}
+              />
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                <button onClick={onEdit} style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+                  minWidth: 0,
+                }}>
+                  <span style={{
+                    fontSize: '15px', fontWeight: 600, color: 'var(--text-1)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {chap.title}
+                  </span>
+                  <span style={{ fontSize: '13px', color: 'var(--text-5)', flexShrink: 0, marginLeft: '12px' }}>
+                    {timeAgo(chap.updated || chap.created)}
+                  </span>
+                </button>
+                {canRename && (
+                  <button
+                    data-tour="rename-chapter"
+                    onClick={startRename}
+                    aria-label={`Rename ${chap.title}`}
+                    title="Rename chapter"
+                    style={{
+                      width: '30px', height: '30px', flexShrink: 0, borderRadius: '8px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'none', border: `1px solid ${subtleBorder}`, cursor: 'pointer',
+                      color: 'var(--text-4)', padding: 0,
+                    }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Synopsis — inline tap-to-edit */}
             {canEditSynopsis && (

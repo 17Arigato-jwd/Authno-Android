@@ -445,7 +445,7 @@ function ThreadList({ session, data, onOpenThread, onChangeData, onStripAnchors,
 
       {/* Footer actions */}
       <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 8 }}>
-        <button onClick={onNew}
+        <button onClick={onNew} data-tour="thread-new"
           style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 0', borderRadius: 9, border: 'none', background: accentHex, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
           <DSIcons.Plus size={13} color="currentColor" /> New thread
         </button>

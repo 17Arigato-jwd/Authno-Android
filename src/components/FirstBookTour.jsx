@@ -31,6 +31,7 @@ import {
 } from "../utils/firstBookTour";
 
 const Z = 10650; // above the normal guided tour and every sheet/menu
+const DEMO_GOAL = 15; // tiny streak goal set during onboarding so the flame lights fast
 
 const firstChapterOf = (book) => {
   const chs = book?.chapters || [];
@@ -80,10 +81,12 @@ function buildSteps(android) {
       )),
     },
     {
-      key: "chapter", view: "book", target: "chapters", optional: false,
+      key: "chapter", view: "book", targets: ["rename-chapter", "chapter-row", "chapters"], optional: false,
       title: "Details done — now name your first chapter",
-      body: "Every book opens with Chapter 1. Give it a real title — tap the chapter to rename it (or add another with New chapter). A name makes it yours.",
-      hint: "Rename the chapter (or add one) to continue.",
+      body: android
+        ? "Every book opens with Chapter 1. Tap the ✎ pencil next to it, type a real title, and confirm. A name makes it yours."
+        : "Every book opens with Chapter 1. Tap the ✎ pencil next to it (or right-click the chapter → Rename), type a real title, and confirm. A name makes it yours.",
+      hint: "Rename the chapter to continue.",
       done: (b, ctx) => {
         const chs = b?.chapters || [];
         if (chs.length > 1) return true;
@@ -93,16 +96,16 @@ function buildSteps(android) {
       },
     },
     {
-      key: "streak", view: "book", targets: ["streak-panel", "streak-pill"], action: "streak", optional: true,
-      title: "Before you write: set a pace (optional)",
-      body: "This is your streak — pick how many words a day feels right and the flame keeps score. Each book tracks its own. Skip it if goals aren't your thing.",
+      key: "streak", view: "book", targets: ["streak-goal", "streak-panel", "streak-pill"], action: "streak", optional: true, setDemoGoal: true,
+      title: "Your streak — let's make it light up",
+      body: `This is your writing streak. For the walkthrough I've set a tiny goal of just ${DEMO_GOAL} words, so you'll see the flame come alive in a moment. You can change the goal right here — each book keeps its own.`,
     },
     {
       key: "write", view: "editor", target: "editor", optional: false, pause: true, float: true,
-      title: "Now — write a few words",
-      body: "Here's the page your chapter lives on. Write whatever you like — even a sentence. This step waits for you: close the app, come back tomorrow, and pick up right here.",
-      hint: "Write a few words to continue — no rush.",
-      done: (b) => wordsInBook(b) >= 5,
+      title: `Write ${DEMO_GOAL} words — watch the flame`,
+      body: `Here's your page. Type about ${DEMO_GOAL} words — the moment you reach the goal, the streak flame at the top lights up. No rush: close the app, come back tomorrow, and pick up right here.`,
+      hint: `Write ${DEMO_GOAL} words to light your streak.`,
+      done: (b) => wordsInBook(b) >= (b?.streak?.goalWords ?? DEMO_GOAL),
     },
     {
       key: "cover", view: "book", target: "add-cover", optional: true,
@@ -119,19 +122,26 @@ function buildSteps(android) {
       done: (b, ctx) => ctx.signals.save,
     },
     {
-      key: "threads", view: "editor", target: "threads", optional: false,
-      title: "Track it with Threads",
-      body: "Threads follow the moving parts of your story. Open the panel and make one — anchor it to a line and it sticks to that text as your draft grows.",
-      hint: "Create a thread to continue.",
+      key: "threads-intro", view: "editor", target: "threads", action: "threads", optional: true,
+      title: "Meet Threads",
+      body: "Threads track the moving parts of your story — plotlines, characters, anything you want to keep an eye on across chapters. Here's the panel. These are the built-in types (and you can invent your own):",
       types: true,
+    },
+    {
+      key: "threads-make", view: "editor", targets: ["thread-new", "threads-panel"], action: "threads", optional: false,
+      title: "Make your first thread",
+      body: android
+        ? "Tap ‘+ New thread’, pick a type (or make a custom one), give it a name, and save. That's it — you've started tracking a part of your story."
+        : "Click ‘+ New thread’, pick a type (or create your own), give it a name, and save. That's it — you've started tracking a part of your story.",
+      hint: "Create one thread to continue.",
       done: (b) => getThreadsData(b).threads.length >= 1,
     },
     {
-      key: "history", view: "editor", target: android ? "menu" : "history", optional: false,
+      key: "history", view: "editor", target: android ? "menu" : "history", optional: false, injectEdit: true,
       title: "Nothing is ever lost",
       body: android
-        ? "Change a word or two, then open the menu and tap History. Every edit is there as a before/after — revert just that change, or roll the chapter back to any point."
-        : "Change a word or two, then open History. Every edit is there as a before/after — revert just that change, or roll the chapter back to any point. Try it now.",
+        ? "I just added an example line to the end of your chapter. Open the menu → History: you'll see that exact change as a before/after. Tap it to roll it back — every edit is recoverable."
+        : "I just added an example line to the end of your chapter. Open History (top-right): you'll see that exact change as a before/after. Click it to roll it back — every edit is recoverable. Try it now.",
       hint: "Open History once to continue.",
       done: (b, ctx) => ctx.signals.history,
     },
@@ -173,8 +183,12 @@ function ThreadTypesInfo({ accentHex }) {
   );
 }
 
-export default function FirstBookTour({ active, android, accentHex, book, onNavigate, onEnsureBook, onFinish }) {
+export default function FirstBookTour({ active, android, accentHex, book, onNavigate, onEnsureBook, onSetGoal, onInjectEdit, onCleanup, onFinish }) {
   const [stepIndex, setStepIndex] = useState(() => getTourState().step || 0);
+  // Remembers the book's real streak goal so we can restore it after temporarily
+  // dropping it to DEMO_GOAL for the "watch the flame light" step.
+  const originalGoalRef = useRef(null);
+  const injectedRef = useRef(false);
   const [rect, setRect] = useState(null);
   const [searching, setSearching] = useState(false);
   const [allowSkip, setAllowSkip] = useState(false);
@@ -211,6 +225,14 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
     // FRESH open (a change then a peek), so clear it on entering that step.
     if (step?.key === "history") signalsRef.current.history = false;
     if (step?.key === "save") signalsRef.current.save = false;
+    // Live app actions the coach drives directly (see App coachSetGoal/coachInjectEdit):
+    // set a tiny demo streak goal so the flame is reachable, and inject one
+    // example edit so History has a real change to teach a rollback with.
+    if (step?.setDemoGoal && onSetGoal) {
+      if (originalGoalRef.current == null) originalGoalRef.current = book?.streak?.goalWords ?? 300;
+      onSetGoal(DEMO_GOAL);
+    }
+    if (step?.injectEdit && onInjectEdit && !injectedRef.current) { injectedRef.current = true; onInjectEdit(); }
     setAllowSkip(false);
     const t = setTimeout(() => setAllowSkip(true), 6000); // nudge → escape hatch
     return () => clearTimeout(t);
@@ -286,8 +308,13 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
     return () => { window.removeEventListener("resize", sync); document.removeEventListener("scroll", sync, true); };
   }, [active, stepIndex]);
 
-  const finish = useCallback(() => { endFirstBookTour(true); onFinish?.(); }, [onFinish]);
-  const skipTour = useCallback(() => { endFirstBookTour(false); onFinish?.(); }, [onFinish]);
+  // Put the real streak goal back after the demo (we dropped it to DEMO_GOAL).
+  const restoreGoal = useCallback(() => {
+    if (originalGoalRef.current != null && onSetGoal) { onSetGoal(originalGoalRef.current); }
+    originalGoalRef.current = null;
+  }, [onSetGoal]);
+  const finish = useCallback(() => { restoreGoal(); onCleanup?.(); endFirstBookTour(true); onFinish?.(); }, [onFinish, restoreGoal, onCleanup]);
+  const skipTour = useCallback(() => { restoreGoal(); onCleanup?.(); endFirstBookTour(false); onFinish?.(); }, [onFinish, restoreGoal, onCleanup]);
 
   const advance = () => {
     hapticSelect();

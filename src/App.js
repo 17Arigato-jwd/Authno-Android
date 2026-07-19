@@ -1382,6 +1382,54 @@ function AppInner({ navigateRef }) {
       return { ...s, chapters, history: recordOp(s.history, { kind: 'rename-chapter', chapIdx: currentChapterIdx, chapTitle: t }) };
     }));
   }, [currentId, currentChapterIdx]);
+  // Rename any chapter by index (dashboard inline rename — no need to open the
+  // editor first). The first-book coach's "name your chapter" step relies on it.
+  const handleRenameChapterByIdx = useCallback((chapIdx, t) => {
+    const title = (t || '').trim();
+    if (!title) return;
+    setSessions((prev) => prev.map((s) => {
+      if (s.id !== currentId) return s;
+      const chapters = (s.chapters || []).map((ch) => ch.chap_idx === chapIdx ? { ...ch, title } : ch);
+      return { ...s, chapters, updated: new Date().toISOString(), history: recordOp(s.history, { kind: 'rename-chapter', chapIdx, chapTitle: title }) };
+    }));
+  }, [currentId]);
+
+  // ── First-book coach: live app actions ────────────────────────────────────
+  // The coach doesn't just point — it drives the real app. These let it set a
+  // small demo streak goal (so "write to light the flame" is reachable) and
+  // inject one example edit (so History has something to teach a rollback with).
+  const coachSetGoal = useCallback((g) => {
+    handleStreakUpdate({ goalWords: Math.max(1, Math.round(g)) });
+  }, [handleStreakUpdate]);
+  const COACH_DEMO_MARK = 'data-coach-demo';
+  const coachInjectEdit = useCallback(() => {
+    const cur = sessions.find((s) => s.id === currentId);
+    if (!cur) return;
+    const chapIdx = currentChapterIdx ?? [...(cur.chapters || [])].sort((a, b) => a.order - b.order)[0]?.chap_idx ?? 1;
+    const ch = (cur.chapters || []).find((c) => c.chap_idx === chapIdx);
+    if (!ch) return;
+    const before = ch.content ?? '';
+    if (before.includes(COACH_DEMO_MARK)) return; // idempotent — one example only
+    const after = `${before}<p ${COACH_DEMO_MARK}="1">(Example edit from the walkthrough — open History to roll this line back.)</p>`;
+    handleEditContent(after, { bookId: currentId, chapIdx });
+  }, [sessions, currentId, currentChapterIdx, handleEditContent]);
+  // If the user finished the coach without rolling back the example line, strip
+  // it silently so their real first book isn't left with a walkthrough artifact.
+  const coachCleanupDemo = useCallback(() => {
+    setSessions((prev) => prev.map((s) => {
+      if (s.id !== currentId) return s;
+      let changed = false;
+      const chapters = (s.chapters || []).map((ch) => {
+        if (typeof ch.content === 'string' && ch.content.includes(COACH_DEMO_MARK)) {
+          changed = true;
+          const cleaned = ch.content.replace(/<p[^>]*data-coach-demo[^>]*>[\s\S]*?<\/p>/gi, '');
+          return { ...ch, content: cleaned, word_count: wordCountOf(cleaned) };
+        }
+        return ch;
+      });
+      return changed ? { ...s, chapters } : s;
+    }));
+  }, [currentId]);
 
   // ── Remove a book (v1.1.18) ───────────────────────────────────────────────
   // The styled confirmation lives with the callers (Sidebar / HomeDesktop
@@ -1680,6 +1728,9 @@ function AppInner({ navigateRef }) {
             book={sessions.find((s) => s.id === firstTour.bookId) ?? null}
             onNavigate={firstTourNavigate}
             onEnsureBook={ensureFirstBook}
+            onSetGoal={coachSetGoal}
+            onInjectEdit={coachInjectEdit}
+            onCleanup={coachCleanupDemo}
             onFinish={() => { setFirstTour(getTourState()); setView("home"); }}
           />
         </Suspense>
@@ -1803,6 +1854,7 @@ function AppInner({ navigateRef }) {
           onBack={() => setView("home")} onEditChapter={handleEditChapter}
           onNewChapter={handleNewChapter} onUpdateSession={handleUpdateSession}
           onDeleteChapter={handleDeleteChapter} onMoveChapter={handleMoveChapter}
+          onRenameChapter={handleRenameChapterByIdx}
           onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
           onReadAloud={() => current && setReadAloudSession(current)}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
@@ -1816,6 +1868,7 @@ function AppInner({ navigateRef }) {
           onBack={() => setView("home")} onEditChapter={handleEditChapter}
           onNewChapter={handleNewChapter} onUpdateSession={handleUpdateSession}
           onDeleteChapter={handleDeleteChapter} onMoveChapter={handleMoveChapter}
+          onRenameChapter={handleRenameChapterByIdx}
           onExportTxt={handleExportTxt} onExportHtml={handleExportHtml} onExportEpub={handleExportEpub} onExportPdf={handleExportPdf}
           onReadAloud={(chapIdx) => current && startReadAloud(current.id, chapIdx ?? null)}
           onChapterInfo={(chapIdx) => { setChapterInfoIdx(chapIdx); setChapterInfoOpen(true); }}
