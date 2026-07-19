@@ -195,7 +195,7 @@ function CalendarCell({ day, cellIndex, daysInMonth, viewYear, viewMonth, log, a
 const DAY_LABELS  = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, anchorRef, onClose }) {
+function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, anchorRef, onClose, onSetGoal }) {
   const today = new Date();
   const [viewYear,  setViewYear]  = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -307,12 +307,59 @@ function StreakCalendar({ currentStreak, log, wordsToday, goalWords, accentHex, 
         ))}
       </div>
 
-      <div style={{ marginTop: 14, textAlign: 'center', fontSize: 11, color: COLORS.textDisabled, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-        <DSIcons.Target size={11} color={COLORS.textDisabled} />
-        Current goal: {goalWords.toLocaleString()} words/day
-      </div>
+      {typeof onSetGoal === 'function'
+        ? <GoalEditor goalWords={goalWords} accentHex={accentHex} onSetGoal={onSetGoal} />
+        : (
+          <div style={{ marginTop: 14, textAlign: 'center', fontSize: 11, color: COLORS.textDisabled, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            <DSIcons.Target size={11} color={COLORS.textDisabled} />
+            Current goal: {goalWords.toLocaleString()} words/day
+          </div>
+        )}
     </motion.div>,
     document.body
+  );
+}
+
+// Inline daily-goal editor shown at the bottom of the streak popover. Lets the
+// user set the per-book goal without opening Settings (author feedback: "streak
+// goals can only be set in settings").
+function GoalEditor({ goalWords, accentHex, onSetGoal }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(goalWords));
+  const save = () => {
+    const n = parseInt(draft, 10);
+    if (Number.isFinite(n) && n > 0) onSetGoal(n);
+    setEditing(false);
+  };
+  if (!editing) {
+    return (
+      <button
+        data-tour="streak-goal"
+        onClick={() => { setDraft(String(goalWords)); setEditing(true); }}
+        style={{ marginTop: 14, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          background: 'var(--surface)', border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: '8px 10px',
+          fontSize: 11.5, color: COLORS.textSubtle, cursor: 'pointer' }}>
+        <DSIcons.Target size={12} color={accentHex} />
+        Daily goal: <strong style={{ color: 'var(--text-2)' }}>{goalWords.toLocaleString()}</strong> words · tap to change
+      </button>
+    );
+  }
+  return (
+    <div data-tour="streak-goal" style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 11.5, color: COLORS.textSubtle, whiteSpace: 'nowrap' }}>Words/day</span>
+      <input
+        autoFocus type="number" inputMode="numeric" min={1}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+        onKeyDown={(e) => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') setEditing(false); }}
+        style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 8, background: 'var(--input-bg)',
+          border: `1px solid ${accentHex}`, color: 'var(--text-1)', fontSize: 13, outline: 'none' }}
+      />
+      <button onClick={save}
+        style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: accentHex, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+        Save
+      </button>
+    </div>
   );
 }
 
@@ -404,7 +451,8 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
       </button>
       <AnimatePresence>
         {calendarOpen && (
-          <StreakCalendar key="streak-cal" currentStreak={currentStreak} log={log} wordsToday={wordsToday} goalWords={effectiveGoal} accentHex={accentHex} anchorRef={buttonRef} onClose={() => setCalendarOpen(false)} />
+          <StreakCalendar key="streak-cal" currentStreak={currentStreak} log={log} wordsToday={wordsToday} goalWords={effectiveGoal} accentHex={accentHex} anchorRef={buttonRef} onClose={() => setCalendarOpen(false)}
+            onSetGoal={onStreakUpdate ? (n) => onStreakUpdate({ goalWords: Math.max(1, Math.round(n)) }) : undefined} />
         )}
       </AnimatePresence>
     </>

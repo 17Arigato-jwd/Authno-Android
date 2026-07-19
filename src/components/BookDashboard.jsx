@@ -400,6 +400,7 @@ export default function BookDashboard({
   onUpdateSession,
   onDeleteChapter,
   onMoveChapter,
+  onRenameChapter,
   onExportTxt,
   onExportHtml,
   onExportEpub,
@@ -936,6 +937,7 @@ export default function BookDashboard({
                     showSearch={!!chapterSearch}
                     showDelete={chapters.length > 1}
                     onSynopsisChange={(text) => handleSynopsisChange(chap.chap_idx, text)}
+                    onRename={onRenameChapter ? (title) => onRenameChapter(chap.chap_idx, title) : undefined}
                               onEdit={() => onEditChapter(chap.chap_idx)}
                     onMoveUp={() => onMoveChapter?.(chap.chap_idx, upDir)}
                     onMoveDown={() => onMoveChapter?.(chap.chap_idx, downDir)}

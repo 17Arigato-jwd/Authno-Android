@@ -3,6 +3,34 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.10
+
+_A much more hands-on first-book walkthrough, and the features it teaches._
+
+### New
+
+- **Rename a chapter straight from the book screen** — a ✎ pencil on each
+  chapter (and right-click → Rename on desktop). No need to open the editor
+  first.
+- **Set your daily writing goal right from the streak flame** — open the streak
+  calendar and tap the goal to change it, per book. It's no longer buried in
+  Settings.
+
+### The "Create My First Book" walkthrough is now interactive
+
+- **Watch your streak light up.** During the walkthrough your goal is set to a
+  tiny 15 words, and the write step asks you to reach it — the moment you do,
+  the flame comes alive. Your real goal is restored when you finish.
+- **Threads are taught, not just mentioned.** The walkthrough opens the panel,
+  shows the built-in types (and that you can make your own), then guides you to
+  create your first thread step by step.
+- **History is shown by doing.** The walkthrough adds an example line to your
+  chapter, then walks you through opening History to see exactly what changed
+  and roll it back — the example line is cleaned up automatically at the end.
+- The chapter-naming step now points at the real rename control, and the whole
+  flow reads as one continuous story from details → name → pace → write →
+  cover → save → threads → history → export.
+
 ## 1.1.18-beta.9
 
 _Branding, Linux packaging, and app-icon polish._
