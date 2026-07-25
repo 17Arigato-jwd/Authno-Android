@@ -821,6 +821,26 @@ function AppInner({ navigateRef }) {
     return () => { listener?.remove(); };
   }, [android, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view]);
 
+  // ── Re-verify the stored licence on boot ─────────────────────────────────
+  // The tier itself lives in localStorage, so it can be hand-edited. When this
+  // build has real licensing configured, the signed key is the source of truth:
+  // a Pro tier with no valid key behind it is dropped back to free. Builds with
+  // no licensing configured (and anyone on the trial) are left alone.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { isLicensingConfigured, verifyStoredLicense } = await import('./utils/license');
+        if (!isLicensingConfigured()) return;
+        const { getEntitlement, ENTITLEMENTS, resetToFree } = await import('./utils/entitlements');
+        if (getEntitlement() !== ENTITLEMENTS.PRO) return;
+        const payload = await verifyStoredLicense();
+        if (!payload && !cancelled) resetToFree();
+      } catch (e) { console.error('[license] boot check failed', e); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Load sessions ────────────────────────────────────────────────────────
   useEffect(() => {
     const showWhatsNew = () => hasSeenUpdate().then((seenUpdate) => { if (!seenUpdate) setShowUpdateOnboarding(true); });

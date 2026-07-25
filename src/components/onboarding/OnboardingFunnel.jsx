@@ -51,6 +51,54 @@ const WORD_GOALS = [
   { id: "1000", label: "1,000+ words" },
 ];
 
+// ── Creator's note assets ────────────────────────────────────────────────────
+const ASSET_BASE = process.env.PUBLIC_URL || "";
+
+/**
+ * The real hand-drawn signature. The supplied artwork was ink on an opaque
+ * white plate, so drawing it directly would stamp a white card onto dark
+ * themes (and masking with it filled a solid block). creator-signature.png is
+ * derived from that artwork with alpha = ink density and no plate, so we can
+ * use it as a CSS mask and fill with a theme token — it then reads correctly
+ * on every theme with no light/dark branching.
+ */
+function CreatorSignature() {
+  const url = `${ASSET_BASE}/creator-signature.png`;
+  return (
+    <div
+      role="img"
+      aria-label="Varchas"
+      style={{
+        width: 150, height: 63, background: "var(--text-2)", opacity: 0.9,
+        WebkitMaskImage: `url("${url}")`, maskImage: `url("${url}")`,
+        WebkitMaskSize: "contain", maskSize: "contain",
+        WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center right", maskPosition: "center right",
+      }}
+    />
+  );
+}
+
+/**
+ * Portrait for the note. Optional by design: if public/creator-photo.jpg exists
+ * it's shown, otherwise we fall back to the accent monogram — so the funnel
+ * never renders a broken image. (The old version showed a fake camera badge,
+ * which looked like an "upload a photo" affordance but did nothing.)
+ */
+function CreatorAvatar({ accentHex }) {
+  const [hasPhoto, setHasPhoto] = useState(true);
+  const src = `${ASSET_BASE}/creator-photo.jpg`;
+  const ring = { height: 80, width: 80, borderRadius: "50%", border: "1px solid var(--border-sm)" };
+  if (!hasPhoto) {
+    return (
+      <div style={{ ...ring, display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${accentHex}, ${accentHex}55)` }}>
+        <span style={{ fontSize: 30, fontWeight: 800, color: "#fff" }}>V</span>
+      </div>
+    );
+  }
+  return <img src={src} alt="Varchas" onError={() => setHasPhoto(false)} style={{ ...ring, objectFit: "cover" }} />;
+}
+
 export function OnboardingFunnel({
   accentHex = "#5a00d9",
   android = false,
@@ -178,19 +226,27 @@ export function OnboardingFunnel({
         <>
           <h2 style={titleStyle}>Write your story.<br />Your way. Your device.</h2>
           <p style={{ ...subStyle, marginBottom: 22 }}>
-            AuthNo is an offline-first home for books and long-form writing. No account, no cloud, no one watching over your shoulder.
+            A calm, offline-first home for books and long-form writing. No account to make, nothing to sync, nobody looking over your shoulder.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
-              { icon: DSIcons.Shield, text: "Works offline. Everything stays on your device." },
-              { icon: DSIcons.Lock, text: "Your stories stay yours — no account wall." },
-              { icon: DSIcons.Lightning, text: "Fast, focused, distraction-free writing." },
+              { icon: DSIcons.Shield, text: "Works offline — everything lives on your device." },
+              { icon: DSIcons.Lock, text: "No account wall. Your words stay yours." },
+              { icon: DSIcons.Lightning, text: "Fast and focused, built for long sessions." },
             ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10" style={{ background: `${accentHex}18` }}>
+              <div key={text} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "12px 16px", borderRadius: 16,
+                border: "1px solid var(--border-sm)", background: "var(--surface)",
+              }}>
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  height: 36, width: 36, flexShrink: 0, borderRadius: 12,
+                  border: "1px solid var(--border-sm)", background: `${accentHex}18`,
+                }}>
                   <Icon size={16} color={accentHex} />
                 </div>
-                <div className="text-sm text-white/75">{text}</div>
+                <div style={{ fontSize: 13.5, color: "var(--text-3)", lineHeight: 1.5 }}>{text}</div>
               </div>
             ))}
           </div>
@@ -292,8 +348,10 @@ export function OnboardingFunnel({
         </>
       ),
     },
-    // 4 — Creator's note. Copy is final prototype text; [your name] and
-    // [signature] are placeholders for the creator's real name + photo.
+    // 4 — Creator's note. Real name + hand-drawn signature (public/creator-signature.svg,
+    // painted with a CSS mask so it takes the theme's text colour on light AND dark).
+    // The portrait is optional: drop public/creator-photo.jpg in and it replaces the
+    // monogram automatically (see CreatorAvatar).
     {
       key: "note",
       chip: null,
@@ -302,31 +360,17 @@ export function OnboardingFunnel({
       hideSkip: true,
       render: () => (
         <>
-          {/* Photo — swap the icon circle for the real photo when provided */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-            <div style={{ position: "relative" }}>
-              <div
-                className="flex h-20 w-20 items-center justify-center rounded-full border border-white/10"
-                style={{ background: `linear-gradient(135deg, ${accentHex}, ${accentHex}55)` }}
-              >
-                <span style={{ fontSize: 30, fontWeight: 800, color: "#fff" }}>A</span>
-              </div>
-              <div
-                className="absolute flex items-center justify-center rounded-full border border-white/10"
-                style={{ right: -2, bottom: -2, width: 26, height: 26, background: "var(--modal-bg)" }}
-              >
-                <DSIcons.Camera size={13} color="var(--text-3)" />
-              </div>
-            </div>
+            <CreatorAvatar accentHex={accentHex} />
           </div>
           <h2 style={{ ...titleStyle, textAlign: "center", fontSize: 22, margin: "0 0 16px" }}>
-            Hey{name.trim() ? ` ${name.trim().split(" ")[0]}` : ""} — I'm [your name].
+            Hey{name.trim() ? ` ${name.trim().split(" ")[0]}` : ""} — I'm Varchas.
           </h2>
-          <p className="text-white/75" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 12px" }}>
+          <p style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 12px", color: "var(--text-3)" }}>
             I built AuthNo because I wanted somewhere to write that felt calm and completely mine —
-            no accounts, no distractions, no one watching over my shoulder. Just a page and the words.
+            no accounts, no distractions, nobody looking over my shoulder. Just a page and the words.
           </p>
-          <p className="text-white/75" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 16px" }}>
+          <p style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 16px", color: "var(--text-3)" }}>
             It's a one-person project. Every theme, every animation, every little detail is something
             I sweated over because I use this app every day too.
           </p>
@@ -351,9 +395,9 @@ export function OnboardingFunnel({
           <p style={{ fontSize: 13, color: "var(--text-3)", textAlign: "center", lineHeight: 1.6, margin: "0 0 6px" }}>
             Thanks for giving it a shot. I hope you write something you're proud of.
           </p>
-          <p style={{ fontSize: 15, color: "var(--text-2)", textAlign: "right", fontStyle: "italic", fontFamily: "Georgia, serif", margin: 0 }}>
-            — [signature]
-          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <CreatorSignature />
+          </div>
         </>
       ),
     },
