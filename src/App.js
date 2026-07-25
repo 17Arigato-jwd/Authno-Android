@@ -56,7 +56,11 @@ import ExtensionPage from "./components/ExtensionPage";
 // code has no business in the main bundle: the paywall, the first-run funnel
 // (which drags in the guided tour + demo book), the share-import sheet and
 // the corrupt-file modal all load on first use instead.
-const BillingPage      = lazy(() => import("./components/BillingPage"));
+// Purchasing is switched off until a gateway is live — every Pro gate routes to
+// the "premium coming soon" dialog instead of a checkout the user can't
+// complete. (BillingPage + utils/billing.js are kept, unreferenced, ready to be
+// re-enabled by swapping this back.)
+const PremiumSoonDialog = lazy(() => import("./components/PremiumSoonDialog"));
 const OnboardingFunnel = lazy(() => import("./components/onboarding/OnboardingFunnel").then(m => ({ default: m.OnboardingFunnel })));
 const FirstBookTour    = lazy(() => import("./components/FirstBookTour"));
 const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
@@ -1705,7 +1709,7 @@ function AppInner({ navigateRef }) {
       <InstallSheet accentHex={customization.accentHex} />
       {billingOpen && (
         <Suspense fallback={null}>
-          <BillingPage accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
+          <PremiumSoonDialog accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
         </Suspense>
       )}
       {readAloudSession && (
@@ -1722,8 +1726,11 @@ function AppInner({ navigateRef }) {
           android={android}
           onTourNavigate={handleTourNavigate}
           onComplete={() => {
+            // Straight into the app. The funnel used to open the paywall here;
+            // with purchasing switched off that would greet a brand-new user —
+            // who has just been given a 7-day trial — with "premium is a
+            // premium feature". They meet that dialog only if the trial lapses.
             setShowOnboarding(false);
-            openBilling();
           }}
           onDemoBookAdd={(book) => {
             // Dedupe on the _demo flag — a stale demo book can survive in

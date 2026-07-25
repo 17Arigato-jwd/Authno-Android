@@ -364,38 +364,38 @@ export function OnboardingFunnel({
             <CreatorAvatar accentHex={accentHex} />
           </div>
           <h2 style={{ ...titleStyle, textAlign: "center", fontSize: 22, margin: "0 0 16px" }}>
-            Hey{name.trim() ? ` ${name.trim().split(" ")[0]}` : ""} — I'm Varchas.
+            Hey{name.trim() ? ` ${name.trim().split(" ")[0]}` : " there"}, nice to meet you!
           </h2>
-          <p style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 12px", color: "var(--text-3)" }}>
-            I built AuthNo because I wanted somewhere to write that felt calm and completely mine —
-            no accounts, no distractions, nobody looking over my shoulder. Just a page and the words.
-          </p>
+          {[
+            "I'm Varchas, the creator of AuthNo.",
+            "I originally built AuthNo just for myself as a distraction-free tool. Literally all I wanted was a blank piece of digital paper. But then I was like, hmmm… a streak feature would be nice to keep me motivated. Oh! What about a threads system to keep track of stuff!?",
+            "Next thing I knew, I was completely down a rabbit hole (;^_^).",
+            "I just kept adding features on and on. One day, I was asking someone for advice, and they saw my screen and were like, “woahh whats that?” I excitedly told them I made it, and they told me I should actually release it — and that they would actually pay to use it.",
+            "So I was like… hmm :> I COULD mayyybee try to actually polish it up and publish it.",
+            "So yeah, that brings us here!",
+          ].map((para) => (
+            <p key={para} style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 12px", color: "var(--text-3)" }}>
+              {para}
+            </p>
+          ))}
           <p style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 16px", color: "var(--text-3)" }}>
-            It's a one-person project. Every theme, every animation, every little detail is something
-            I sweated over because I use this app every day too.
+            I hope you enjoy it as much as I did.
           </p>
           <div
             style={{
-              display: "flex", gap: 10, alignItems: "flex-start",
-              padding: "13px 14px", borderRadius: 14, marginBottom: 16,
+              display: "flex", gap: 10, alignItems: "center",
+              padding: "13px 14px", borderRadius: 14, marginBottom: 18,
               background: "var(--color-success-bg, rgba(34,197,94,0.08))",
               border: "1px solid var(--color-success, #22c55e)",
             }}
           >
-            <DSIcons.Star size={15} color="var(--color-success, #22c55e)" style={{ flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-1)", marginBottom: 2 }}>
-                Everything's unlocked, free, for 7 days.
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>
-                Try the whole thing. If it's not for you, no charge — ever.
-              </div>
+            <DSIcons.Star size={15} color="var(--color-success, #22c55e)" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-1)" }}>
+              try it free for 7 days :)
             </div>
           </div>
-          <p style={{ fontSize: 13, color: "var(--text-3)", textAlign: "center", lineHeight: 1.6, margin: "0 0 6px" }}>
-            Thanks for giving it a shot. I hope you write something you're proud of.
-          </p>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+            <span style={{ fontSize: 13.5, color: "var(--text-3)" }}>love,</span>
             <CreatorSignature />
           </div>
         </>
