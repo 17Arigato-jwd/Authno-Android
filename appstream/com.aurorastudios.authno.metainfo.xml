@@ -55,9 +55,6 @@
   </keywords>
 
   <url type="homepage">https://authno.pages.dev</url>
-  <url type="bugtracker">https://github.com/17Arigato-jwd/Authno-Android/issues</url>
-  <url type="vcs-browser">https://github.com/17Arigato-jwd/Authno-Android</url>
-  <url type="contribute">https://github.com/17Arigato-jwd/Authno-Android</url>
   <url type="contact">https://authno.pages.dev</url>
 
   <content_rating type="oars-1.1" />
@@ -70,7 +67,6 @@
 
   <releases>
     <release version="1.1.18-beta.8" date="2026-07-18">
-      <url type="details">https://github.com/17Arigato-jwd/Authno-Android/releases/tag/v1.1.18-beta.8</url>
       <description>
         <p>New onboarding funnel and first-book coach, a one-time-purchase Pro
         upgrade with a 7-day free trial, a Material You theme, and a large round

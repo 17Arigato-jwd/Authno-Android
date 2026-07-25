@@ -19,6 +19,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { unlockProMock, resetToFree } from '../utils/entitlements';
 import { useEntitlement } from '../utils/useEntitlement';
+import { isBillingLive, openCheckout, activateLicense } from '../utils/billing';
 import { getOneTimePrice } from '../utils/pricing';
 import { DSIcons, CloseButton } from '../DesignSystem';
 import { hapticSelect } from '../utils/haptics';
@@ -53,6 +54,25 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
   const [revealed, setRevealed] = useState(false);    // payment stays hidden behind "Try now"
   const [upiId, setUpiId] = useState('');
   const [card, setCard] = useState({ number: '', name: '', expiry: '', cvv: '' });
+  // Real (configured) billing: hosted checkout + signed license key.
+  const live = useMemo(() => isBillingLive(), []);
+  const [licenseKey, setLicenseKey] = useState('');
+  const [licenseErr, setLicenseErr] = useState('');
+  const [activating, setActivating] = useState(false);
+
+  const handleActivate = async () => {
+    if (!licenseKey.trim() || activating) return;
+    setActivating(true); setLicenseErr('');
+    const res = await activateLicense(licenseKey);
+    setActivating(false);
+    if (res.ok) { setStatus('success'); setTimeout(() => onClose?.(), 1600); return; }
+    setLicenseErr(
+      res.reason === 'malformed' ? "That doesn't look like an AuthNo key — check for a missing character."
+      : res.reason === 'bad-signature' ? "This key didn't verify. Paste the exact key from your receipt email."
+      : res.reason === 'expired' ? 'This key has expired.'
+      : 'Licensing is not configured in this build.'
+    );
+  };
 
   const canPay = method === 'upi'
     ? /^[\w.-]{2,}@[a-zA-Z]{2,}$/.test(upiId.trim())
@@ -78,10 +98,14 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
           </div>
           <h2 style={{ margin: '0 0 6px', color: 'var(--text-1)' }}>You’re on Pro</h2>
           <p style={{ color: 'var(--text-3)', fontSize: 14, margin: '0 0 24px' }}>All Pro features are unlocked. Thank you for the support.</p>
-          <button onClick={resetToFree}
-            style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-3)', fontSize: 13, cursor: 'pointer' }}>
-            Reset to Free (testing)
-          </button>
+          {/* Dev-only: shipping a one-tap "wipe my tier" button to real users is
+              a footgun (a tester tapped it and lost Pro). Kept for local runs. */}
+          {process.env.NODE_ENV === 'development' && (
+            <button onClick={resetToFree}
+              style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-3)', fontSize: 13, cursor: 'pointer' }}>
+              Reset to Free (testing)
+            </button>
+          )}
         </div>
       </Screen>
     );
@@ -153,6 +177,52 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
             {upiAvailable ? ' UPI or card' : ' card'}, your choice.
           </p>
         </div>
+      ) : live ? (
+        /* ── Real purchase: hosted checkout + signed licence key ───────────── */
+        <>
+          <button
+            onClick={() => { hapticSelect(); openCheckout(); }}
+            style={{
+              width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
+              background: accentHex, color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer',
+              boxShadow: `0 6px 18px ${accentHex}55`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+            <DSIcons.Lock size={16} color="#fff" /> Buy Pro — {price.formatted}
+          </button>
+          <p style={{ fontSize: 11.5, color: 'var(--text-4)', textAlign: 'center', margin: '10px 0 20px', lineHeight: 1.6 }}>
+            Opens secure checkout in your browser{upiAvailable ? ' — cards, UPI and netbanking' : ''}.
+            Your licence key arrives by email.
+          </p>
+
+          <div style={{ height: 1, background: 'var(--border-sm)', margin: '0 0 18px' }} />
+
+          <Label>Already have a licence key?</Label>
+          <input
+            value={licenseKey}
+            onChange={(e) => { setLicenseKey(e.target.value); setLicenseErr(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleActivate(); }}
+            placeholder="AUTHNO-…" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            style={{ ...inputStyle, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12.5 }}
+          />
+          {licenseErr && (
+            <p style={{ fontSize: 11.5, color: 'var(--color-danger, #e5484d)', margin: '8px 0 0' }}>{licenseErr}</p>
+          )}
+          <button
+            onClick={handleActivate}
+            disabled={!licenseKey.trim() || activating}
+            style={{
+              width: '100%', marginTop: 12, padding: '12px 0', borderRadius: 12, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: licenseKey.trim() ? 'var(--text-1)' : 'var(--text-5)',
+              fontSize: 13.5, fontWeight: 700, cursor: licenseKey.trim() && !activating ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+            {activating ? (<><Spinner /> Verifying…</>) : 'Activate Pro'}
+          </button>
+          <p style={{ fontSize: 11, color: 'var(--text-5)', textAlign: 'center', marginTop: 12 }}>
+            Verified on your device — works offline, on every device you own.
+          </p>
+        </>
       ) : (
         <>
           {/* Payment method toggle — UPI is India-only */}
@@ -226,11 +296,14 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
 
   return (
     <Screen accentHex={accentHex} onClose={onClose} title="Upgrade to Pro" wide={wide}>
-      {/* Mock banner — makes clear no real charge occurs */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', borderRadius: 10, background: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)', marginBottom: 20 }}>
-        <DSIcons.Flask size={16} color="var(--color-warning)" />
-        <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Demo checkout — no real payment is processed. Submitting unlocks Pro locally for testing.</span>
-      </div>
+      {/* Demo banner — only when this build has no real gateway configured, so
+          a live build never carries a "this isn't real" notice. */}
+      {!live && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', borderRadius: 10, background: 'var(--color-warning-bg)', border: '1px solid var(--color-warning)', marginBottom: 20 }}>
+          <DSIcons.Flask size={16} color="var(--color-warning)" />
+          <span style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Demo checkout — no real payment is processed. Submitting unlocks Pro locally for testing.</span>
+        </div>
+      )}
 
       {status !== 'success' && (
         <div style={{ marginBottom: 24 }}>

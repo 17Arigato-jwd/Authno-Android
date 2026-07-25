@@ -163,6 +163,21 @@ if (!gotTheLock) {
     } catch (e) { console.error("[linux launcher icon]", e); }
   }
 
+  // Open a URL in the OS browser. Renderer-supplied URLs are untrusted, so this
+  // hard-refuses anything that isn't https — shell.openExternal on a file:// or
+  // custom-scheme URL can launch local programs.
+  ipcMain.handle("open-external", async (_e, url) => {
+    try {
+      const u = new URL(String(url));
+      if (u.protocol !== "https:") return { ok: false, error: "blocked-scheme" };
+      const { shell } = require("electron");
+      await shell.openExternal(u.toString());
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  });
+
   ipcMain.handle("get-app-icon", () => readIconPref());
   ipcMain.handle("set-app-icon", (_e, id) => {
     try {

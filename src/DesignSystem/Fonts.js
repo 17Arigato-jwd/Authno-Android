@@ -7,7 +7,7 @@
  */
 
 import {
-  APP_VERSION, APP_NAME, APP_AUTHOR, APP_SUPPORT_EMAIL, APP_REPOSITORY, APP_BUILD_DATE,
+  APP_VERSION, APP_NAME, APP_AUTHOR, APP_SUPPORT_EMAIL, APP_WEBSITE, APP_BUILD_DATE,
 } from '../version';
 
 // ── Font loader ───────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ export const APP_META = {
   buildDate:    APP_BUILD_DATE,
   platform:     detectPlatform(),
   author:       APP_AUTHOR,
-  repository:   APP_REPOSITORY,
+  website:      APP_WEBSITE,
   supportEmail: APP_SUPPORT_EMAIL,
 };
 
@@ -92,14 +92,14 @@ export const ATTRIBUTION = [
     name:    'JSZip',
     author:  'Stuart Knightley',
     licence: 'MIT',
-    url:     'https://stuk.github.io/jszip/',
+    url:     'https://www.npmjs.com/package/jszip',
     note:    'Reads DOCX / ODT / EPUB archives when importing books',
   },
   {
     name:    'PDF.js',
     author:  'Mozilla',
     licence: 'Apache-2.0',
-    url:     'https://mozilla.github.io/pdf.js/',
+    url:     'https://www.npmjs.com/package/pdfjs-dist',
     note:    'Extracts text from PDFs when importing books',
   },
   {

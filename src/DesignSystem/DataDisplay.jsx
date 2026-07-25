@@ -252,10 +252,10 @@ export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accen
 
       {/* Footer */}
       <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 8 }}>
-        {meta.repository && (
-          <a href={meta.repository} target="_blank" rel="noopener noreferrer"
+        {meta.website && (
+          <a href={meta.website} target="_blank" rel="noopener noreferrer"
             style={{ fontFamily: TYPOGRAPHY.mono, fontSize: TYPOGRAPHY.size.sm, color: COLORS.textSubtle, textDecoration: 'none' }}>
-            {meta.repository}
+            {meta.website}
           </a>
         )}
         {meta.supportEmail && (

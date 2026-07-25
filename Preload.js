@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('electron', {
   send:    (channel, data) => ipcRenderer.send(channel, data),
   receive: (channel, func) => ipcRenderer.on(channel, (_event, ...args) => func(...args)),
 
+  // ── Open a URL in the user's real browser (checkout pages must show a real
+  //    address bar; main.js refuses anything that isn't https). ──
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
   // ── App icon switcher (desktop) — swaps the taskbar/window icon at runtime ──
   setAppIcon: (id) => ipcRenderer.invoke('set-app-icon', id),
   getAppIcon: ()   => ipcRenderer.invoke('get-app-icon'),

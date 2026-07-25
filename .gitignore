@@ -78,3 +78,6 @@ android/app/google-services.json
 # Build output
 android/app/build/
 android/app/src/main/assets/public/
+
+# Licence signing private key — minting keys for buyers (NEVER commit)
+authno-license-private.json
