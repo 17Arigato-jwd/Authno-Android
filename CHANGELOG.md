@@ -3,6 +3,29 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.11
+
+_The creator's note, a friendlier welcome, and premium put on hold._
+
+### Onboarding
+
+- **A proper hello.** The creator's note is now written by Varchas, with a
+  photo and a real hand-drawn signature — no more placeholder text.
+- **Rewritten welcome screen** copy.
+- **Fixed: the welcome feature cards were unreadable on light themes.** They
+  used hard-coded white-on-white styling, so on Light, Paper and Sepia they
+  were effectively invisible.
+- The walkthrough no longer opens the upgrade screen the moment you finish
+  signing up — you've just been given a 7-day trial.
+
+### Pro
+
+- **Purchasing is switched off for now.** Premium features show a friendly
+  "this is a Premium feature — coming soon" note instead of a checkout you
+  can't complete yet. Everything stays unlocked during your trial.
+- Removed the "Reset to Free (testing)" button that was shipping to real users
+  on the Pro screen.
+
 ## 1.1.18-beta.10
 
 _A much more hands-on first-book walkthrough, and the features it teaches._
