@@ -6,8 +6,15 @@
 // payment gateway or backend is wired. When real Google Play Billing lands,
 // only this module and the billing page change.
 //
-// Trial layer: After onboarding, user gets 7-day free access to Pro features.
+// Trial layer: After onboarding, user gets free access to Pro features.
 // isTrialActive() extends Pro access. trialDaysLeft() helps render countdown UI.
+//
+// Two trial clocks, in priority order:
+//   1. The invite access key's signed `te` (trial end) — authoritative when
+//      present. It is inside an ECDSA signature, so reinstalling, clearing
+//      storage or winding the device clock cannot restart or extend it.
+//   2. The legacy localStorage start-stamp, for builds with no invite gate.
+// setAccessTrialEnd() is called once on boot with the verified payload.
 
 export const ENTITLEMENTS = { FREE: 'free', PRO: 'pro', TRIAL: 'trial' };
 
@@ -15,6 +22,21 @@ const KEY = 'authno_tier';
 const TRIAL_START_KEY = 'authno_trial_started_at';
 const TRIAL_DAYS = 7;
 const _subs = new Set();
+
+/** Absolute trial end (epoch ms) from the signed access key, when gated. */
+let _accessTrialEnd = null;
+
+/**
+ * Publish the trial deadline carried by a verified access key. Passing null
+ * (no key, or a key predating trials) falls back to the legacy clock.
+ */
+export function setAccessTrialEnd(ms) {
+  const v = Number(ms);
+  _accessTrialEnd = Number.isFinite(v) && v > 0 ? v : null;
+  for (const fn of _subs) { try { fn(getEntitlement()); } catch (e) { console.error(e); } }
+}
+
+export function getAccessTrialEnd() { return _accessTrialEnd; }
 
 export function getEntitlement() {
   try { return localStorage.getItem(KEY) ?? ENTITLEMENTS.FREE; }
@@ -28,6 +50,8 @@ export function isPro() {
 
 export function isTrialActive() {
   if (getEntitlement() !== ENTITLEMENTS.TRIAL) return false;
+  // Signed deadline wins whenever the build is invite-gated.
+  if (_accessTrialEnd !== null) return Date.now() < _accessTrialEnd;
   try {
     const startedAt = localStorage.getItem(TRIAL_START_KEY);
     if (!startedAt) return false;
@@ -42,6 +66,9 @@ export function isTrialActive() {
 
 export function trialDaysLeft() {
   if (!isTrialActive()) return 0;
+  if (_accessTrialEnd !== null) {
+    return Math.max(0, Math.ceil((_accessTrialEnd - Date.now()) / (1000 * 60 * 60 * 24)));
+  }
   try {
     const startedAt = localStorage.getItem(TRIAL_START_KEY);
     if (!startedAt) return 0;

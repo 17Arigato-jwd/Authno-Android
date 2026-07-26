@@ -28,6 +28,7 @@ import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
 import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
+import MembershipCard from './MembershipCard';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
 
@@ -679,6 +680,9 @@ function GeneralPanel(props) {
             <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
           </RRow>
         )}
+        <RRow label="Interface sounds" description="Quiet paper-and-brass cues for unlocking, saving and milestones">
+          <Toggle on={settings.soundsEnabled ?? isAndroid()} onChange={(v) => onChange({ soundsEnabled: v })} accentHex={accentHex} />
+        </RRow>
       </RCard>
     </div>
   );
@@ -1016,6 +1020,9 @@ function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
 
+      {/* Renders only on invite-gated builds — see MembershipCard. */}
+      <MembershipCard accentHex={accentHex} />
+
       {/* Authno Pro (U10) */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
@@ -1264,6 +1271,9 @@ export const DEFAULT_SETTINGS = {
   restoreOpenBooks: true,
   dailyWordGoal: 500,
   hapticsEnabled: true,
+  // Sound defaults on for phones (where it reads as polish) and off on
+  // desktop, where an unexpected noise from a writing app is an intrusion.
+  soundsEnabled: isAndroid(),
   reduceMotion: false,         // when true (or OS reduce-motion), animations are minimised
   // materialYou toggle removed in beta.4 — Material You is a theme now
   // (theme/ThemeMaterialYou.js); the old flag migrates to authno_theme_id.
