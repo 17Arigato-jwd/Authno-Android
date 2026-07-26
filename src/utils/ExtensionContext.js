@@ -17,6 +17,7 @@ import {
   getExtensionConfig,
   setExtensionConfig,
   clearExtensionConfig,
+  satisfiesMinAppVersion,
 } from './extensionLoader';
 import {
   installExtbkBytes,
@@ -67,13 +68,28 @@ export function ExtensionProvider({ children, onNavigate }) {
       // U10: premium-tier extensions require Pro. Locked extensions stay
       // visible in the list (with an upgrade prompt) but are never activated,
       // so their code and hooks don't run on the free tier.
+      //
+      // minAppVersion was previously declared-and-ignored: an extension built
+      // against a newer API installed fine and then failed at some arbitrary
+      // point deep inside activate(). It's now a first-class gate with the same
+      // shape as the tier lock, so the list can explain the real reason.
       const pro = isPro();
-      const annotated = found.map(m => ({ ...m, _locked: m.tier === 'premium' && !pro }));
+      const annotated = found.map(m => ({
+        ...m,
+        _locked: m.tier === 'premium' && !pro,
+        _tooOld: !satisfiesMinAppVersion(m),
+      }));
       setExtensions(annotated);
 
       // Activate each unlocked extension
       for (const manifest of annotated) {
         if (manifest._locked) continue;
+        if (manifest._tooOld) {
+          console.warn(
+            `[ExtensionContext] ${manifest.id} needs AuthNo ${manifest.minAppVersion} or newer — not activating.`,
+          );
+          continue;
+        }
         try {
           await activateExtension(manifest, onNavigate);
         } catch (err) {

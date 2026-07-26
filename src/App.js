@@ -1146,6 +1146,49 @@ function AppInner({ navigateRef }) {
     return () => clearTimeout(autoSaveTimer.current);
   }, [android, sessions]);
 
+  // ── Extension lifecycle hooks ───────────────────────────────────────────────
+  // Book open/close and chapter open are derived from state rather than fired
+  // at each of the ~15 setCurrentId call sites — one observer can't drift out
+  // of sync with the navigation code the way scattered emits would. The
+  // sessions ref keeps the effects off the sessions dependency, so a keystroke
+  // never re-fires "book opened".
+  const sessionsRef = useRef(sessions);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  const lastBookRef = useRef(null);
+  const lastChapRef = useRef(null);
+  useEffect(() => {
+    const prevId = lastBookRef.current;
+    if (prevId === currentId) return;
+    lastBookRef.current = currentId;
+    lastChapRef.current = null;
+    (async () => {
+      if (prevId && hookCount('onBookClose') > 0) {
+        const prev = sessionsRef.current?.find((s) => s.id === prevId);
+        if (prev) await fireHook('onBookClose', { session: prev });
+      }
+      if (currentId && hookCount('onBookOpen') > 0) {
+        const next = sessionsRef.current?.find((s) => s.id === currentId);
+        if (next) await fireHook('onBookOpen', { session: next });
+      }
+    })();
+  }, [currentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (currentChapterIdx == null || !currentId) return;
+    const key = `${currentId}:${currentChapterIdx}`;
+    if (lastChapRef.current === key) return;
+    lastChapRef.current = key;
+    if (hookCount('onChapterOpen') === 0) return;
+    const s = sessionsRef.current?.find((x) => x.id === currentId);
+    if (!s) return;
+    const chap = (s.chapters || []).find((c) => c.chap_idx === currentChapterIdx);
+    fireHook('onChapterOpen', {
+      session: s,
+      chapIdx: currentChapterIdx,
+      chapTitle: chap?.title ?? `Chapter ${currentChapterIdx}`,
+    });
+  }, [currentId, currentChapterIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSaveSettings = (patch) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
@@ -1174,9 +1217,11 @@ function AppInner({ navigateRef }) {
   const newBook = () => {
     const id = Date.now().toString(), now = new Date().toISOString();
     const firstChap = { chap_idx: 1, title: "Chapter 1", order: 1, content: "", created: now, updated: now };
-    setSessions((s) => [{ id, title: "Untitled Book", preview: "", content: "", type: "book", created: now, updated: now, chapters: [firstChap], authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "" }, ...s]);
+    const book = { id, title: "Untitled Book", preview: "", content: "", type: "book", created: now, updated: now, chapters: [firstChap], authors: [], devices: [], genre: "", description: "", language: "en", publisher: "", isbn: "" };
+    setSessions((s) => [book, ...s]);
     setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
     if (android) setDrawerOpen(false);
+    if (hookCount('onBookCreate') > 0) fireHook('onBookCreate', { session: book });
   };
   // ── First-book coach handlers ──────────────────────────────────────────────
   const firstTourBookRef = useRef(null);
@@ -1463,6 +1508,7 @@ function AppInner({ navigateRef }) {
     const book = sessions.find((s) => s.id === id);
     const updated = sessions.filter((s) => s.id !== id);
     setSessions(updated);
+    if (hookCount('onBookDelete') > 0) fireHook('onBookDelete', { sessionId: id, title: book?.title ?? '' });
     if (id === currentId) { setCurrentId(null); setView("home"); }
     // The mirror effect skips empty arrays (it can't tell "deleted the last
     // book" from "not loaded yet"), so removals write the mirror directly.
@@ -1515,10 +1561,15 @@ function AppInner({ navigateRef }) {
   const nextChapIdx = currentChapterPos < sortedChapters.length - 1 ? sortedChapters[currentChapterPos + 1].chap_idx : null;
 
   // ── Export helpers ────────────────────────────────────────────────────────
-  const handleExportTxt  = useCallback(async () => { if (!current) return; const { exportAsTxt }  = await import('./utils/storage'); try { await exportAsTxt(current);  } catch (e) { showError('exportTxt',  e); } }, [current, showError]);
-  const handleExportHtml = useCallback(async () => { if (!current) return; const { exportAsHtml } = await import('./utils/storage'); try { await exportAsHtml(current); } catch (e) { showError('exportHtml', e); } }, [current, showError]);
-  const handleExportEpub = useCallback(async () => { if (!current) return; const { exportAsEpub } = await import('./utils/storage'); try { await exportAsEpub(current); } catch (e) { showError('exportEpub', e); } }, [current, showError]);
-  const handleExportPdf  = useCallback(async () => { if (!current) return; const { exportAsPdf }  = await import('./utils/storage'); try { await exportAsPdf(current); emitTourSignal('export'); } catch (e) { showError('exportPdf', e); } }, [current, showError]);
+  // A successful export fires onExport so extensions can post-process or ship
+  // the result somewhere. It runs after the export resolves, never on failure.
+  const afterExport = useCallback((session, format) => {
+    if (hookCount('onExport') > 0) fireHook('onExport', { session, format });
+  }, []);
+  const handleExportTxt  = useCallback(async () => { if (!current) return; const { exportAsTxt }  = await import('./utils/storage'); try { await exportAsTxt(current);  afterExport(current, 'txt');  } catch (e) { showError('exportTxt',  e); } }, [current, showError, afterExport]);
+  const handleExportHtml = useCallback(async () => { if (!current) return; const { exportAsHtml } = await import('./utils/storage'); try { await exportAsHtml(current); afterExport(current, 'html'); } catch (e) { showError('exportHtml', e); } }, [current, showError, afterExport]);
+  const handleExportEpub = useCallback(async () => { if (!current) return; const { exportAsEpub } = await import('./utils/storage'); try { await exportAsEpub(current); afterExport(current, 'epub'); } catch (e) { showError('exportEpub', e); } }, [current, showError, afterExport]);
+  const handleExportPdf  = useCallback(async () => { if (!current) return; const { exportAsPdf }  = await import('./utils/storage'); try { await exportAsPdf(current); afterExport(current, 'pdf'); emitTourSignal('export'); } catch (e) { showError('exportPdf', e); } }, [current, showError, afterExport]);
 
   // First-book coach: signal History opening (satisfies that step's gate).
   useEffect(() => { if (historyOpen) emitTourSignal('history-open'); }, [historyOpen]);

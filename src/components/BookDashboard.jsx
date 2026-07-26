@@ -96,15 +96,19 @@ export function formatWords(n) {
 }
 
 /**
- * Analyse a streak log and return the longest ever continuous streak plus
- * whether that streak is still active (ends today or yesterday).
+ * Analyse a streak log and return the current streak plus the longest ever one.
  *
  * The log is a flat object keyed by 'YYYY-MM-DD'.  Multiple chapters write
  * into the same shared log so duplicate dates are inherently deduplicated.
  *
- * Returns { days: number, active: boolean }
- *   days   — length of the longest continuous run of logged dates ever
- *   active — true if that longest run is still ongoing (ends today/yesterday)
+ * A day only counts when its GOAL WAS MET — the same rule the flame uses
+ * (Streak.jsx isEntryMet). This used to count every logged day, so a book with
+ * fifteen days of partial sessions showed "Streak 15 Days" right beside a flame
+ * badge reading 7. Date keys are built from local time for the same reason
+ * getTodayKey() does: toISOString() is UTC and shifted the run by a day either
+ * side of midnight for anyone not on UTC.
+ *
+ * Returns { days: number, active: boolean, best: number }
  */
 // ─── Cover downscale (2F) ─────────────────────────────────────────────────────
 // Covers are embedded in the .authbook META (sharing its RS parity), so a raw
@@ -141,9 +145,17 @@ function downscaleCover(file) {
 function analyseStreak(streak) {
   if (!streak?.log) return { days: 0, active: false, best: 0 };
 
-  // Collect every unique date string that has a truthy entry, sort ascending
+  // Only days that MET the goal count. A bare number entry is a legacy row —
+  // normalizeLog() in Streak.jsx measures those against the current goal.
+  const fallbackGoal = streak.goalWords ?? 0;
   const dates = Object.keys(streak.log)
-    .filter(k => streak.log[k])
+    .filter((k) => {
+      const v = streak.log[k];
+      if (!v) return false;
+      const words = typeof v === 'number' ? v : v.words;
+      const goal  = typeof v === 'number' ? fallbackGoal : v.goal;
+      return typeof words === 'number' && words >= (goal ?? fallbackGoal);
+    })
     .sort(); // lexicographic sort works perfectly for ISO dates
 
   if (dates.length === 0) return { days: 0, active: false, best: 0 };
@@ -160,7 +172,7 @@ function analyseStreak(streak) {
   // "haven't written yet today"). The old logic only surfaced the longest-ever
   // run, so a live 3-day streak was invisible behind a stale 10-day best.
   const met = new Set(dates);
-  const dayKey = (d) => d.toISOString().slice(0, 10);
+  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const cursor = new Date();
   if (!met.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
   let current = 0;

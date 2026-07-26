@@ -4,9 +4,20 @@
  * Lightweight singleton hook bus that lets extensions react to session
  * lifecycle events without touching core App.js logic.
  *
- * Supported hooks (v1.1.14):
- *   onSave — fired after every content change (trigger: 'change') and after
- *            every successful disk write (trigger: 'autosave').
+ * Supported hooks:
+ *   onSave        { session, trigger }  — after every content change
+ *                 (trigger: 'change') and after every successful disk write
+ *                 (trigger: 'autosave').
+ *   onBookOpen    { session }           — a book became the active book.
+ *   onBookClose   { session }           — the active book was closed/switched away.
+ *   onChapterOpen { session, chapIdx, chapTitle } — the editor opened a chapter.
+ *   onBookCreate  { session }           — a new book was created.
+ *   onBookDelete  { sessionId, title }  — a book was removed from the library.
+ *   onExport      { session, format }   — an export finished (txt|html|epub|pdf).
+ *
+ * Handler names are not validated — registering for a hook that is never fired
+ * is silently inert, which keeps forward compatibility cheap for extensions
+ * targeting a newer host.
  *
  * Usage (in an extension's entry point, via ExtensionContext):
  *
@@ -24,6 +35,18 @@
  */
 
 const _hooks = {};   // { hookName: [fn, fn, ...] }
+
+/** Every hook name the host currently fires. Exported so docs and the
+ *  developer settings panel can list them without drifting from reality. */
+export const HOOK_NAMES = Object.freeze([
+  'onSave',
+  'onBookOpen',
+  'onBookClose',
+  'onChapterOpen',
+  'onBookCreate',
+  'onBookDelete',
+  'onExport',
+]);
 
 /**
  * Register a handler for a named hook.

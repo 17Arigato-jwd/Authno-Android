@@ -74,15 +74,33 @@ export function insertHtmlAtSelection(editorEl, html) {
 
 // ── HTML → text (entity-safe) ─────────────────────────────────────────────────
 
+const TEXT_BLOCK_TAGS = /^(P|DIV|H[1-6]|LI|UL|OL|BLOCKQUOTE|PRE|TABLE|TR|HR|SECTION|ARTICLE|FIGURE|FIGCAPTION)$/;
+
+function serializeText(node, out) {
+  for (const child of node.childNodes) {
+    if (child.nodeType === 3) { out.push(child.nodeValue || ''); continue; }
+    if (child.nodeType !== 1) continue;
+    if (child.tagName === 'BR') { out.push('\n'); continue; }
+    serializeText(child, out);
+    if (TEXT_BLOCK_TAGS.test(child.tagName)) out.push('\n');
+  }
+}
+
 /**
  * Convert chapter HTML to plain text. Unlike the old regex tag-strip, this
  * also DECODES entities — previews used to show raw "&nbsp;" to the user.
+ *
+ * Block elements are separated by newlines. Plain `textContent` glued them
+ * together, so the studio preview read "…a wet thumb.Her breathing had…" and
+ * textStats().paragraphs — which splits on \n — always reported 1.
  */
 export function htmlToText(html) {
   if (!html) return '';
   const div = document.createElement('div');
   div.innerHTML = html;
-  return (div.textContent || '').replace(/ /g, ' ');
+  const out = [];
+  serializeText(div, out);
+  return out.join('').replace(/\n{3,}/g, '\n\n').replace(/ /g, ' ');
 }
 
 /** Preview snippet used by session lists. */

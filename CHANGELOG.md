@@ -3,6 +3,43 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.18-beta.12
+
+_Extensions get a working toolchain, and two long-standing display bugs go._
+
+### Extensions
+
+- **`minAppVersion` is now enforced.** It was accepted by the manifest and then
+  ignored, so an extension built against a newer AuthNo installed cleanly and
+  failed later at some arbitrary point. Extensions that need a newer build now
+  say so in the list instead of half-working.
+- **The extension API no longer requires impersonating Cloud Backup.** Any
+  extension page can now reach the library, exports, its own config and toasts
+  through the documented host bridge.
+- **Extensions can react to more than saving.** Opening and closing a book,
+  opening a chapter, creating or deleting a book, and finishing an export all
+  notify extensions now.
+- **Fixed: reinstalling an extension made it do its work twice.** Handlers from
+  the previous install were never removed, so each reinstall stacked another
+  copy.
+
+### Fixes
+
+- **The book dashboard and the flame no longer disagree about your streak.** The
+  dashboard counted every day you'd written anything, while the flame counted
+  only days you hit your goal — a book with fifteen partial days showed
+  "Streak 15 Days" beside a flame reading 7.
+- **Chapter previews no longer run paragraphs together.** Paragraph counts in
+  chapter statistics were wrong for the same reason and always reported 1.
+
+### Developer tooling
+
+- **extbk-sandbox 2.0** now actually runs your extension. It previously
+  displayed the source file as text without ever calling `activate()`.
+- **extbk-cli 1.1** stops packing `node_modules` and previous builds into your
+  archive, audits the manifest before writing bytes, and adds `extbk watch` and
+  `extbk init`.
+
 ## 1.1.18-beta.11
 
 _The creator's note, a friendlier welcome, and premium put on hold._

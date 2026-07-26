@@ -258,19 +258,55 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     extension: ${JSON.stringify(extension)},
   };
 
-  // N7 (additive): generic host surface for ANY ui-file extension. The
-  // CloudBackup-specific methods above are kept verbatim for compatibility;
-  // new extensions should prefer this API.
+  // Generic host surface for ANY ui-file extension. The CloudBackup-specific
+  // methods above are kept verbatim for compatibility; everything new belongs
+  // here. Until now this was a thin subset, so a third-party extension that
+  // wanted the library, an export, or a toast had to reach into
+  // window.CloudBackupAPI and pretend to be the cloud-backup extension.
   window.AuthnoHostAPI = {
+    version: 2,
     extension: window.CloudBackupAPI.extension,
-    storage: window.CloudBackupAPI.storage,
+
+    // ── Scoped key-value storage ────────────────────────────────────────────
+    // Values are strings on the wire; the JSON helpers exist because every
+    // extension was hand-rolling the same parse/stringify with the same
+    // swallow-the-error bug.
+    storage: {
+      get: function(k)    { return call('storage.get', [k]); },
+      set: function(k, v) { return call('storage.set', [k, v]); },
+      remove: function(k) { return call('storage.set', [k, null]); },
+      getJSON: function(k, fallback) {
+        return call('storage.get', [k]).then(function(v) {
+          if (v === null || v === undefined) return fallback === undefined ? null : fallback;
+          try { return JSON.parse(v); } catch (e) { return fallback === undefined ? null : fallback; }
+        });
+      },
+      setJSON: function(k, v) { return call('storage.set', [k, JSON.stringify(v)]); },
+    },
+
+    // ── Navigation & chrome ─────────────────────────────────────────────────
     navigate:     function(pageId, session) { return call('navigate', [pageId, session]); },
+    close:        function() { window.parent.postMessage({ type: 'ext-close' }, '*'); },
     openBrowser:  function(url)  { return call('openBrowser', [url]); },
     closeBrowser: function()     { return call('closeBrowser', []); },
+    toast:        function(message, opts) { return call('host.toast', [message, opts || {}]); },
+
+    // ── Books ───────────────────────────────────────────────────────────────
     getSession:   function()     { return call('host.getSession', []); },
+    getSessions:  function()     { return call('getSessions', []); },
+    exportSessionAs: function(session, format) { return call('exportSessionAs', [session, format]); },
+    importSession:   function(base64)          { return call('importSession', [base64]); },
+    encodeSession:   function(session)         { return call('host.encodeSession', [session]); },
     // U9: associate the current book with a remote/external id — persisted on
     // the session and exposed back through the {externalId} template token.
     setBookExternalId: function(bookId, externalId) { return call('host.setBookExternalId', [bookId, externalId]); },
+
+    // ── Extension config (the auth-form / manifest field store) ─────────────
+    getConfig: function()      { return call('host.getConfig', []); },
+    setConfig: function(patch) { return call('host.setConfig', [patch]); },
+
+    // ── Host info ───────────────────────────────────────────────────────────
+    getAppInfo: function() { return call('host.getAppInfo', []); },
   };
 
   // Expose Capacitor native plugins needed by extension code.
@@ -378,6 +414,30 @@ ${fileCode}
         else if (method === 'host.getSession') {
           // Strip heavy fields; the iframe only needs identity + text.
           result = session ? { id: session.id, title: session.title, externalId: session.externalId ?? '', chapters: (session.chapters || []).map(c => ({ chap_idx: c.chap_idx, title: c.title, order: c.order })) } : null;
+        }
+        else if (method === 'host.toast') {
+          const { variant = 'info' } = args[1] ?? {};
+          const { toast } = await import('../DesignSystem');
+          toast(String(args[0] ?? ''), { variant });
+          result = null;
+        }
+        else if (method === 'host.encodeSession') {
+          const api = window.AuthNoExtensionAPI;
+          if (!api?.encodeSession) throw new Error('encodeSession not available');
+          result = await api.encodeSession(args[0]);
+        }
+        else if (method === 'host.getConfig') {
+          const { getExtensionConfig } = await import('../utils/extensionLoader');
+          result = getExtensionConfig(extension.id);
+        }
+        else if (method === 'host.setConfig') {
+          const { setExtensionConfig } = await import('../utils/extensionLoader');
+          setExtensionConfig(extension.id, args[0] ?? {});
+          result = null;
+        }
+        else if (method === 'host.getAppInfo') {
+          const { APP_VERSION, APP_NAME } = await import('../version');
+          result = { name: APP_NAME, version: APP_VERSION, platform: isAndroid() ? 'android' : 'desktop' };
         }
         else if (method === 'host.setBookExternalId') {
           // U9: App owns session state — hand it the association via an event.

@@ -27,6 +27,8 @@
 import { registerHook }  from './sessionHooks';
 import { logError }      from './ErrorLogger';
 import { isAndroid }     from './platform';
+import { toast as _toast } from '../DesignSystem';
+import { APP_VERSION }   from '../version';
 // OAuth browser helpers — use native OAuthPlugin (Custom Tabs) and
 // GoogleSignInPlugin (Credential Manager) instead of @capacitor/browser.
 // @capacitor/browser hardcodes com.android.chrome which causes a silent hang
@@ -42,7 +44,7 @@ const EXT_BASE_URL = 'https://localhost/extensions';
 
 function makeExtStorage(extId) {
   const ns = `__ext_kv_${extId}__`;
-  return {
+  const store = {
     async get(key) {
       try { return localStorage.getItem(ns + key); } catch { return null; }
     },
@@ -55,7 +57,25 @@ function makeExtStorage(extId) {
         }
       } catch {}
     },
+    async remove(key) { return store.set(key, null); },
+    // Every extension was hand-rolling this pair, each with its own version of
+    // the "what if the JSON is corrupt" bug. Bad JSON resolves to `fallback`.
+    async getJSON(key, fallback = null) {
+      const raw = await store.get(key);
+      if (raw === null || raw === undefined) return fallback;
+      try { return JSON.parse(raw); } catch { return fallback; }
+    },
+    async setJSON(key, val) { return store.set(key, JSON.stringify(val)); },
+    /** Every key this extension has stored, without the namespace prefix. */
+    async keys() {
+      try {
+        return Object.keys(localStorage)
+          .filter((k) => k.startsWith(ns))
+          .map((k) => k.slice(ns.length));
+      } catch { return []; }
+    },
   };
+  return store;
 }
 
 // ── window.AuthNoExtensionAPI ────────────────────────────────────────────────
@@ -192,6 +212,18 @@ export async function activateExtension(manifest, navigateFn) {
     return;
   }
 
+  // Hooks an extension registers during activate() are tracked here and torn
+  // down on deactivate. Previously only an explicit `return () => {...}` from
+  // activate() cleaned anything up, so an extension that forgot (or threw
+  // after registering) left its handlers on the bus — and every reinstall
+  // stacked another copy, firing the same upload N times.
+  const ownedUnsubs = [];
+  const trackedRegisterHook = (hookName, handler) => {
+    const off = registerHook(hookName, handler);
+    ownedUnsubs.push(off);
+    return off;
+  };
+
   let deactivate;
   try {
     // openBrowser: uses Android Custom Tabs via OAuthPlugin (no Chrome lock-in)
@@ -212,22 +244,39 @@ export async function activateExtension(manifest, navigateFn) {
       return _GoogleSignIn.signIn({ clientId });
     };
 
-    deactivate = mod.activate({ registerHook, storage, navigate, extension: manifest, openBrowser, closeBrowser, googleSignIn });
+    deactivate = mod.activate({
+      registerHook: trackedRegisterHook,
+      storage,
+      navigate,
+      extension: manifest,
+      openBrowser,
+      closeBrowser,
+      googleSignIn,
+      toast: (message, opts = {}) => _toast(String(message ?? ''), opts),
+      app: { name: 'AuthNo', version: APP_VERSION, platform: isAndroid() ? 'android' : 'desktop' },
+    });
   } catch (err) {
     logError('extensionRuntime:activate', err, { extId });
     console.error(`[extensionRuntime] activate() threw for ${extId}:`, err.message);
+    // Roll back any hooks the extension managed to register before it threw —
+    // a half-activated extension used to keep listening forever.
+    for (const off of ownedUnsubs) { try { off(); } catch {} }
     return;
   }
 
-  if (typeof deactivate === 'function') {
-    _active.set(extId, deactivate);
-  }
+  // Always register a teardown, even when activate() returns nothing: the
+  // tracked hook unsubscribes have to run either way.
+  _active.set(extId, () => {
+    for (const off of ownedUnsubs) { try { off(); } catch {} }
+    if (typeof deactivate === 'function') deactivate();
+  });
 
   console.log(`[extensionRuntime] ✓ Activated: ${extId} v${version}`);
 }
 
 /**
- * Deactivate one extension by ID (calls its deactivate() cleanup if registered).
+ * Deactivate one extension by ID: unregisters every hook it opened during
+ * activate(), then calls its own deactivate() cleanup if it returned one.
  */
 export async function deactivateExtension(extId) {
   const fn = _active.get(extId);
