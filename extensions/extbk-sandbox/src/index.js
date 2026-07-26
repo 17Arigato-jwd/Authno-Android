@@ -26,6 +26,8 @@ import express           from 'express';
 import { WebSocketServer } from 'ws';
 import chokidar          from 'chokidar';
 import chalk             from 'chalk';
+import { harnessHtml, bridgeJs } from './harness.js';
+import { makeLibrary, slimSession, sessionList, HOOKS } from './mock.js';
 
 const __dirname   = path.dirname(fileURLToPath(import.meta.url));
 const INSTALL_DIR = path.resolve(__dirname, '..');
@@ -86,9 +88,76 @@ app.use('/ext', express.static(src, { etag: false, maxAge: 0 }));
 
 // ── Mock session API ───────────────────────────────────────────────────────────
 
-let mockSession = makeMockSession();
+let library     = makeLibrary();
+let mockSession = library[0];
+/** Per-extension key-value store, matching the namespaced one on device. */
+const extStorage = new Map();
+/** The credential store an auth-form page writes on device. */
+let extConfig = {};
 
-app.get('/api/session', (_req, res) => res.json(mockSession));
+// The harness: imports the entry point and calls activate(). This replaced
+// `<iframe src="/ext/index.js">`, which merely displayed the source as text.
+app.get('/harness', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(harnessHtml(manifest));
+});
+
+app.get('/api/bridge.js', (_req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.send(bridgeJs());
+});
+
+// ── Scoped storage ────────────────────────────────────────────────────────────
+app.get('/api/storage/get', (req, res) =>
+  res.json({ value: extStorage.has(req.query.key) ? extStorage.get(req.query.key) : null }));
+
+app.post('/api/storage/set', (req, res) => {
+  const { key, value } = req.body ?? {};
+  if (value === null || value === undefined) extStorage.delete(key);
+  else extStorage.set(key, String(value));
+  broadcast({ type: 'storage', keys: [...extStorage.keys()] });
+  res.json({ ok: true });
+});
+
+app.get('/api/storage/keys', (_req, res) => res.json({ keys: [...extStorage.keys()] }));
+
+app.post('/api/storage/clear', (_req, res) => {
+  extStorage.clear();
+  broadcast({ type: 'storage', keys: [] });
+  res.json({ ok: true });
+});
+
+// ── Config (what an auth-form page writes) ───────────────────────────────────
+app.get('/api/config', (_req, res) => res.json({ config: extConfig }));
+app.post('/api/config', (req, res) => {
+  extConfig = { ...extConfig, ...(req.body?.patch ?? {}) };
+  res.json({ config: extConfig });
+});
+
+// ── Library ──────────────────────────────────────────────────────────────────
+app.get('/api/sessions', (_req, res) => res.json({ sessions: sessionList(library) }));
+
+app.post('/api/session/select', (req, res) => {
+  const found = library.find((b) => b.id === req.body?.id);
+  if (found) { mockSession = found; broadcast({ type: 'session-updated', session: mockSession }); }
+  res.json({ ok: Boolean(found) });
+});
+
+app.get('/api/session', (_req, res) => res.json({ ...mockSession, slim: slimSession(mockSession) }));
+
+// Every hook the real host fires, not just onSave.
+app.get('/api/hooks', (_req, res) =>
+  res.json({ hooks: HOOKS.map(({ name, label, key }) => ({ name, label, key: key ?? name })) }));
+
+app.post('/api/hooks/fire', (req, res) => {
+  const key = req.body?.key;
+  const def = HOOKS.find((h) => (h.key ?? h.name) === key);
+  if (!def) return res.status(404).json({ error: `Unknown hook: ${key}` });
+  log(`${chalk.dim('[mock]')} fire ${def.name} (${def.label})`);
+  broadcast({ type: 'fire-hook', name: def.name, payload: def.payload(mockSession) });
+  res.json({ ok: true });
+});
 
 app.post('/api/session', (req, res) => {
   mockSession = { ...mockSession, ...req.body, updatedAt: new Date().toISOString() };
@@ -143,8 +212,14 @@ function broadcast(msg) {
 
 // ─── File watcher — hot reload ─────────────────────────────────────────────────
 
+// node_modules was previously watched too, which pinned thousands of file
+// handles and fired a reload storm on any npm install.
 const watcher = chokidar.watch(src, {
-  ignored: /(^|[/\\])\../,
+  ignored: [
+    /(^|[/\\])\../,
+    /[/\\]node_modules[/\\]/,
+    /\.(extbk|thmbk)$/,
+  ],
   persistent: true,
   ignoreInitial: true,
 });
@@ -156,6 +231,13 @@ watcher.on('all', (event, filePath) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    fatal(`Port ${port} is already in use.\n  Another sandbox may be running — try ${chalk.cyan(`--port ${port + 1}`)}.`);
+  }
+  fatal(`Server error: ${e.message}`);
+});
 
 server.listen(port, () => {
   log('');
@@ -323,9 +405,9 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
   <aside class="controls">
     <div class="section">
       <h2>Hooks</h2>
-      <button class="btn" onclick="fireHook('change')">↻ onSave — change</button>
-      <button class="btn" onclick="fireHook('autosave')">💾 onSave — autosave</button>
-      <button class="btn" onclick="fireHook('manual')">✋ onSave — manual</button>
+      <div id="hook-buttons"></div>
+      <button class="btn" onclick="reloadExt()">⟳ Re-run activate()</button>
+      <button class="btn" onclick="clearStorage()">🗑 Clear storage</button>
     </div>
     <div class="section">
       <h2>Session</h2>
@@ -355,7 +437,7 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
   <!-- Right: extension frame + log -->
   <div class="right">
     <div class="pane-header">Extension sandbox</div>
-    <iframe class="ext-frame" id="ext-frame" src="/ext/index.js" sandbox="allow-scripts allow-same-origin"></iframe>
+    <iframe class="ext-frame" id="ext-frame" src="/harness"></iframe>
     <div class="log" id="log"></div>
   </div>
 
@@ -375,10 +457,15 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
     if (msg.type === 'reload') {
       addLog('reload', 'Changed: ' + msg.file + ' — reloading extension');
       reloadExt();
+    } else if (msg.type === 'fire-hook') {
+      // Drive the harness, which owns the hook bus and calls the handlers the
+      // extension actually registered.
+      addLog('hook', 'Firing ' + msg.name);
+      postToExt({ __sandboxCmd: true, cmd: 'fire', name: msg.name, payload: msg.payload });
+      postToApp({ type: 'hook', name: msg.name, payload: msg.payload });
     } else if (msg.type === 'hook') {
-      addLog('hook', 'Hook: ' + msg.name + ' trigger=' + msg.payload.trigger);
-      postToExt({ type: 'hook', name: msg.name, payload: msg.payload });
-      // Also forward to app frame so it can react to save events
+      addLog('hook', 'Hook: ' + msg.name + ' trigger=' + (msg.payload?.trigger ?? ''));
+      postToExt({ __sandboxCmd: true, cmd: 'fire', name: msg.name, payload: msg.payload });
       postToApp({ type: 'hook', name: msg.name, payload: msg.payload });
     } else if (msg.type === 'session-updated' || msg.type === 'session-reset') {
       addLog('info', msg.type === 'session-reset' ? 'Session reset' : 'Session updated');
@@ -423,16 +510,51 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
     document.getElementById('f-content').value = '<p>Hello from the AuthNo sandbox. Edit me!</p>';
   }
 
-  async function fireHook(trigger) {
+  // Buttons are generated from the server's hook list so the sandbox cannot
+  // drift out of sync with what the app actually fires.
+  async function loadHooks() {
+    const { hooks } = await fetch('/api/hooks').then(r => r.json());
+    const box = document.getElementById('hook-buttons');
+    if (!box) return;
+    box.innerHTML = hooks.map(function (h) {
+      return '<button class="btn" data-hook="' + h.key + '">\u25B8 ' + h.label + '</button>';
+    }).join('');
+    box.querySelectorAll('button').forEach(b => {
+      b.onclick = () => fetch('/api/hooks/fire', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: b.dataset.hook }),
+      });
+    });
+  }
+  loadHooks();
+
+  async function clearStorage() {
+    await fetch('/api/storage/clear', { method: 'POST' });
+    addLog('conn', 'Extension storage cleared');
+  }
+
+  async function fireHookLegacy(trigger) {
     await fetch('/api/hooks/onSave', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trigger }),
     });
   }
 
-  function reloadExt() { const f = document.getElementById('ext-frame'); f.src = f.src; }
+  function reloadExt() { postToExt({ __sandboxCmd: true, cmd: 'reload' }); }
   function reloadApp() { const f = document.getElementById('app-frame'); if (f) f.src = f.src; }
   function postToExt(msg) { document.getElementById('ext-frame')?.contentWindow?.postMessage(msg, '*'); }
+
+  // Messages coming UP from the harness: activation status, logs, toasts.
+  window.addEventListener('message', (e) => {
+    const m = e.data;
+    if (!m || !m.__sandbox) return;
+    if (m.type === 'log')       addLog(m.level === 'err' ? 'err' : m.level === 'warn' ? 'app' : 'conn', m.text);
+    if (m.type === 'toast')     addLog('app', 'toast(' + m.variant + '): ' + m.text);
+    if (m.type === 'activated') {
+      const names = Object.entries(m.hooks || {}).map(([k, v]) => k + '×' + v).join(', ');
+      addLog('conn', 'activate() ok' + (names ? ' — listening: ' + names : ' — no hooks registered'));
+    }
+  });
   function postToApp(msg) { document.getElementById('app-frame')?.contentWindow?.postMessage(msg, '*'); }
 
   function addLog(tag, text) {

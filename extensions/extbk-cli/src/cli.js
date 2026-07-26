@@ -5,14 +5,21 @@
  * Commands:
  *   extbk init    <name>     [dir]          -- scaffold a new extension
  *   extbk build   <src-dir>  [out.extbk]   -- pack directory into .extbk
+ *   extbk watch   <src-dir>  [out.extbk]   -- rebuild on every change
  *   extbk check   <file.extbk>              -- validate structure + CRCs
  *   extbk info    <file.extbk>              -- print manifest + section table
  *   extbk unpack  <file.extbk> [dest-dir]   -- extract all sections
  */
 
+import { createRequire } from 'module';
 import { program } from 'commander';
+
+// One source of truth for the version — it used to be hard-coded here as 1.0.2
+// while package.json said 1.0.0, so `extbk --version` disagreed with npm.
+const VERSION = createRequire(import.meta.url)('../package.json').version;
 import { cmdInit }   from './commands/init.js';
 import { cmdBuild }  from './commands/build.js';
+import { cmdWatch }  from './commands/watch.js';
 import { cmdCheck }  from './commands/check.js';
 import { cmdInfo }   from './commands/info.js';
 import { cmdUnpack } from './commands/unpack.js';
@@ -20,8 +27,8 @@ import { cmdThmbkBuild } from './commands/thmbk-build.js';
 
 program
   .name('extbk')
-  .description('AuthNo extension bundle tool — VCHS-ECS binary format, v1.0.2')
-  .version('1.0.2');
+  .description('AuthNo extension bundle tool — VCHS-ECS binary format')
+  .version(VERSION);
 
 program
   .command('init <name> [dir]')
@@ -35,7 +42,17 @@ program
   .description('Pack an extension directory into a VCHS-ECS .extbk binary archive')
   .option('--rs-pct <n>',  'Reed-Solomon protection level 0-100 (default: 20)', '20')
   .option('--overwrite',   'Overwrite output file if it already exists', false)
+  .option('--out-dir <dir>', 'Directory to write the archive into', '.')
+  .option('--force',       'Build even if the manifest audit finds problems', false)
   .action(cmdBuild);
+
+program
+  .command('watch <srcDir> [outFile]')
+  .description('Rebuild the archive whenever a source file changes')
+  .option('--rs-pct <n>',  'Reed-Solomon protection level 0-100 (default: 20)', '20')
+  .option('--out-dir <dir>', 'Directory to write the archive into', '.')
+  .option('--force',       'Build even if the manifest audit finds problems', false)
+  .action(cmdWatch);
 
 program
   .command('check <extbkFile>')

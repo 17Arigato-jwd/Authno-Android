@@ -7,7 +7,8 @@
  *   manifest.json   — validated before any bytes are written
  *   index.js        — extension entry point (ENTR section)
  *
- * All other files become ASST sections with their relative paths preserved.
+ * Everything else becomes an ASST section with its relative path preserved,
+ * minus the default exclusions and anything in .extbkignore (see pack.js).
  */
 
 import fs    from 'fs';
@@ -15,64 +16,81 @@ import path  from 'path';
 import chalk from 'chalk';
 import { packExtbk }               from '../format.js';
 import { loadAndValidateManifest } from '../manifest.js';
+import { collectAssets, auditManifest } from '../pack.js';
+import { ok, warn, bad, die, log, step, fmtBytes } from '../ui.js';
 
 export async function cmdBuild(srcDir, outFile, opts) {
+  const result = await buildOnce(srcDir, outFile, opts);
+  log(chalk.dim(result.out));
+}
+
+/**
+ * The build itself, factored out so `extbk watch` can call it in a loop
+ * without re-implementing any of it.
+ */
+export async function buildOnce(srcDir, outFile, opts = {}, { quiet = false } = {}) {
+  const say  = quiet ? () => {} : log;
+  const said = quiet ? () => {} : ok;
+  const sub  = quiet ? () => {} : step;
+
   const src = path.resolve(srcDir);
   if (!fs.existsSync(src) || !fs.statSync(src).isDirectory())
     die(`Source directory not found: ${src}`);
 
   const manifest = loadAndValidateManifest(src);
-  ok(`Manifest valid — ${chalk.bold(manifest.id)} v${manifest.version}`);
+  said(`Manifest valid — ${chalk.bold(manifest.id)} v${manifest.version}`);
 
   const entryPath = path.join(src, 'index.js');
-  if (!fs.existsSync(entryPath)) die('Missing required file: index.js');
-  ok('index.js found');
+  if (!fs.existsSync(entryPath)) {
+    die('Missing required file: index.js\n' +
+        '  Every extension needs an entry point exporting activate().\n' +
+        `  Run ${chalk.cyan('extbk init')} to scaffold one.`);
+  }
+  said('index.js found');
 
-  const rsPct = Math.max(0, Math.min(100, parseInt(opts.rsPct ?? '20', 10)));
-  if (isNaN(rsPct)) die('--rs-pct must be an integer 0-100');
+  const rsPct = parseInt(opts.rsPct ?? '20', 10);
+  if (Number.isNaN(rsPct) || rsPct < 0 || rsPct > 100)
+    die('--rs-pct must be an integer between 0 and 100');
+
+  const assets = collectAssets(src);
+
+  // Cross-check the manifest against what is actually going into the bundle.
+  // Every one of these used to build cleanly and fail later on a device.
+  const problems = auditManifest(manifest, src, assets);
+  if (problems.length) {
+    if (opts.force) {
+      problems.forEach((p) => warn(p));
+    } else {
+      problems.forEach((p) => bad(p));
+      die(`${problems.length} problem(s) in manifest.json.\n` +
+          `  These build fine and then fail on device, usually as a blank screen.\n` +
+          `  Fix them, or pass ${chalk.cyan('--force')} if you know better.`);
+    }
+  }
 
   const outName = outFile ?? `${manifest.id}-${manifest.version}.extbk`;
-  const out     = path.resolve(outName);
+  const outDir  = opts.outDir ? path.resolve(opts.outDir) : process.cwd();
+  const out     = path.isAbsolute(outName) ? outName : path.join(outDir, outName);
+
   if (fs.existsSync(out) && !opts.overwrite)
-    die(`Output already exists: ${out}\nUse --overwrite to replace it.`);
+    die(`Output already exists: ${out}\n  Use --overwrite to replace it.`);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
 
-  const assets = [];
-  collectFiles(src, src, assets, ['manifest.json', 'index.js']);
-  log(`  ${chalk.dim(`${assets.length} asset file(s)`)}`);
-  log(`Building ${chalk.cyan(path.basename(out))} (RS ${rsPct}%) ...`);
-
-  const assetData = assets.map(rel => ({
-    path: rel,
-    data: fs.readFileSync(path.join(src, rel)),
-  }));
+  say(`  ${chalk.dim(`${assets.length} asset file(s)`)}`);
+  if (!quiet) {
+    for (const a of assets.slice(0, 12)) sub(chalk.dim(a));
+    if (assets.length > 12) sub(chalk.dim(`…and ${assets.length - 12} more`));
+  }
+  say(`Building ${chalk.cyan(path.basename(out))} (RS ${rsPct}%) ...`);
 
   const buf = await packExtbk({
     manifest,
     entry: fs.readFileSync(entryPath),
-    assets: assetData,
+    assets: assets.map((rel) => ({ path: rel, data: fs.readFileSync(path.join(src, rel)) })),
     rsPct,
   });
 
   fs.writeFileSync(out, buf);
-  ok(`Built ${chalk.bold(path.basename(out))} — ${fmtBytes(buf.length)}`);
-  log(chalk.dim(out));
+  said(`Built ${chalk.bold(path.basename(out))} — ${fmtBytes(buf.length)}`);
+  return { out, bytes: buf.length, manifest, assets };
 }
-
-function collectFiles(base, dir, out, exclude) {
-  for (const name of fs.readdirSync(dir)) {
-    if (exclude.includes(name) || name.startsWith('.')) continue;
-    const abs = path.join(dir, name);
-    const rel = path.relative(base, abs);
-    if (fs.statSync(abs).isDirectory()) collectFiles(base, abs, out, []);
-    else out.push(rel);
-  }
-}
-
-function fmtBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024*1024) return `${(n/1024).toFixed(1)} KB`;
-  return `${(n/1024/1024).toFixed(2)} MB`;
-}
-function log(msg) { process.stdout.write(msg + '\n'); }
-function ok(msg)  { log(`${chalk.green('v')} ${msg}`); }
-function die(msg) { process.stderr.write(`${chalk.red('x')} ${msg}\n`); process.exit(1); }
