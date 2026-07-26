@@ -21,6 +21,7 @@ import {
   accessErrorText, MAX_ATTEMPTS, trialDaysLeftFrom,
 } from '../utils/access';
 import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
+import { readKeyFile, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
 
@@ -32,8 +33,12 @@ const fmtCooldown = (ms) => {
 };
 
 export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
+  const [mode, setMode] = useState('file');   // 'file' (default) | 'paste'
   const [key, setKey] = useState('');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [file, setFile] = useState(null);
+  const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [attempts, setAttempts] = useState(() => getAttemptState());
@@ -53,7 +58,11 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
     return () => clearInterval(t);
   }, [locked]);
 
-  const canSubmit = key.trim().length > 0 && username.trim().length > 0 && !busy && !locked;
+  const canSubmit = !busy && !locked && username.trim().length > 0 && (
+    mode === 'file'
+      ? (!!file && email.trim().length > 0)
+      : key.trim().length > 0
+  );
 
   const finish = useCallback(async (payload) => {
     // A short beat on the unlocked sigil, then hand over. This is the one
@@ -69,8 +78,16 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
     setBusy(true);
     setError(null);
     try {
-      const payload = await verifyAccess(key, username);
-      storeAccess(key, username);
+      // In file mode the pen name and email are what open the file at all —
+      // get either wrong and it yields nothing, so a stray copy of someone's
+      // .authkey is not enough to use their membership.
+      let accessKey = key;
+      if (mode === 'file') {
+        const opened = await readKeyFile(file, username, email);
+        accessKey = opened.accessKey;
+      }
+      const payload = await verifyAccess(accessKey, username);
+      storeAccess(accessKey, username);
       hapticSelect();
       await finish(payload);
     } catch (e) {
@@ -92,11 +109,14 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
           try { window.electron?.quitApp?.(); } catch { /* not desktop */ }
         }, 1800);
       } else {
-        setError(accessErrorText(reason));
+        // Key-file failures have their own vocabulary ('wrong-details' etc.);
+        // fall back to the access-key wording for everything else.
+        const KEYFILE_REASONS = ['not-a-keyfile', 'corrupt', 'unsupported-version', 'wrong-details'];
+        setError(KEYFILE_REASONS.includes(reason) ? keyFileErrorText(reason) : accessErrorText(reason));
       }
       setBusy(false);
     }
-  }, [canSubmit, key, username, finish]);
+  }, [canSubmit, mode, key, file, username, email, finish]);
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && canSubmit) submit(); };
 
@@ -148,21 +168,45 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               asks the internet.
             </p>
 
-            <label style={S.label} htmlFor="gate-key">Access key</label>
-            <textarea
-              id="gate-key"
-              ref={keyRef}
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="AUTHNO-eyJ…"
-              rows={3}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              disabled={locked || busy}
-              style={{ ...S.input, ...S.mono, resize: 'vertical' }}
-            />
+            {mode === 'file' ? (
+              <>
+                <label style={S.label} htmlFor="gate-file">Key file</label>
+                <input
+                  id="gate-file"
+                  ref={fileRef}
+                  type="file"
+                  accept={`.${KEYFILE_EXT}`}
+                  onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null); }}
+                  disabled={locked || busy}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={locked || busy}
+                  style={{ ...S.input, ...S.filePick, borderStyle: file ? 'solid' : 'dashed' }}
+                >
+                  {file ? file.name : `Choose your .${KEYFILE_EXT} file`}
+                </button>
+              </>
+            ) : (
+              <>
+                <label style={S.label} htmlFor="gate-key">Access key</label>
+                <textarea
+                  id="gate-key"
+                  ref={keyRef}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="AUTHNO-eyJ…"
+                  rows={3}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  disabled={locked || busy}
+                  style={{ ...S.input, ...S.mono, resize: 'vertical' }}
+                />
+              </>
+            )}
 
             <label style={S.label} htmlFor="gate-user">Pen name</label>
             <input
@@ -177,6 +221,25 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               disabled={locked || busy}
               style={S.input}
             />
+
+            {mode === 'file' && (
+              <>
+                <label style={S.label} htmlFor="gate-email">Email</label>
+                <input
+                  id="gate-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="you@example.com"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  disabled={locked || busy}
+                  style={S.input}
+                />
+              </>
+            )}
 
             {error && (
               <div style={S.error} role="alert">
@@ -205,10 +268,20 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               {busy ? 'Checking…' : 'Unlock AuthNo'}
             </button>
 
+            <button
+              onClick={() => { setMode(mode === 'file' ? 'paste' : 'file'); setError(null); }}
+              disabled={busy}
+              style={S.switchMode}
+            >
+              {mode === 'file' ? 'Paste the key as text instead' : 'Use a key file instead'}
+            </button>
+
             <p style={S.foot}>
-              Lost your key? It can be re-sent from the website using the pen
-              name it was issued to. Your books are unaffected either way —
-              this gate has never touched a file.
+              {mode === 'file'
+                ? 'Your key file is sealed with the pen name and email it was issued to. All three have to match.'
+                : 'The pasted key is checked against your pen name.'}
+              {' '}Lost it? It can be re-issued from the website to your email.
+              Your books are unaffected either way — this gate has never touched a file of yours.
             </p>
           </>
         )}
@@ -249,6 +322,17 @@ const S = {
     fontFamily: 'inherit', outline: 'none',
   },
   mono: { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.55 },
+  filePick: {
+    textAlign: 'left', cursor: 'pointer',
+    color: 'var(--onb-text2, rgba(255,255,255,0.8))',
+    borderWidth: 1.5,
+  },
+  switchMode: {
+    display: 'block', width: '100%', marginTop: 12, padding: '8px 0',
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: 'var(--onb-text4, rgba(255,255,255,0.5))',
+    fontSize: 12.5, textDecoration: 'underline', fontFamily: 'inherit',
+  },
   error: {
     display: 'flex', gap: 9, alignItems: 'flex-start',
     background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.3)',
