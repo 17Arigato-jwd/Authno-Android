@@ -1,11 +1,39 @@
 # Interface sounds
 
-Drop the finished audio in this folder as `<stem>.ogg` (with an optional
-`<stem>.mp3` fallback). `src/utils/sounds.js` probes once and stays silent
-forever if a file is absent — **a missing sound is never an error**, so the app
-ships and runs fine before any of these exist.
+**Delivered and installed.** Each cue ships as `<stem>.ogg` with an `<stem>.mp3`
+fallback, mono 44.1 kHz, peak-normalised with headroom to spare.
+`src/utils/sounds.js` probes once and stays silent forever if a file is absent —
+**a missing sound is never an error**.
 
-## The brief
+| Stem | Length | Peak |
+| --- | --- | --- |
+| `gate_unlock` | 2.95 s | −2.9 dBFS |
+| `key_invalid` | 0.42 s | −2.0 dBFS |
+| `key_type` | 0.048 s | −4.8 dBFS |
+| `trial_warn` | 1.72 s | −1.1 dBFS |
+| `purchase_success` | 2.10 s | −2.6 dBFS |
+
+Two more commissioned cues live in the **website** repo, because the actions
+they mark happen there: `seal_break` (an invite is redeemed) and `invite_mint`
+(one of your five is minted).
+
+## What was done to the masters
+
+The originals were 48 kHz stereo WAV. Processing: trailing silence trimmed,
+downmixed to mono, resampled to 44.1 kHz, peak-normalised, encoded to Vorbis
+q4 + MP3 96 k. `gate_unlock` and `purchase_success` arrived touching 0 dBFS and
+were given 6 dB of headroom, because Vorbis overshoots on decode and would
+otherwise clip.
+
+`key_type` needed more than trimming: the master was **six separate taps in
+sequence** (a recording of someone typing), not one keystroke. The single
+cleanest tap — the one at 360 ms, ~50 dB above the noise floor — was extracted
+to a 48 ms one-shot with 3 ms/15 ms fades so it cannot click when retriggered.
+
+`seal_break` was muffled as requested: low-pass at 2.2 kHz plus a −6 dB shelf
+above 3 kHz.
+
+## The original brief
 
 Soft foley, not chiptune. AuthNo's whole visual language is ink, paper, wax and
 brass; a synthesised arcade blip would fight it. Record on a phone in a quiet

@@ -13,12 +13,17 @@
 
 const BASE = `${process.env.PUBLIC_URL || ''}/sounds`;
 
-/** name → [file stem, volume]. Volumes are pre-balanced by ear, not by peak. */
+/**
+ * name → [file stem, volume]. Every entry has a real file in public/sounds/.
+ *
+ * Two commissioned sounds live on the WEBSITE instead, because the actions
+ * they mark happen there: seal_break (redeeming an invite) and invite_mint
+ * (minting one of your five). They are deliberately absent here.
+ */
 const CATALOG = {
   gateUnlock: ['gate_unlock', 0.7],
   keyInvalid: ['key_invalid', 0.55],
-  keyType: ['key_type', 0.25],
-  inviteMint: ['invite_mint', 0.6],
+  keyType: ['key_type', 0.3],
   trialWarn: ['trial_warn', 0.5],
   purchaseSuccess: ['purchase_success', 0.7],
 };
