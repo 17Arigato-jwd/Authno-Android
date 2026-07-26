@@ -3,6 +3,7 @@
  * extbk-cli v1.0.0 — AuthNo extension bundle tool (VCHS-ECS binary format)
  *
  * Commands:
+ *   extbk init    <name>     [dir]          -- scaffold a new extension
  *   extbk build   <src-dir>  [out.extbk]   -- pack directory into .extbk
  *   extbk check   <file.extbk>              -- validate structure + CRCs
  *   extbk info    <file.extbk>              -- print manifest + section table
@@ -10,6 +11,7 @@
  */
 
 import { program } from 'commander';
+import { cmdInit }   from './commands/init.js';
 import { cmdBuild }  from './commands/build.js';
 import { cmdCheck }  from './commands/check.js';
 import { cmdInfo }   from './commands/info.js';
@@ -20,6 +22,13 @@ program
   .name('extbk')
   .description('AuthNo extension bundle tool — VCHS-ECS binary format, v1.0.2')
   .version('1.0.2');
+
+program
+  .command('init <name> [dir]')
+  .description('Scaffold a new extension directory that builds as generated')
+  .option('-t, --template <name>', 'minimal | panel', 'minimal')
+  .option('--force', 'Write into a non-empty directory', false)
+  .action(cmdInit);
 
 program
   .command('build <srcDir> [outFile]')

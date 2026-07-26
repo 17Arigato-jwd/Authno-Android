@@ -315,8 +315,24 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
           </div>
         )}
 
+        {/* Built against a newer AuthNo than this one. Previously minAppVersion
+            was ignored entirely, so the extension installed and then failed
+            somewhere unhelpful; now it says so up front. */}
+        {ext._tooOld && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 11px', borderRadius: 10,
+            background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)',
+          }}>
+            <DSIcons.Warning size={15} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: 'var(--color-danger)', flex: 1 }}>
+              Needs AuthNo {ext.minAppVersion} or newer — update the app to use this extension.
+            </span>
+          </div>
+        )}
+
         {/* Contribution chips — collapsible */}
-        {!ext._locked && allContribs.length > 0 && (
+        {!ext._locked && !ext._tooOld && allContribs.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {visibleContribs.map((c, i) => (

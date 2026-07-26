@@ -10,8 +10,49 @@
 
 import { isAndroid } from './platform';
 import { logError } from './ErrorLogger';
+import { APP_VERSION } from '../version';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
+
+// ─── Version comparison ───────────────────────────────────────────────────────
+
+/**
+ * Compare two semver-ish strings ("1.1.18-beta.11"). Returns <0, 0 or >0.
+ * A pre-release sorts BEFORE its own release (1.1.18-beta.2 < 1.1.18), and
+ * pre-release identifiers compare numerically when both are numeric — so
+ * beta.2 < beta.11 rather than the string order that would put "11" first.
+ */
+export function compareVersions(a, b) {
+  const split = (v) => {
+    const [core, pre = ''] = String(v ?? '').trim().split('-');
+    return [core.split('.').map((n) => parseInt(n, 10) || 0), pre ? pre.split('.') : null];
+  };
+  const [ac, ap] = split(a);
+  const [bc, bp] = split(b);
+  for (let i = 0; i < Math.max(ac.length, bc.length); i++) {
+    const d = (ac[i] ?? 0) - (bc[i] ?? 0);
+    if (d) return d < 0 ? -1 : 1;
+  }
+  if (!ap && !bp) return 0;
+  if (!ap) return 1;   // 1.1.18 > 1.1.18-beta.1
+  if (!bp) return -1;
+  for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
+    const x = ap[i], y = bp[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    if (nx && ny) { const d = Number(x) - Number(y); if (d) return d < 0 ? -1 : 1; }
+    else if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/** True when this build satisfies the manifest's minAppVersion (if it declares one). */
+export function satisfiesMinAppVersion(manifest, appVersion = APP_VERSION) {
+  const min = manifest?.minAppVersion;
+  if (!min || typeof min !== 'string') return true;
+  return compareVersions(appVersion, min) >= 0;
+}
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -21,6 +62,9 @@ function validateManifest(raw) {
   if (!raw.name    || typeof raw.name    !== 'string') throw new Error('manifest.name is required');
   if (!raw.version || typeof raw.version !== 'string') throw new Error('manifest.version is required');
   if (!/^[\w.-]+$/.test(raw.id)) throw new Error('manifest.id must be alphanumeric, dots, or dashes');
+  if (raw.id.includes('..') || raw.id.includes('/') || raw.id.includes('\\')) {
+    throw new Error('manifest.id must not contain path separators');
+  }
   return true;
 }
 
