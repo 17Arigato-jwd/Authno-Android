@@ -3,6 +3,21 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## Unreleased
+
+### Fixes
+
+- **The book dashboard and the flame no longer disagree about your streak.**
+  The dashboard counted every day you'd written *anything*, while the flame
+  counted only days you hit your goal — a book with fifteen partial days showed
+  "Streak 15 Days" next to a flame reading 7. Both now count met days only, and
+  the dashboard builds its dates in local time instead of UTC, so the run no
+  longer shifts by a day either side of midnight.
+- **Chapter previews no longer run paragraphs together.** The plain-text
+  conversion glued blocks with no separator ("…a wet thumb.Her breathing had…").
+  Paragraph counts in chapter statistics were wrong for the same reason and
+  always reported 1.
+
 ## 1.1.18-beta.11
 
 _The creator's note, a friendlier welcome, and premium put on hold._
