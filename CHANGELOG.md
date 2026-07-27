@@ -5,7 +5,29 @@ under the top-most version until it ships.
 
 ## 1.1.18-beta.12
 
-_Extensions get a working toolchain, and two long-standing display bugs go._
+_The closed beta gets a door — and, more importantly, a way out of it.
+Extensions get a working toolchain, and two long-standing display bugs go._
+
+### Access
+
+- **AuthNo is invite-gated.** Redeem an invite on the website and it issues a
+  key file; the app checks it on your device and never asks again. The check is
+  a signature, so it works on a plane, in a tunnel, and on the day the website
+  is down.
+- **Your key file is a password.** It's encrypted with the pen name and email it
+  was issued to, so a stray copy of the file is not enough to use your
+  membership. Never send it to anyone — nobody at AuthNo will ask for it.
+- **Wrong tries slow down and then stop.** Two mistakes cost nothing, then 30
+  seconds, then five minutes, then AuthNo closes. The counter survives a
+  restart, so quitting doesn't reset it.
+- **Sign out, and sign in as someone else.** Settings → About now has a sign-out
+  button, for handing a shared machine to another writer.
+- **“Export my books” on the sign-in screen.** Locked out for any reason — key
+  lost, signed out, invite revoked — and your manuscripts still come out, as
+  TXT, HTML, EPUB or PDF. No key, no account, no network, and no cooldown: the
+  sign-in rate limit does not apply to getting your own work back. Books that
+  aren't listed can be opened straight off disk. Nothing on this path writes or
+  deletes anything.
 
 ### Extensions
 

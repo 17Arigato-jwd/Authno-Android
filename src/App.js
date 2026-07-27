@@ -2127,6 +2127,13 @@ function AppInner({ navigateRef }) {
         onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
         onStartTour={() => { setSettingsOpen(false); setShowOnboarding(true); }}
         onReplayWelcome={() => { setSettingsOpen(false); setShowOnboarding(true); }}
+        onSignOut={() => {
+          // MembershipCard has already cleared the stored key. All that's left
+          // is to raise the gate again so a different account can sign in.
+          // Sessions stay in state and on disk: this is a lock, not a wipe.
+          setSettingsOpen(false);
+          setGateState('locked');
+        }}
       />
 
       <CustomizationSlider

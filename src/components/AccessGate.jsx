@@ -10,9 +10,14 @@
  *
  * Escalation matches access.js: two free mistakes, then 30s, then 5 minutes,
  * then the app closes. The counter is persisted, so quitting doesn't reset it.
+ *
+ * One door is always open: "Export my books" reaches ExportRescue with no key,
+ * no account and no cooldown. Being locked out of the app must never mean
+ * being locked out of your own manuscripts — the website promises exactly
+ * this on /support, and this is where that promise is kept.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DSIcons } from '../DesignSystem';
 import { FloatingBlobs, ONB_THEME_CSS } from './Onboarding';
@@ -24,6 +29,8 @@ import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
 import { readKeyFile, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
+
+const ExportRescue = lazy(() => import('./ExportRescue'));
 
 const fmtCooldown = (ms) => {
   const s = Math.ceil(ms / 1000);
@@ -45,6 +52,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   const [now, setNow] = useState(Date.now());
   const [granted, setGranted] = useState(null); // payload, during the unlock beat
   const [sigilSeed, setSigilSeed] = useState(null);
+  const [rescuing, setRescuing] = useState(false); // "Export my books" is open
   const keyRef = useRef(null);
 
   useEffect(() => { preloadSounds(['gateUnlock', 'keyInvalid']); }, []);
@@ -127,6 +135,17 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
 
   const remaining = attempts.remaining;
   const showRemaining = attempts.count > 0 && remaining > 0 && remaining <= MAX_ATTEMPTS - 2;
+
+  // Deliberately checked before everything else, including the cooldown: a
+  // locked-out writer reaching for their manuscripts is not a login attempt,
+  // so it is not rate-limited and not counted.
+  if (rescuing) {
+    return (
+      <Suspense fallback={null}>
+        <ExportRescue accentHex={accentHex} onBack={() => setRescuing(false)} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="onb" style={S.root}>
@@ -276,6 +295,17 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               {mode === 'file' ? 'Paste the key as text instead' : 'Use a key file instead'}
             </button>
 
+            <div style={S.rescueWrap}>
+              <button onClick={() => setRescuing(true)} style={S.rescue}>
+                <DSIcons.Download size={14} style={{ flexShrink: 0 }} />
+                <span>Export my books</span>
+              </button>
+              <p style={S.rescueNote}>
+                Locked out and need your manuscripts? This works with no key
+                and no account.
+              </p>
+            </div>
+
             <p style={S.foot}>
               {mode === 'file'
                 ? 'Your key file is sealed with the pen name and email it was issued to. All three have to match.'
@@ -332,6 +362,22 @@ const S = {
     background: 'none', border: 'none', cursor: 'pointer',
     color: 'var(--onb-text4, rgba(255,255,255,0.5))',
     fontSize: 12.5, textDecoration: 'underline', fontFamily: 'inherit',
+  },
+  rescueWrap: {
+    marginTop: 16, paddingTop: 16,
+    borderTop: '1px solid var(--onb-border, rgba(255,255,255,0.08))',
+  },
+  rescue: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    width: '100%', padding: '11px 16px', borderRadius: 12, cursor: 'pointer',
+    background: 'var(--onb-input, rgba(255,255,255,0.05))',
+    border: '1px solid var(--onb-border, rgba(255,255,255,0.11))',
+    color: 'var(--onb-text2, rgba(255,255,255,0.8))',
+    fontFamily: 'Sora, sans-serif', fontWeight: 600, fontSize: 13.5,
+  },
+  rescueNote: {
+    fontSize: 11.5, lineHeight: 1.55, textAlign: 'center',
+    color: 'var(--onb-text4, rgba(255,255,255,0.42))', margin: '9px 0 0',
   },
   error: {
     display: 'flex', gap: 9, alignItems: 'flex-start',

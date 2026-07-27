@@ -1013,7 +1013,7 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour, onSignOut }) {
   const { isPro } = useEntitlement();
   return (
     <div>
@@ -1021,7 +1021,7 @@ function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
 
       {/* Renders only on invite-gated builds — see MembershipCard. */}
-      <MembershipCard accentHex={accentHex} />
+      <MembershipCard accentHex={accentHex} onSignOut={onSignOut} />
 
       {/* Authno Pro (U10) */}
       <div style={{
@@ -1288,7 +1288,7 @@ export const DEFAULT_SETTINGS = {
   chapterSort: 'story',        // BookStudio default chapter ordering
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome, onSignOut }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('general');
   const [query, setQuery] = useState('');           // sidebar settings search (beta.2)
@@ -1349,7 +1349,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
       {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
       {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onSignOut={onSignOut} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
