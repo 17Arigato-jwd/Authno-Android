@@ -28,6 +28,7 @@ import ExtensionPage from './ExtensionPage';
 import { isAndroid } from '../utils/platform';
 import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
+import MembershipCard from './MembershipCard';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
 
@@ -679,6 +680,9 @@ function GeneralPanel(props) {
             <Toggle on={settings.hapticsEnabled ?? true} onChange={(v) => onChange({ hapticsEnabled: v })} accentHex={accentHex} />
           </RRow>
         )}
+        <RRow label="Interface sounds" description="Quiet paper-and-brass cues for unlocking, saving and milestones">
+          <Toggle on={settings.soundsEnabled ?? isAndroid()} onChange={(v) => onChange({ soundsEnabled: v })} accentHex={accentHex} />
+        </RRow>
       </RCard>
     </div>
   );
@@ -1009,12 +1013,15 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour, onSignOut }) {
   const { isPro } = useEntitlement();
   return (
     <div>
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
+
+      {/* Renders only on invite-gated builds — see MembershipCard. */}
+      <MembershipCard accentHex={accentHex} onSignOut={onSignOut} />
 
       {/* Authno Pro (U10) */}
       <div style={{
@@ -1264,6 +1271,9 @@ export const DEFAULT_SETTINGS = {
   restoreOpenBooks: true,
   dailyWordGoal: 500,
   hapticsEnabled: true,
+  // Sound defaults on for phones (where it reads as polish) and off on
+  // desktop, where an unexpected noise from a writing app is an intrusion.
+  soundsEnabled: isAndroid(),
   reduceMotion: false,         // when true (or OS reduce-motion), animations are minimised
   // materialYou toggle removed in beta.4 — Material You is a theme now
   // (theme/ThemeMaterialYou.js); the old flag migrates to authno_theme_id.
@@ -1278,7 +1288,7 @@ export const DEFAULT_SETTINGS = {
   chapterSort: 'story',        // BookStudio default chapter ordering
 };
 
-export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome }) {
+export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome, onSignOut }) {
   const { theme, switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('general');
   const [query, setQuery] = useState('');           // sidebar settings search (beta.2)
@@ -1339,7 +1349,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
       {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
       {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onSignOut={onSignOut} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />

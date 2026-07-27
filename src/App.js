@@ -23,6 +23,7 @@ import ThreadsPanel, { ThreadsTilesDesktop } from "./components/ThreadsPanel";
 import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
 import { getThreadsData, stripAnchorsFromChapters, stripAnchorEls, locateAnchors } from "./utils/threads";
 import { hapticSelect, setHapticsEnabled } from "./utils/haptics";
+import { setSoundsEnabled } from "./utils/sounds";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
@@ -44,6 +45,7 @@ import { subscribeBilling, openBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
 import { startTrialMock } from "./utils/entitlements";
+import { isGateRequired, verifyStoredAccess } from "./utils/access";
 import {
   getTourState, startFirstBookTour, setTourBookId, emitTourSignal, subscribeTour,
 } from "./utils/firstBookTour";
@@ -62,6 +64,7 @@ import ExtensionPage from "./components/ExtensionPage";
 // re-enabled by swapping this back.)
 const PremiumSoonDialog = lazy(() => import("./components/PremiumSoonDialog"));
 const OnboardingFunnel = lazy(() => import("./components/onboarding/OnboardingFunnel").then(m => ({ default: m.OnboardingFunnel })));
+const AccessGate = lazy(() => import("./components/AccessGate"));
 const FirstBookTour    = lazy(() => import("./components/FirstBookTour"));
 const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
 const FileIntegrityModalLazy = lazy(() => import("./components/FileIntegrityModal"));
@@ -629,6 +632,34 @@ function AppInner({ navigateRef }) {
   const [showUpdateOnboarding, setShowUpdateOnboarding] = useState(false);
   const [brokenFiles, setBrokenFiles] = useState([]);
 
+  // ── Invite gate ──────────────────────────────────────────────────────────
+  // 'checking' until the stored key has been re-verified, then 'locked' (show
+  // the gate) or 'open'. Builds without REACT_APP_REQUIRE_INVITE=true skip
+  // straight to 'open', which is what keeps un-gated betas working.
+  const [gateState, setGateState] = useState(() => (isGateRequired() ? 'checking' : 'open'));
+  useEffect(() => {
+    if (!isGateRequired()) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = await verifyStoredAccess();
+        if (cancelled) return;
+        if (payload) {
+          // The signed trial deadline outranks the local clock from here on.
+          const { setAccessTrialEnd } = await import('./utils/entitlements');
+          const { trialEndsFrom } = await import('./utils/access');
+          setAccessTrialEnd(trialEndsFrom(payload));
+        }
+        setGateState(payload ? 'open' : 'locked');
+      } catch {
+        // Verification is the only thing that can fail here, and a failure
+        // means "ask again" — never "lock the user out of their files".
+        if (!cancelled) setGateState('locked');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [fontCustomizerOpen, setFontCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -776,6 +807,7 @@ function AppInner({ navigateRef }) {
   // work when clicking buttons"). Delegated + throttled; heavier semantic
   // haptics (delete/save/goal) still fire from their own call sites on top.
   useEffect(() => { setHapticsEnabled(settings.hapticsEnabled ?? true); }, [settings.hapticsEnabled]);
+  useEffect(() => { setSoundsEnabled(settings.soundsEnabled ?? android); }, [settings.soundsEnabled, android]);
   const _lastTapHaptic = useRef(0);
   useEffect(() => {
     const onTap = (e) => {
@@ -1749,6 +1781,32 @@ function AppInner({ navigateRef }) {
   const screenDir = dirSign * (isHero ? 2 : 1);
   React.useEffect(() => { prevViewRef.current = view; }, [view]);
 
+  // The invite gate renders instead of the app, not over it — nothing behind
+  // it mounts, so there is no library to glimpse and no editor to reach. It
+  // owns no data: unlocking simply lets the normal tree render.
+  if (gateState !== 'open') {
+    return (
+      <MotionProvider reduce={!!settings.reduceMotion}>
+        <TitleBar />
+        {gateState === 'locked' && (
+          <Suspense fallback={null}>
+            <AccessGate
+              accentHex={customization.accentHex}
+              onUnlock={async (payload) => {
+                try {
+                  const { setAccessTrialEnd } = await import('./utils/entitlements');
+                  const { trialEndsFrom } = await import('./utils/access');
+                  setAccessTrialEnd(trialEndsFrom(payload));
+                } catch { /* trial display only — never block entry on it */ }
+                setGateState('open');
+              }}
+            />
+          </Suspense>
+        )}
+      </MotionProvider>
+    );
+  }
+
   return (
     <MotionProvider reduce={!!settings.reduceMotion}>
     <TitleBar />
@@ -2069,6 +2127,13 @@ function AppInner({ navigateRef }) {
         onSeeChanges={() => { setSettingsOpen(false); setShowUpdateOnboarding(true); }}
         onStartTour={() => { setSettingsOpen(false); setShowOnboarding(true); }}
         onReplayWelcome={() => { setSettingsOpen(false); setShowOnboarding(true); }}
+        onSignOut={() => {
+          // MembershipCard has already cleared the stored key. All that's left
+          // is to raise the gate again so a different account can sign in.
+          // Sessions stay in state and on disk: this is a lock, not a wipe.
+          setSettingsOpen(false);
+          setGateState('locked');
+        }}
       />
 
       <CustomizationSlider
