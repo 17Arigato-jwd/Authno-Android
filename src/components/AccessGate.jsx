@@ -26,7 +26,7 @@ import {
   accessErrorText, MAX_ATTEMPTS, trialDaysLeftFrom,
 } from '../utils/access';
 import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
-import { readKeyFile, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
+import { unpackKeyFile, keyFileSecretKind, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
 
@@ -43,8 +43,14 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   const [mode, setMode] = useState('file');   // 'file' (default) | 'paste'
   const [key, setKey] = useState('');
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  // The second half of the seal. Which one it is depends on the file: v2 is
+  // sealed with the password, v1 (issued before passwords existed) with the
+  // email. The file's own header says which, so the field relabels itself
+  // rather than asking for a password and then failing on a good old file.
+  const [secret, setSecret] = useState('');
+  const [secretKind, setSecretKind] = useState(null);   // 'password' | 'email' | null
   const [file, setFile] = useState(null);
+  const [fileBytes, setFileBytes] = useState(null);
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -68,9 +74,28 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
 
   const canSubmit = !busy && !locked && username.trim().length > 0 && (
     mode === 'file'
-      ? (!!file && email.trim().length > 0)
+      ? (!!fileBytes && !!secretKind && secret.length > 0)
       : key.trim().length > 0
   );
+
+  /** Read the file once, up front, so its version can label the next field. */
+  const chooseFile = useCallback(async (f) => {
+    setError(null);
+    setFile(f);
+    setSecret('');
+    if (!f) { setFileBytes(null); setSecretKind(null); return; }
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const kind = keyFileSecretKind(bytes);
+      setFileBytes(bytes);
+      setSecretKind(kind);
+      if (!kind) setError(keyFileErrorText('not-a-keyfile'));
+    } catch {
+      setFileBytes(null);
+      setSecretKind(null);
+      setError(keyFileErrorText('not-a-keyfile'));
+    }
+  }, []);
 
   const finish = useCallback(async (payload) => {
     // A short beat on the unlocked sigil, then hand over. This is the one
@@ -86,12 +111,14 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
     setBusy(true);
     setError(null);
     try {
-      // In file mode the pen name and email are what open the file at all —
-      // get either wrong and it yields nothing, so a stray copy of someone's
-      // .authkey is not enough to use their membership.
+      // In file mode the pen name and the secret are what open the file at
+      // all — get either wrong and it yields nothing, so a stray copy of
+      // someone's .authkey is not enough to use their membership.
       let accessKey = key;
       if (mode === 'file') {
-        const opened = await readKeyFile(file, username, email);
+        const opened = await unpackKeyFile(
+          fileBytes, username, secretKind === 'email' ? secret.trim() : secret
+        );
         accessKey = opened.accessKey;
       }
       const payload = await verifyAccess(accessKey, username);
@@ -120,11 +147,12 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
         // Key-file failures have their own vocabulary ('wrong-details' etc.);
         // fall back to the access-key wording for everything else.
         const KEYFILE_REASONS = ['not-a-keyfile', 'corrupt', 'unsupported-version', 'wrong-details'];
-        setError(KEYFILE_REASONS.includes(reason) ? keyFileErrorText(reason) : accessErrorText(reason));
+        const named = reason === 'wrong-details' && secretKind === 'email' ? 'wrong-details-v1' : reason;
+        setError(KEYFILE_REASONS.includes(reason) ? keyFileErrorText(named) : accessErrorText(reason));
       }
       setBusy(false);
     }
-  }, [canSubmit, mode, key, file, username, email, finish]);
+  }, [canSubmit, mode, key, fileBytes, username, secret, secretKind, finish]);
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && canSubmit) submit(); };
 
@@ -195,7 +223,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
                   ref={fileRef}
                   type="file"
                   accept={`.${KEYFILE_EXT}`}
-                  onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null); }}
+                  onChange={(e) => { void chooseFile(e.target.files?.[0] ?? null); }}
                   disabled={locked || busy}
                   style={{ display: 'none' }}
                 />
@@ -243,18 +271,20 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
 
             {mode === 'file' && (
               <>
-                <label style={S.label} htmlFor="gate-email">Email</label>
+                <label style={S.label} htmlFor="gate-secret">
+                  {secretKind === 'email' ? 'Email' : 'Password'}
+                </label>
                 <input
-                  id="gate-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="gate-secret"
+                  type={secretKind === 'email' ? 'email' : 'password'}
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="you@example.com"
+                  placeholder={secretKind === 'email' ? 'you@example.com' : ''}
                   spellCheck={false}
                   autoCapitalize="off"
                   autoCorrect="off"
-                  disabled={locked || busy}
+                  disabled={locked || busy || !secretKind}
                   style={S.input}
                 />
               </>
@@ -308,10 +338,13 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
 
             <p style={S.foot}>
               {mode === 'file'
-                ? 'Your key file is sealed with the pen name and email it was issued to. All three have to match.'
+                ? (secretKind === 'email'
+                    ? 'This key file predates passwords, so it is sealed with the pen name and email it was issued to. All three have to match.'
+                    : 'Your key file is sealed with your pen name and password. All three have to match.')
                 : 'The pasted key is checked against your pen name.'}
-              {' '}Lost it? It can be re-issued from the website to your email.
-              Your books are unaffected either way — this gate has never touched a file of yours.
+              {' '}Lost it? Take another from your account on the website — it
+              costs nothing. Your books are unaffected either way; this gate has
+              never touched a file of yours.
             </p>
           </>
         )}
