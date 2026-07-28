@@ -503,25 +503,30 @@ const S = {
     padding: 'max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom))',
     background: 'var(--onb-bg, #0b0710)', overflowY: 'auto',
   },
+  // The vertical rhythm below is deliberately tight. Redeem asks for four
+  // fields — more than any other mode — and under them sit the three routes in,
+  // the rescue button and its note. At the old spacing the card came to 944px,
+  // which does not fit a 932px phone, so it ran off the bottom edge with its
+  // rounded corner out of sight and read as broken however far you scrolled.
   card: {
     position: 'relative', zIndex: 1, width: '100%', maxWidth: 460, margin: 'auto',
     background: 'var(--onb-card, rgba(20,14,28,0.86))',
     border: '1px solid var(--onb-border, rgba(255,255,255,0.09))',
-    borderRadius: 22, padding: 'clamp(24px, 6vw, 34px)',
+    borderRadius: 22, padding: 'clamp(20px, 5vw, 30px)',
     backdropFilter: 'blur(22px)', boxShadow: '0 28px 70px rgba(0,0,0,0.5)',
   },
   grantedWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '10px 0 6px' },
   badge: {
-    width: 42, height: 42, borderRadius: 13, marginBottom: 16,
+    width: 42, height: 42, borderRadius: 13, marginBottom: 12,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: 'var(--onb-accent-soft, rgba(168,85,247,0.16))',
     color: 'var(--onb-accent, #c084fc)',
   },
-  title: { fontFamily: 'Sora, sans-serif', fontSize: 25, fontWeight: 800, letterSpacing: '-0.5px', margin: '0 0 10px', color: 'var(--onb-text1, #fff)' },
-  sub: { fontSize: 14, lineHeight: 1.66, color: 'var(--onb-text3, rgba(255,255,255,0.62))', margin: '0 0 22px' },
-  label: { display: 'block', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.01em', color: 'var(--onb-text2, rgba(255,255,255,0.8))', marginBottom: 7 },
+  title: { fontFamily: 'Sora, sans-serif', fontSize: 25, fontWeight: 800, letterSpacing: '-0.5px', margin: '0 0 8px', color: 'var(--onb-text1, #fff)' },
+  sub: { fontSize: 14, lineHeight: 1.5, color: 'var(--onb-text3, rgba(255,255,255,0.62))', margin: '0 0 18px' },
+  label: { display: 'block', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.01em', color: 'var(--onb-text2, rgba(255,255,255,0.8))', marginBottom: 5 },
   input: {
-    width: '100%', boxSizing: 'border-box', padding: '12px 14px', marginBottom: 16,
+    width: '100%', boxSizing: 'border-box', padding: '11px 14px', marginBottom: 11,
     background: 'var(--onb-input, rgba(255,255,255,0.05))',
     border: '1px solid var(--onb-border, rgba(255,255,255,0.11))',
     borderRadius: 11, color: 'var(--onb-text1, #fff)', fontSize: 15,
@@ -535,16 +540,16 @@ const S = {
   },
   altModes: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    gap: 2, marginTop: 8,
+    gap: 2, marginTop: 6,
   },
   switchMode: {
-    display: 'block', width: '100%', padding: '6px 0',
+    display: 'block', width: '100%', padding: '5px 0',
     background: 'none', border: 'none', cursor: 'pointer',
     color: 'var(--onb-text4, rgba(255,255,255,0.5))',
     fontSize: 12.5, textDecoration: 'underline', fontFamily: 'inherit',
   },
   rescueWrap: {
-    marginTop: 16, paddingTop: 16,
+    marginTop: 12, paddingTop: 12,
     borderTop: '1px solid var(--onb-border, rgba(255,255,255,0.08))',
   },
   rescue: {
@@ -557,7 +562,7 @@ const S = {
   },
   rescueNote: {
     fontSize: 11.5, lineHeight: 1.55, textAlign: 'center',
-    color: 'var(--onb-text4, rgba(255,255,255,0.42))', margin: '9px 0 0',
+    color: 'var(--onb-text4, rgba(255,255,255,0.42))', margin: '7px 0 0',
   },
   error: {
     display: 'flex', gap: 9, alignItems: 'flex-start',
