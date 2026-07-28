@@ -15,14 +15,6 @@ export const DEFAULT_PROFILE = {
   personalization: {},
   onboardingCompleted: false,
   onboardingCompletedAt: null,
-  // Gated builds split the funnel around the access gate. This marks the half
-  // that runs BEFORE it, so quitting at the gate does not replay the intro.
-  //
-  // It has to be its own flag rather than a guess from another field: every
-  // other value here has a non-empty default — writingGoal in particular — so
-  // testing one of those for "has the intro run?" answers yes on a device that
-  // has never been opened, and the intro never shows at all.
-  introCompleted: false,
 };
 
 const listeners = new Set();

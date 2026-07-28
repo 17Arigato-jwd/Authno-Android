@@ -51,7 +51,6 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
-  const [key, setKey] = useState('');
   const [username, setUsername] = useState('');
   // The second half of the seal. Which one it is depends on the file: v2 is
   // sealed with the password, v1 (issued before passwords existed) with the
@@ -85,8 +84,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   const canSubmit = !busy && !locked && username.trim().length > 0 && (
     mode === 'redeem'   ? (code.trim().length > 0 && email.trim().length > 0 && password.length > 0)
     : mode === 'password' ? password.length > 0
-    : mode === 'file'   ? (!!fileBytes && !!secretKind && secret.length > 0)
-    : key.trim().length > 0
+    : (!!fileBytes && !!secretKind && secret.length > 0)
   );
 
   /** Read the file once, up front, so its version can label the next field. */
@@ -125,7 +123,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       // In file mode the pen name and the secret are what open the file at
       // all — get either wrong and it yields nothing, so a stray copy of
       // someone's .authkey is not enough to use their membership.
-      let accessKey = key;
+      let accessKey = null;
       if (mode === 'redeem') {
         // The code becomes an account and a key in one request. Everything
         // after this is identical to a key that arrived in a file — verified
@@ -141,7 +139,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
         // that arrived in a file.
         const issued = await fetchKeyWithPassword(username.trim(), password);
         accessKey = issued.accessKey;
-      } else if (mode === 'file') {
+      } else {
         const opened = await unpackKeyFile(
           fileBytes, username, secretKind === 'email' ? secret.trim() : secret
         );
@@ -218,7 +216,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       }
       setBusy(false);
     }
-  }, [canSubmit, mode, key, password, code, email, fileBytes, username, secret, secretKind, finish]);
+  }, [canSubmit, mode, password, code, email, fileBytes, username, secret, secretKind, finish]);
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && canSubmit) submit(); };
 
@@ -301,7 +299,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               </>
             )}
 
-            {mode === 'redeem' ? null : mode === 'password' ? null : mode === 'file' ? (
+            {mode === 'file' && (
               <>
                 <label style={S.label} htmlFor="gate-file">Key file</label>
                 <input
@@ -320,24 +318,6 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
                 >
                   {file ? file.name : `Choose your .${KEYFILE_EXT} file`}
                 </button>
-              </>
-            ) : (
-              <>
-                <label style={S.label} htmlFor="gate-key">Access key</label>
-                <textarea
-                  id="gate-key"
-                  ref={keyRef}
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  onKeyDown={onKeyDown}
-                  placeholder="AUTHNO-eyJ…"
-                  rows={3}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  disabled={locked || busy}
-                  style={{ ...S.input, ...S.mono, resize: 'vertical' }}
-                />
               </>
             )}
 
@@ -479,11 +459,6 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
                   {mode === 'password' || mode === 'redeem' ? 'Sign in offline with a key file' : 'Use a key file instead'}
                 </button>
               )}
-              {mode !== 'paste' && (
-                <button onClick={() => { setMode('paste'); setError(null); }} disabled={busy} style={S.switchMode}>
-                  Paste the key as text
-                </button>
-              )}
             </div>
 
             <div style={S.rescueWrap}>
@@ -502,11 +477,9 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
                 ? 'This is the only time AuthNo needs the network. It fetches your key, then checks it here from now on.'
                 : mode === 'password'
                 ? 'This is the only time AuthNo needs the network. It fetches your key, then checks it here from now on.'
-                : mode === 'file'
-                ? (secretKind === 'email'
+                : (secretKind === 'email'
                     ? 'This key file predates passwords, so it is sealed with the pen name and email it was issued to. All three have to match.'
-                    : 'Your key file is sealed with your pen name and password. All three have to match.')
-                : 'The pasted key is checked against your pen name.'}
+                    : 'Your key file is sealed with your pen name and password. All three have to match.')}
               {' '}Lost it? Take another from your account on the website — it
               costs nothing. Your books are unaffected either way; this gate has
               never touched a file of yours.
@@ -521,12 +494,17 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
 const S = {
   root: {
     position: 'fixed', inset: 0, zIndex: 100000,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    // flex-start, NOT center. Centring a child taller than its scroll container
+    // overflows it in BOTH directions, and there is no scrolling upwards — so
+    // the badge and the top of the heading were cut off and unreachable on any
+    // screen short enough. `margin: auto` on the card below still centres it
+    // whenever there IS room, which is the behaviour centring was here for.
+    display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
     padding: 'max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom))',
     background: 'var(--onb-bg, #0b0710)', overflowY: 'auto',
   },
   card: {
-    position: 'relative', zIndex: 1, width: '100%', maxWidth: 460,
+    position: 'relative', zIndex: 1, width: '100%', maxWidth: 460, margin: 'auto',
     background: 'var(--onb-card, rgba(20,14,28,0.86))',
     border: '1px solid var(--onb-border, rgba(255,255,255,0.09))',
     borderRadius: 22, padding: 'clamp(24px, 6vw, 34px)',

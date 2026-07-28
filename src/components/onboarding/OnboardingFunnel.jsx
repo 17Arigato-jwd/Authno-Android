@@ -106,19 +106,8 @@ export function OnboardingFunnel({
   onComplete,
   onDemoBookAdd,
   onDemoBookRemove,
-  // Where this run of the funnel begins and ends.
-  //
-  // A gated build splits the funnel around the access gate: steps 0-1 run
-  // first, so somebody decides whether they want AuthNo before being asked for
-  // a code, and 2-4 resume once they are in — step 2 is the guided tour and it
-  // drives the REAL app, which does not exist until the gate opens.
-  //
-  // Defaults reproduce the un-gated run exactly: start at 0, finish at the
-  // end, one continuous funnel.
-  startStep = 0,
-  stopAfter = null,
 }) {
-  const [step, setStep] = useState(startStep);
+  const [step, setStep] = useState(0);
   const [goalType, setGoalType] = useState("novel");
   const [experience, setExperience] = useState("beginner");
   const [wordGoal, setWordGoal] = useState("300");
@@ -159,14 +148,10 @@ export function OnboardingFunnel({
   const next = () => {
     if (step === 1) saveProgress();
     if (step === 3 && !name.trim()) return;
-    // Handing over at the split is not finishing: the profile is saved and the
-    // demo book stays, but onboardingCompleted is NOT set and the trial is not
-    // started, because neither is true yet. The second half does that.
-    if (stopAfter !== null && step >= stopAfter) { saveProgress(); onComplete?.(); return; }
     if (step < TOTAL - 1) setStep(step + 1);
     else finish();
   };
-  const back = () => setStep((s) => Math.max(startStep, s - 1));
+  const back = () => setStep((s) => Math.max(0, s - 1));
 
   // Keyboard: → / Enter advance (not while typing), ← back, Esc skips.
   useEffect(() => {
@@ -420,12 +405,6 @@ export function OnboardingFunnel({
 
   const current = pages[step];
 
-  // "3 of 5" on a run that only shows two of them is a lie the writer can see.
-  // Count within this run, not within the funnel as a whole.
-  const RUN_LAST = stopAfter === null ? TOTAL - 1 : stopAfter;
-  const RUN_TOTAL = RUN_LAST - startStep + 1;
-  const RUN_INDEX = step - startStep;
-
   return createPortal(
     <div
       className="onb fixed inset-0 z-[20000] overflow-y-auto"
@@ -439,18 +418,18 @@ export function OnboardingFunnel({
           {/* Progress rail */}
           <div className="mb-4 flex items-center gap-3">
             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              {Array.from({ length: RUN_TOTAL }).map((_, i) => (
+              {Array.from({ length: TOTAL }).map((_, i) => (
                 <span key={i} style={{
-                  width: i === RUN_INDEX ? 16 : 6, height: 6, borderRadius: 3,
-                  background: i <= RUN_INDEX ? accentHex : "var(--border)",
+                  width: i === step ? 16 : 6, height: 6, borderRadius: 3,
+                  background: i <= step ? accentHex : "var(--border)",
                   transition: "all 0.25s",
                 }} />
               ))}
             </div>
             <div style={{ flex: 1, height: 3, borderRadius: 2, background: "var(--border-sm)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${((RUN_INDEX + 1) / RUN_TOTAL) * 100}%`, background: accentHex, transition: "width 0.3s ease", borderRadius: 2 }} />
+              <div style={{ height: "100%", width: `${((step + 1) / TOTAL) * 100}%`, background: accentHex, transition: "width 0.3s ease", borderRadius: 2 }} />
             </div>
-            <span className="text-xs text-white/55" style={{ whiteSpace: "nowrap" }}>{RUN_INDEX + 1} / {RUN_TOTAL}</span>
+            <span className="text-xs text-white/55" style={{ whiteSpace: "nowrap" }}>{step + 1} / {TOTAL}</span>
           </div>
 
           {/* Card */}
