@@ -27,7 +27,7 @@ import {
 } from '../utils/access';
 import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
 import { unpackKeyFile, keyFileSecretKind, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
-import { fetchKeyWithPassword, gateConfigured, gateErrorText } from '../utils/gateApi';
+import { fetchKeyWithPassword, redeemCode, gateConfigured, gateErrorText } from '../utils/gateApi';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
 
@@ -41,11 +41,16 @@ const fmtCooldown = (ms) => {
 };
 
 export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
-  // 'password' is the front door when the gate is reachable. 'file' is not a
-  // fallback for people with old key files — it is how you get in with no
-  // network, which for an offline-first editor is an ordinary situation.
-  const [mode, setMode] = useState(() => (gateConfigured() ? 'password' : 'file'));
+  // 'redeem' is the front door, because the only way to have an account is to
+  // have been given a code — so for everybody arriving here for the first time
+  // this is the screen they need, and signing in is the exception rather than
+  // the default. 'file' is not a fallback for people with old key files: it is
+  // how you get in with no network, which for an offline-first editor is an
+  // ordinary situation, so it stays reachable whether or not the gate answers.
+  const [mode, setMode] = useState(() => (gateConfigured() ? 'redeem' : 'file'));
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [email, setEmail] = useState('');
   const [key, setKey] = useState('');
   const [username, setUsername] = useState('');
   // The second half of the seal. Which one it is depends on the file: v2 is
@@ -78,7 +83,8 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   }, [locked]);
 
   const canSubmit = !busy && !locked && username.trim().length > 0 && (
-    mode === 'password' ? password.length > 0
+    mode === 'redeem'   ? (code.trim().length > 0 && email.trim().length > 0 && password.length > 0)
+    : mode === 'password' ? password.length > 0
     : mode === 'file'   ? (!!fileBytes && !!secretKind && secret.length > 0)
     : key.trim().length > 0
   );
@@ -120,7 +126,16 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       // all — get either wrong and it yields nothing, so a stray copy of
       // someone's .authkey is not enough to use their membership.
       let accessKey = key;
-      if (mode === 'password') {
+      if (mode === 'redeem') {
+        // The code becomes an account and a key in one request. Everything
+        // after this is identical to a key that arrived in a file — verified
+        // offline, stored locally, and never asked about again.
+        const made = await redeemCode({
+          code: code.trim(), username: username.trim(),
+          email: email.trim(), password,
+        });
+        accessKey = made.accessKey;
+      } else if (mode === 'password') {
         // Fetch a key, then verify it offline like any other. The network is
         // used once, here; everything after this point is identical to a key
         // that arrived in a file.
@@ -146,6 +161,21 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       const NOT_A_CREDENTIAL_FAILURE = [
         'gate-unreachable', 'gate-not-configured', 'verify-unavailable',
         'rate-limited', 'signin-failed', 'issue-failed', 'no-session',
+        // Redeeming: telling somebody their pen name is taken or their
+        // password is too short is a form asking to be corrected, not a wrong
+        // answer. Counting these would be perverse — the escalation exists to
+        // make guessing expensive, and a person filling in a form they were
+        // invited to fill in is not guessing. They have no account to lock
+        // themselves out of yet either.
+        'username-taken', 'username-too-short', 'username-too-long',
+        'username-invalid', 'username-reserved',
+        'password-too-short', 'password-too-long',
+        'email-required', 'turnstile-failed', 'redeem-failed',
+        // A real code that is spent or withdrawn is not a guess either. The
+        // person holding it needs a new one, not a five-minute cooldown.
+        'code-already-used', 'code-revoked',
+        // 'invalid-code' is deliberately NOT here: a wrong code IS a guess,
+        // and guessing invite codes is the thing escalation is for.
       ];
       if (NOT_A_CREDENTIAL_FAILURE.includes(reason)) {
         setError(gateErrorText(reason));
@@ -173,7 +203,12 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
         // Key-file failures have their own vocabulary ('wrong-details' etc.);
         // fall back to the access-key wording for everything else.
         const KEYFILE_REASONS = ['not-a-keyfile', 'corrupt', 'unsupported-version', 'wrong-details'];
-        const GATE_REASONS = ['bad-credentials', 'missing-credentials', 'revoked'];
+        // 'invalid-code' belongs here even though it escalates. Escalating and
+        // being explicable are different questions, and a mistyped code is the
+        // likeliest mistake on the redeem screen — answering it with "something
+        // went wrong checking that key" sends somebody to look at a key they
+        // do not have yet.
+        const GATE_REASONS = ['bad-credentials', 'missing-credentials', 'revoked', 'invalid-code'];
         const named = reason === 'wrong-details' && secretKind === 'email' ? 'wrong-details-v1' : reason;
         setError(
           KEYFILE_REASONS.includes(reason) ? keyFileErrorText(named)
@@ -183,7 +218,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       }
       setBusy(false);
     }
-  }, [canSubmit, mode, key, password, fileBytes, username, secret, secretKind, finish]);
+  }, [canSubmit, mode, key, password, code, email, fileBytes, username, secret, secretKind, finish]);
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && canSubmit) submit(); };
 
@@ -241,12 +276,32 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
             <div style={S.badge}><DSIcons.Key size={19} /></div>
             <h1 style={S.title}>You were invited</h1>
             <p style={S.sub}>
-              {mode === 'password'
+              {mode === 'redeem'
+                ? 'Redeem your invite code to set up your account.'
+                : mode === 'password'
                 ? 'Sign in once with your pen name and password. After that AuthNo checks your key here on your device and never asks the internet again.'
                 : 'Your key is checked here on your device — no network needed, now or ever.'}
             </p>
 
-            {mode === 'password' ? null : mode === 'file' ? (
+            {mode === 'redeem' && (
+              <>
+                <label style={S.label} htmlFor="gate-code">Invite code</label>
+                <input
+                  id="gate-code"
+                  ref={keyRef}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  spellCheck={false}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  disabled={locked || busy}
+                  style={{ ...S.input, ...S.mono }}
+                />
+              </>
+            )}
+
+            {mode === 'redeem' ? null : mode === 'password' ? null : mode === 'file' ? (
               <>
                 <label style={S.label} htmlFor="gate-file">Key file</label>
                 <input
@@ -299,6 +354,43 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               disabled={locked || busy}
               style={S.input}
             />
+
+            {mode === 'redeem' && (
+              <>
+                {/* Labels are the website's, word for word, because /redeem is
+                    the same act on the same account and two names for one
+                    field is how people come to believe they are two things. */}
+                <label style={S.label} htmlFor="gate-email">Email</label>
+                <input
+                  id="gate-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="you@example.com"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="email"
+                  disabled={locked || busy}
+                  style={S.input}
+                />
+                <label style={S.label} htmlFor="gate-newpassword">Password</label>
+                <input
+                  id="gate-newpassword"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="new-password"
+                  disabled={locked || busy}
+                  style={S.input}
+                />
+              </>
+            )}
 
             {mode === 'password' && (
               <>
@@ -364,21 +456,27 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               disabled={!canSubmit}
               style={{ ...S.cta, opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'default' }}
             >
-              {busy ? 'Checking…' : 'Unlock AuthNo'}
+              {busy ? 'Checking…' : mode === 'redeem' ? 'Redeem and open AuthNo' : 'Unlock AuthNo'}
             </button>
 
-            {/* Small on purpose. Most people sign in with a password; the
-                other two are for when there is no signal, and they should be
-                findable without competing with the main path. */}
+            {/* Small on purpose. Redeeming is the main path because a code is
+                the only way to have an account at all; the rest are for people
+                who already have one, or who have no signal, and they should be
+                findable without competing with it. */}
             <div style={S.altModes}>
+              {mode !== 'redeem' && gateConfigured() && (
+                <button onClick={() => { setMode('redeem'); setError(null); }} disabled={busy} style={S.switchMode}>
+                  Redeem an invite code
+                </button>
+              )}
               {mode !== 'password' && gateConfigured() && (
                 <button onClick={() => { setMode('password'); setError(null); }} disabled={busy} style={S.switchMode}>
-                  Sign in with a password
+                  {mode === 'redeem' ? 'Already have an account? Sign in' : 'Sign in with a password'}
                 </button>
               )}
               {mode !== 'file' && (
                 <button onClick={() => { setMode('file'); setError(null); }} disabled={busy} style={S.switchMode}>
-                  {mode === 'password' ? 'Sign in offline with a key file' : 'Use a key file instead'}
+                  {mode === 'password' || mode === 'redeem' ? 'Sign in offline with a key file' : 'Use a key file instead'}
                 </button>
               )}
               {mode !== 'paste' && (
@@ -400,7 +498,9 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
             </div>
 
             <p style={S.foot}>
-              {mode === 'password'
+              {mode === 'redeem'
+                ? 'This is the only time AuthNo needs the network. It fetches your key, then checks it here from now on.'
+                : mode === 'password'
                 ? 'This is the only time AuthNo needs the network. It fetches your key, then checks it here from now on.'
                 : mode === 'file'
                 ? (secretKind === 'email'
