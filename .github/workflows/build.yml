@@ -85,6 +85,67 @@ jobs:
             echo "::warning title=No password sign-in::REACT_APP_GATE_API is empty, so the gate offers only the key file and pasted-key routes. Fine if deliberate; set the variable to enable pen name + password."
           fi
 
+      # The worst configuration mistake available, and the one nothing could
+      # catch until the gate started publishing its public key.
+      #
+      # The app verifies every key offline against the key compiled into it. If
+      # that is not the public half of the pair the gate signs with, every key
+      # reads as a bad signature — nobody gets in, by password or by key file,
+      # and the failure is indistinguishable from a wrong password. It would be
+      # found by a locked-out writer, not by us.
+      #
+      # So ask the gate what it signs with and compare. Network failures do not
+      # fail the build: an unreachable gate is not evidence of a wrong key, and
+      # a release should not hinge on somebody else's uptime.
+      - name: Check the access key against the gate that signs with it
+        if: ${{ vars.REACT_APP_GATE_API != '' && vars.REACT_APP_ACCESS_PUBKEY != '' }}
+        shell: bash
+        env:
+          PUBKEY: ${{ vars.REACT_APP_ACCESS_PUBKEY }}
+          GATE: ${{ vars.REACT_APP_GATE_API }}
+        run: |
+          health=""; why=""
+          for i in 1 2 3 4 5; do
+            # stderr to a file rather than the log: five identical connection
+            # errors say nothing the one below does not, but the reason is
+            # worth keeping for whoever reads the warning.
+            health=$(curl -fsS --max-time 15 "${GATE%/}/v1/health" 2>/tmp/curl.err || echo "")
+            [ -n "$health" ] && break
+            why=$(tr -d '\n' </tmp/curl.err)
+            sleep 3
+          done
+          if [ -z "$health" ]; then
+            echo "::warning title=Gate unreachable::Could not read ${GATE%/}/v1/health (${why:-no response}), so the access key could not be checked against it. Not failing the build — an unreachable gate is not evidence of a wrong key."
+            exit 0
+          fi
+
+          live=$(printf '%s' "$health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("accessPubKey") or "")')
+          contract=$(printf '%s' "$health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("keyContract") or "")')
+          echo "gate key contract: ${contract:-(not published)}"
+
+          if [ -z "$live" ]; then
+            echo "::warning title=Gate publishes no key::${GATE%/}/v1/health has no accessPubKey, so it predates the check. Deploy the gate Worker and this becomes real."
+            exit 0
+          fi
+          if [ "$live" != "$PUBKEY" ]; then
+            echo "::error title=Access key does not match the gate::REACT_APP_ACCESS_PUBKEY is not the public half of the pair ${GATE%/} signs with. Every key would read as a bad signature and nobody could sign in — and it would look exactly like a wrong password. Re-copy the spki from scripts/make-access-keypair.mjs, or point REACT_APP_GATE_API at the right gate."
+            exit 1
+          fi
+          echo "✔ the embedded access key is the one the gate signs with"
+
+          # Read the version this build understands out of the source rather
+          # than repeating it here, so the two cannot disagree.
+          mine=$(sed -n 's/^export const KEY_CONTRACT_VERSION = \([0-9]*\);.*/\1/p' src/utils/access.js)
+          if [ -z "$mine" ]; then
+            echo "::error title=Cannot read KEY_CONTRACT_VERSION::src/utils/access.js no longer exports it in the form this step greps for. Fix the grep or restore the export — do not delete this check."
+            exit 1
+          fi
+          echo "app key contract: v$mine"
+          if [ -n "$contract" ] && [ "$contract" != "$mine" ]; then
+            echo "::error title=Key contract mismatch::The gate announces key contract v$contract; this app understands v$mine. src/utils/access.js needs updating before shipping against it."
+            exit 1
+          fi
+
       - run: npm run build
         env:
           CI: false
