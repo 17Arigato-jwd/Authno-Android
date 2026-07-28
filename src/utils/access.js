@@ -106,8 +106,40 @@ export async function verifyAccessKey(input) {
   const pub = await importPublicKey();
   const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, sigBytes, payloadBytes);
   if (!ok) throw new Error('bad-signature');
-  if (payload?.t !== 'access') throw new Error('wrong-key-type');
-  return payload;
+  return normalizePayload(payload);
+}
+
+/**
+ * Two key shapes verify, and the rest of the app should not have to know which
+ * one it got.
+ *
+ *   v1  t:'access'  — handed out at redeem, before accounts existed. The
+ *                     identity IS the key: uid, u, gen, iat, te (trial end).
+ *   v2  t:'device'  — issued BY an account to one install. acc is the account,
+ *                     did the device, and the grants are split: `access` never
+ *                     expires so the app keeps opening offline forever, `ent`
+ *                     carries the entitlement re-check deadline.
+ *
+ * v2 is mapped onto v1's field names rather than teaching every caller both.
+ * It has no trial: a device key belongs to an account that is already a
+ * member, so `te` is absent and trialDaysLeftFrom correctly reports none.
+ *
+ * This rejected every v2 key as 'wrong-key-type' until it was driven end to
+ * end against a real gate — which is to say, until a real key was ever put
+ * through it. The key-file tests pass a placeholder string that never reaches
+ * this function, so they could not have caught it.
+ */
+function normalizePayload(payload) {
+  if (payload?.t === 'access') return payload;
+  if (payload?.t === 'device') {
+    return {
+      ...payload,
+      uid: payload.uid ?? payload.acc,
+      gen: payload.gen ?? payload.access?.gen ?? 0,
+      iat: payload.iat ?? payload.access?.iat,
+    };
+  }
+  throw new Error('wrong-key-type');
 }
 
 /**

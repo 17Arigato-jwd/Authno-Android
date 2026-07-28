@@ -27,6 +27,7 @@ import {
 } from '../utils/access';
 import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
 import { unpackKeyFile, keyFileSecretKind, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
+import { fetchKeyWithPassword, gateConfigured, gateErrorText } from '../utils/gateApi';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
 
@@ -40,7 +41,11 @@ const fmtCooldown = (ms) => {
 };
 
 export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
-  const [mode, setMode] = useState('file');   // 'file' (default) | 'paste'
+  // 'password' is the front door when the gate is reachable. 'file' is not a
+  // fallback for people with old key files — it is how you get in with no
+  // network, which for an offline-first editor is an ordinary situation.
+  const [mode, setMode] = useState(() => (gateConfigured() ? 'password' : 'file'));
+  const [password, setPassword] = useState('');
   const [key, setKey] = useState('');
   const [username, setUsername] = useState('');
   // The second half of the seal. Which one it is depends on the file: v2 is
@@ -73,9 +78,9 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   }, [locked]);
 
   const canSubmit = !busy && !locked && username.trim().length > 0 && (
-    mode === 'file'
-      ? (!!fileBytes && !!secretKind && secret.length > 0)
-      : key.trim().length > 0
+    mode === 'password' ? password.length > 0
+    : mode === 'file'   ? (!!fileBytes && !!secretKind && secret.length > 0)
+    : key.trim().length > 0
   );
 
   /** Read the file once, up front, so its version can label the next field. */
@@ -115,7 +120,13 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       // all — get either wrong and it yields nothing, so a stray copy of
       // someone's .authkey is not enough to use their membership.
       let accessKey = key;
-      if (mode === 'file') {
+      if (mode === 'password') {
+        // Fetch a key, then verify it offline like any other. The network is
+        // used once, here; everything after this point is identical to a key
+        // that arrived in a file.
+        const issued = await fetchKeyWithPassword(username.trim(), password);
+        accessKey = issued.accessKey;
+      } else if (mode === 'file') {
         const opened = await unpackKeyFile(
           fileBytes, username, secretKind === 'email' ? secret.trim() : secret
         );
@@ -127,6 +138,21 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
       await finish(payload);
     } catch (e) {
       const reason = e?.message || 'unknown';
+
+      // Not every failure is a wrong answer. A dead connection, a gate that is
+      // down, a server-side rate limit — none of those are the writer getting
+      // their password wrong, and counting them would march somebody with bad
+      // wifi towards the app closing itself. Escalation is for credentials.
+      const NOT_A_CREDENTIAL_FAILURE = [
+        'gate-unreachable', 'gate-not-configured', 'verify-unavailable',
+        'rate-limited', 'signin-failed', 'issue-failed', 'no-session',
+      ];
+      if (NOT_A_CREDENTIAL_FAILURE.includes(reason)) {
+        setError(gateErrorText(reason));
+        setBusy(false);
+        return;
+      }
+
       const state = recordFailure();
       setAttempts(getAttemptState());
       setNow(Date.now());
@@ -147,12 +173,17 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
         // Key-file failures have their own vocabulary ('wrong-details' etc.);
         // fall back to the access-key wording for everything else.
         const KEYFILE_REASONS = ['not-a-keyfile', 'corrupt', 'unsupported-version', 'wrong-details'];
+        const GATE_REASONS = ['bad-credentials', 'missing-credentials', 'revoked'];
         const named = reason === 'wrong-details' && secretKind === 'email' ? 'wrong-details-v1' : reason;
-        setError(KEYFILE_REASONS.includes(reason) ? keyFileErrorText(named) : accessErrorText(reason));
+        setError(
+          KEYFILE_REASONS.includes(reason) ? keyFileErrorText(named)
+          : GATE_REASONS.includes(reason) ? gateErrorText(reason)
+          : accessErrorText(reason)
+        );
       }
       setBusy(false);
     }
-  }, [canSubmit, mode, key, fileBytes, username, secret, secretKind, finish]);
+  }, [canSubmit, mode, key, password, fileBytes, username, secret, secretKind, finish]);
 
   const onKeyDown = (e) => { if (e.key === 'Enter' && canSubmit) submit(); };
 
@@ -210,12 +241,12 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
             <div style={S.badge}><DSIcons.Key size={19} /></div>
             <h1 style={S.title}>You were invited</h1>
             <p style={S.sub}>
-              Enter the access key and pen name from the website. They are
-              checked here on your device — AuthNo never asks again, and never
-              asks the internet.
+              {mode === 'password'
+                ? 'Sign in once with your pen name and password. After that AuthNo checks your key here on your device and never asks the internet again.'
+                : 'Your key is checked here on your device — no network needed, now or ever.'}
             </p>
 
-            {mode === 'file' ? (
+            {mode === 'password' ? null : mode === 'file' ? (
               <>
                 <label style={S.label} htmlFor="gate-file">Key file</label>
                 <input
@@ -269,6 +300,25 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               style={S.input}
             />
 
+            {mode === 'password' && (
+              <>
+                <label style={S.label} htmlFor="gate-password">Password</label>
+                <input
+                  id="gate-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="current-password"
+                  disabled={locked || busy}
+                  style={S.input}
+                />
+              </>
+            )}
+
             {mode === 'file' && (
               <>
                 <label style={S.label} htmlFor="gate-secret">
@@ -317,13 +367,26 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               {busy ? 'Checking…' : 'Unlock AuthNo'}
             </button>
 
-            <button
-              onClick={() => { setMode(mode === 'file' ? 'paste' : 'file'); setError(null); }}
-              disabled={busy}
-              style={S.switchMode}
-            >
-              {mode === 'file' ? 'Paste the key as text instead' : 'Use a key file instead'}
-            </button>
+            {/* Small on purpose. Most people sign in with a password; the
+                other two are for when there is no signal, and they should be
+                findable without competing with the main path. */}
+            <div style={S.altModes}>
+              {mode !== 'password' && gateConfigured() && (
+                <button onClick={() => { setMode('password'); setError(null); }} disabled={busy} style={S.switchMode}>
+                  Sign in with a password
+                </button>
+              )}
+              {mode !== 'file' && (
+                <button onClick={() => { setMode('file'); setError(null); }} disabled={busy} style={S.switchMode}>
+                  {mode === 'password' ? 'Sign in offline with a key file' : 'Use a key file instead'}
+                </button>
+              )}
+              {mode !== 'paste' && (
+                <button onClick={() => { setMode('paste'); setError(null); }} disabled={busy} style={S.switchMode}>
+                  Paste the key as text
+                </button>
+              )}
+            </div>
 
             <div style={S.rescueWrap}>
               <button onClick={() => setRescuing(true)} style={S.rescue}>
@@ -337,7 +400,9 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
             </div>
 
             <p style={S.foot}>
-              {mode === 'file'
+              {mode === 'password'
+                ? 'This is the only time AuthNo needs the network. It fetches your key, then checks it here from now on.'
+                : mode === 'file'
                 ? (secretKind === 'email'
                     ? 'This key file predates passwords, so it is sealed with the pen name and email it was issued to. All three have to match.'
                     : 'Your key file is sealed with your pen name and password. All three have to match.')
@@ -390,8 +455,12 @@ const S = {
     color: 'var(--onb-text2, rgba(255,255,255,0.8))',
     borderWidth: 1.5,
   },
+  altModes: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    gap: 2, marginTop: 8,
+  },
   switchMode: {
-    display: 'block', width: '100%', marginTop: 12, padding: '8px 0',
+    display: 'block', width: '100%', padding: '6px 0',
     background: 'none', border: 'none', cursor: 'pointer',
     color: 'var(--onb-text4, rgba(255,255,255,0.5))',
     fontSize: 12.5, textDecoration: 'underline', fontFamily: 'inherit',

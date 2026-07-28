@@ -67,6 +67,48 @@ describe('verifyAccess', () => {
     await expect(access.verifyAccess(licence, 'inkwell_moth')).rejects.toThrow('wrong-key-type');
   });
 
+  // Every key the gate issues today is a v2 device key. This rejected all of
+  // them as 'wrong-key-type' — by password AND by key file — until it was
+  // driven against a real gate. The key-file tests could not catch it: their
+  // vector carries a placeholder string that never reaches verifyAccessKey.
+  it('accepts a v2 device key, which is what accounts actually issue', async () => {
+    const iat = Date.now();
+    const device = await mintKey(pair.privateKey, {
+      t: 'device', v: 2,
+      acc: 'u_1', did: 'd_abc', u: 'inkwell_moth', gen: 1, iat,
+      access: { gen: 1, iat },
+      ent: { tier: 'free', exp: iat + 60 * 86400000 },
+    });
+    const payload = await access.verifyAccess(device, 'inkwell_moth');
+    expect(payload.u).toBe('inkwell_moth');
+    // Callers read `uid`; a device key calls it `acc`. They should not have to
+    // know which shape they got.
+    expect(payload.uid).toBe('u_1');
+    expect(payload.gen).toBe(1);
+    // A device key belongs to an account that is already a member, so there is
+    // no trial to count down.
+    expect(access.trialDaysLeftFrom(payload)).toBe(0);
+  });
+
+  it('still refuses a device key issued to a different pen name', async () => {
+    const iat = Date.now();
+    const device = await mintKey(pair.privateKey, {
+      t: 'device', v: 2, acc: 'u_1', did: 'd_abc', u: 'someone_else', gen: 1, iat,
+      access: { gen: 1, iat }, ent: { tier: 'free', exp: iat },
+    });
+    await expect(access.verifyAccess(device, 'inkwell_moth')).rejects.toThrow('username-mismatch');
+  });
+
+  it('still refuses a forged device key', async () => {
+    const other = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    const iat = Date.now();
+    const forged = await mintKey(other.privateKey, {
+      t: 'device', v: 2, acc: 'u_1', did: 'd_abc', u: 'inkwell_moth', gen: 1, iat,
+      access: { gen: 1, iat }, ent: { tier: 'free', exp: iat },
+    });
+    await expect(access.verifyAccess(forged, 'inkwell_moth')).rejects.toThrow('bad-signature');
+  });
+
   it('rejects junk', async () => {
     await expect(access.verifyAccess('hello', 'inkwell_moth')).rejects.toThrow('malformed');
     await expect(access.verifyAccess('AUTHNO-nodot', 'inkwell_moth')).rejects.toThrow('malformed');
