@@ -46,8 +46,65 @@ jobs:
       - name: Reed-Solomon round-trip tests (must pass before any format ships)
         run: npx react-scripts test src/utils/rs.test.js --watchAll=false
         env: { CI: true }
+
+      # ── Access gate configuration ─────────────────────────────────────────
+      # All three are repo VARIABLES (Settings → Secrets and variables →
+      # Actions → **Variables**), not secrets. Create-React-App inlines every
+      # REACT_APP_* into the client bundle, so a secret here would be a secret
+      # published to every user — and none of these are secret anyway: the
+      # access key is a PUBLIC key, and the gate URL is a URL.
+      #
+      #   ACCESS_PUBKEY   spki base64 from worker/scripts/make-access-keypair.mjs
+      #   REQUIRE_INVITE  "true" to actually raise the gate on startup
+      #   GATE_API        the authno-gate Worker's URL, for password sign-in
+      #
+      # Unset is a working configuration: the app opens normally. That is how
+      # the beta ships while the invite rollout is staged.
+      - name: Report the access gate configuration
+        shell: bash
+        env:
+          PUBKEY: ${{ vars.REACT_APP_ACCESS_PUBKEY }}
+          REQUIRE: ${{ vars.REACT_APP_REQUIRE_INVITE }}
+          GATE: ${{ vars.REACT_APP_GATE_API }}
+        run: |
+          keyed=no;  [ -n "$PUBKEY" ] && keyed=yes
+          gated=no;  [ "${REQUIRE,,}" = "true" ] && gated=yes
+          echo "access key embedded: $keyed"
+          echo "gate raised on startup: $gated"
+          echo "password sign-in: ${GATE:-(none — key file only)}"
+
+          # isGateRequired() needs BOTH, so this combination does not lock
+          # anyone out — it ships an app that opens normally while whoever cut
+          # the release believes it is gated. A release that silently fails to
+          # do the one thing it was cut for should not leave the building.
+          if [ "$gated" = yes ] && [ "$keyed" = no ]; then
+            echo "::error title=Gate asked for but not possible::REACT_APP_REQUIRE_INVITE is true but REACT_APP_ACCESS_PUBKEY is empty, so isGateRequired() is false and this build would ship UNGATED. Set the public key variable, or clear REQUIRE_INVITE."
+            exit 1
+          fi
+          if [ "$keyed" = yes ] && [ -z "$GATE" ]; then
+            echo "::warning title=No password sign-in::REACT_APP_GATE_API is empty, so the gate offers only the key file and pasted-key routes. Fine if deliberate; set the variable to enable pen name + password."
+          fi
+
       - run: npm run build
-        env: { CI: false }
+        env:
+          CI: false
+          REACT_APP_ACCESS_PUBKEY: ${{ vars.REACT_APP_ACCESS_PUBKEY }}
+          REACT_APP_REQUIRE_INVITE: ${{ vars.REACT_APP_REQUIRE_INVITE }}
+          REACT_APP_GATE_API: ${{ vars.REACT_APP_GATE_API }}
+
+      # The bundle is the artefact every platform job reuses, so assert against
+      # the bundle rather than trusting that the env reached webpack. The
+      # website shipped a "gate isn't open yet" build this exact way.
+      - name: Verify the gate configuration reached the bundle
+        if: ${{ vars.REACT_APP_GATE_API != '' }}
+        shell: bash
+        run: |
+          if grep -rqF "${{ vars.REACT_APP_GATE_API }}" build/static/js/*.js; then
+            echo "✔ gate URL is compiled into the bundle"
+          else
+            echo "::error title=Gate URL missing from bundle::REACT_APP_GATE_API was set but does not appear in build/. Password sign-in would ship dead."
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with: { name: react-build, path: build/, retention-days: 1 }
 
