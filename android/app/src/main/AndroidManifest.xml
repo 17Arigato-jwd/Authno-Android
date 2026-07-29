@@ -23,8 +23,6 @@
                  toggles which alias is enabled). File-association VIEW filters
                  must stay here: aliases are launcher entry points only. -->
 
-            <!-- Share target: text shared from other apps opens the
-                 book/chapter import picker inside AuthNo. -->
             <!-- Sign in with Google comes home this way. Android cannot host
                  the OAuth redirect, so the gate's callback 302s to
                  authno://auth/google?google=<handoff> and this filter is what
@@ -40,6 +38,8 @@
                 <data android:scheme="authno" android:host="auth" android:path="/google" />
             </intent-filter>
 
+            <!-- Share target: text shared from other apps opens the
+                 book/chapter import picker inside AuthNo. -->
             <intent-filter android:label="Add to AuthNo">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

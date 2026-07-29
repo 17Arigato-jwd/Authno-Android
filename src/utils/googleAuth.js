@@ -30,8 +30,19 @@ import { GATE_API, gateConfigured, GateError } from './gateApi';
 /** The scheme registered in AndroidManifest.xml. Both halves must agree. */
 export const APP_REDIRECT = 'authno://auth/google';
 
-/** Whether the gate has Google configured. Cached — it cannot change without
- *  a Worker deploy, and the gate screen asks on every render. */
+/**
+ * Whether the gate has Google configured.
+ *
+ * A successful answer is cached: it cannot change without a Worker deploy, and
+ * the gate screen asks on every render.
+ *
+ * A FAILED one is not. "No signal" and "Google is off" produce the same button
+ * — hidden — but they are not the same fact, and caching the failure means an
+ * app opened in a tunnel never offers Google again for the rest of its run,
+ * even once the train comes out the other side. On a device that is offline
+ * more often than not, that is the difference between a feature that exists
+ * and one that does not.
+ */
 let cached = null;
 export async function googleAvailable() {
   if (cached !== null) return cached;
@@ -40,12 +51,10 @@ export async function googleAvailable() {
     const r = await fetch(`${GATE_API}/v1/health`);
     const d = await r.json();
     cached = !!d?.google;
+    return cached;
   } catch {
-    // No signal is not "Google is off" — but it is "do not offer a button that
-    // needs the network", which is the same decision here.
-    cached = false;
+    return false;   // not cached — ask again next time
   }
-  return cached;
 }
 
 async function post(path, body, token) {
