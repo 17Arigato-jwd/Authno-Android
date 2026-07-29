@@ -207,12 +207,6 @@ export function OnboardingFunnel({
     color: active ? "var(--text-1)" : "var(--text-3)",
     transition: "all 0.15s",
   });
-  const infoCard = {
-    display: "flex", gap: 10, alignItems: "flex-start",
-    padding: "13px 14px", borderRadius: 14,
-    border: "1px solid var(--border-sm)", background: "var(--surface)",
-    fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.55,
-  };
 
   // ── Step content (chip · title · body · CTA label) ────────────────────────
   const pages = [
@@ -226,12 +220,12 @@ export function OnboardingFunnel({
         <>
           <h2 style={titleStyle}>Write your story.<br />Your way. Your device.</h2>
           <p style={{ ...subStyle, marginBottom: 22 }}>
-            A calm, offline-first home for books and long-form writing. No account to make, nothing to sync, nobody looking over your shoulder.
+            A calm, offline-first home for books and long-form writing. Your books never leave your device, and nobody is looking over your shoulder.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               { icon: DSIcons.Shield, text: "Works offline — everything lives on your device." },
-              { icon: DSIcons.Lock, text: "No account wall. Your words stay yours." },
+              { icon: DSIcons.Lock, text: "Your books stay on this device. Your words stay yours." },
               { icon: DSIcons.Lightning, text: "Fast and focused, built for long sessions." },
             ].map(({ icon: Icon, text }) => (
               <div key={text} style={{
@@ -335,13 +329,6 @@ export function OnboardingFunnel({
               <span style={{ ...optChip(false), cursor: "default", padding: "7px 12px", fontSize: 12 }}>
                 <DSIcons.Target size={12} color="currentColor" />
                 {WORD_GOALS.find((t) => t.id === wordGoal)?.label ?? "~300 words"}/day
-              </span>
-            </div>
-            <div style={infoCard}>
-              <DSIcons.Upload size={14} color="var(--text-4)" style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>
-                Saved on this device. Cloud accounts are coming — when they land, this profile
-                carries over automatically. No email needed today.
               </span>
             </div>
           </div>
