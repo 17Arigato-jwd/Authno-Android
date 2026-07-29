@@ -25,6 +25,21 @@
 
             <!-- Share target: text shared from other apps opens the
                  book/chapter import picker inside AuthNo. -->
+            <!-- Sign in with Google comes home this way. Android cannot host
+                 the OAuth redirect, so the gate's callback 302s to
+                 authno://auth/google?google=<handoff> and this filter is what
+                 hands that back to us. BROWSABLE is required: without it the
+                 Custom Tab has no permission to follow the link at all.
+
+                 The scheme must match APP_REDIRECT in src/utils/googleAuth.js
+                 AND the authorised redirect list on the Google OAuth client. -->
+            <intent-filter android:label="AuthNo sign-in" android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="authno" android:host="auth" android:path="/google" />
+            </intent-filter>
+
             <intent-filter android:label="Add to AuthNo">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

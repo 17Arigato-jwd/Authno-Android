@@ -81,6 +81,20 @@ export async function fetchKeyWithPassword(username, password, platform = 'app')
 }
 
 /**
+ * A session token → a signed device key.
+ *
+ * The second half of fetchKeyWithPassword, on its own. Google sign-in proves
+ * who somebody is and hands back a session; this asks the account to issue
+ * this device a key, and then the session is dropped on the floor for the same
+ * reason it is there — the app has no use for a bearer token it never checks.
+ */
+export async function fetchKeyWithSession(token, platform = 'app') {
+  const issued = await call('/v1/auth/keyfile/issue', { label: deviceLabel(), platform }, token);
+  if (!issued?.accessKey) throw new GateError('issue-failed');
+  return { accessKey: issued.accessKey, username: issued.username };
+}
+
+/**
  * An invite code → an account, and the key that opens this app.
  *
  * One request, not two. Redeeming already hands back a signed key, so there is
