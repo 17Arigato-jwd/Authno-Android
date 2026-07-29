@@ -55,6 +55,21 @@ export function getAccessPubKeyB64() {
   return (process.env.REACT_APP_ACCESS_PUBKEY || '').trim();
 }
 
+/**
+ * The key-payload shape this build knows how to read — see normalizePayload.
+ *
+ * It is a cross-repo contract with the gate Worker, and it has been broken
+ * once: this file understood only v1 t:'access' while the gate had been
+ * issuing v2 t:'device' for weeks, so every key was rejected, by password and
+ * by key file both. Nothing caught it, because the tests here mint their own
+ * payloads and so only ever assert what this file already believes.
+ *
+ * The gate publishes its version at GET /v1/health as `keyContract`, and
+ * .github/workflows/build.yml reads the number below and refuses to build
+ * against a gate announcing anything else.
+ */
+export const KEY_CONTRACT_VERSION = 2;
+
 /** True when this build ships a verification key — i.e. the gate can work. */
 export function isAccessConfigured() {
   return getAccessPubKeyB64().length > 0;

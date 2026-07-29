@@ -624,6 +624,16 @@ function AppInner({ navigateRef }) {
   const [currentChapterIdx, setCurrentChapterIdx] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Onboarding runs to completion BEFORE the gate is ever raised, exactly as it
+  // did before accounts existed: welcome, about you, the guided tour over the
+  // real app, your name, the note. Only then are you asked for a code.
+  //
+  // Read once, synchronously, so the very first paint is already right — a
+  // value that arrives in an effect shows the gate for a frame and then yanks
+  // it away.
+  const [onboardingPending, setOnboardingPending] = useState(
+    () => isGateRequired() && !getProfile().onboardingCompleted
+  );
   // First-book coach (interactive "Create My First Book" walkthrough).
   const [firstTour, setFirstTour] = useState(() => getTourState());
   useEffect(() => subscribeTour(setFirstTour), []);
@@ -1784,7 +1794,10 @@ function AppInner({ navigateRef }) {
   // The invite gate renders instead of the app, not over it — nothing behind
   // it mounts, so there is no library to glimpse and no editor to reach. It
   // owns no data: unlocking simply lets the normal tree render.
-  if (gateState !== 'open') {
+  // Onboarding owns the screen until it is done; the gate waits its turn behind
+  // it. The tour walks the REAL app, so the app has to be mounted for it —
+  // which is why this check lets the tree render rather than returning early.
+  if (gateState !== 'open' && !onboardingPending) {
     return (
       <MotionProvider reduce={!!settings.reduceMotion}>
         <TitleBar />
@@ -1840,6 +1853,10 @@ function AppInner({ navigateRef }) {
             // who has just been given a 7-day trial — with "premium is a
             // premium feature". They meet that dialog only if the trial lapses.
             setShowOnboarding(false);
+            // ...unless this build gates, in which case finishing onboarding is
+            // exactly the moment to ask for a code. Clearing this lets the gate
+            // branch above take the screen on the next render.
+            setOnboardingPending(false);
           }}
           onDemoBookAdd={(book) => {
             // Dedupe on the _demo flag — a stale demo book can survive in

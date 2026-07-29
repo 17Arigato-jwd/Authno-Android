@@ -262,7 +262,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone, onStartTour }) {
       icon: (p) => <DSIcons.Shield {...p} />,
       title: "Write offline, stay focused",
       body:
-        "AuthNo is built around a local-first workflow.\n\nNo cloud dependency. No account wall. No internet required to keep writing.",
+        "AuthNo is built around a local-first workflow.\n\nNo cloud dependency. Your books never leave your device. No internet required to keep writing.",
       chips: [
         { icon: (p) => <DSIcons.Shield {...p} />, text: "Everything stays on device" },
         { icon: (p) => <DSIcons.Refresh {...p} />, text: "Open it anytime, anywhere" },

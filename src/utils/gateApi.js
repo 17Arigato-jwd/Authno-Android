@@ -80,6 +80,22 @@ export async function fetchKeyWithPassword(username, password, platform = 'app')
   return { accessKey: issued.accessKey, username: issued.username || auth?.account?.username };
 }
 
+/**
+ * An invite code → an account, and the key that opens this app.
+ *
+ * One request, not two. Redeeming already hands back a signed key, so there is
+ * nothing to exchange afterwards; the session token it also returns is dropped
+ * on the floor for the same reason fetchKeyWithPassword drops its own.
+ *
+ * The gate burns the code inside a transaction, so a failure here has cost the
+ * caller nothing — the code is still good and can be typed again.
+ */
+export async function redeemCode({ code, username, email, password }, platform = 'app') {
+  const data = await call('/v1/redeem', { code, username, email, password });
+  if (!data?.accessKey) throw new GateError('redeem-failed');
+  return { accessKey: data.accessKey, username: data.username || username };
+}
+
 /** Something recognisable in the account's device list. Never precise. */
 function deviceLabel() {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
@@ -103,6 +119,21 @@ export function gateErrorText(code) {
     'verify-unavailable': 'Sign-in is temporarily broken on our end — not your password. Try again shortly.',
     'no-session': 'That sign-in expired before it finished. Try again.',
     'signin-failed': 'Sign-in didn’t complete. Try again.',
+    // Redeeming. The code survives every one of these — the gate burns it
+    // inside a transaction, so a refusal here has cost nothing.
+    'invalid-code': 'That code isn’t one of ours. Check it and try again.',
+    'code-already-used': 'That code has already been used.',
+    'code-revoked': 'That code is no longer valid.',
+    'username-taken': 'That pen name is taken. Try another.',
+    'username-too-short': 'That pen name is too short.',
+    'username-too-long': 'That pen name is too long.',
+    'username-invalid': 'Pen names use letters, numbers and underscores.',
+    'username-reserved': 'That pen name isn’t available.',
+    'password-too-short': 'That password is too short.',
+    'password-too-long': 'That password is too long.',
+    'email-required': 'An email address is needed.',
+    'turnstile-failed': 'That check didn’t pass. Try again.',
+    'redeem-failed': 'That didn’t complete. Your code has not been used — try again.',
     'issue-failed': 'Signed in, but this device couldn’t be issued a key. Try again.',
     'gate-not-configured': 'AuthNo’s sign-in isn’t open yet.',
   };
