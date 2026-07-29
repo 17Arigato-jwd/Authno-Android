@@ -21,13 +21,14 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import { motion } from 'framer-motion';
 import { DSIcons } from '../DesignSystem';
 import { FloatingBlobs, ONB_THEME_CSS } from './Onboarding';
+import { googleAvailable, googleFlow } from '../utils/googleAuth';
 import {
   verifyAccess, storeAccess, recordFailure, getAttemptState,
   accessErrorText, MAX_ATTEMPTS, trialDaysLeftFrom,
 } from '../utils/access';
 import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
 import { unpackKeyFile, keyFileSecretKind, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
-import { fetchKeyWithPassword, redeemCode, gateConfigured, gateErrorText } from '../utils/gateApi';
+import { fetchKeyWithPassword, fetchKeyWithSession, redeemCode, gateConfigured, gateErrorText, GateError } from '../utils/gateApi';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
 
@@ -48,6 +49,15 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   // how you get in with no network, which for an offline-first editor is an
   // ordinary situation, so it stays reachable whether or not the gate answers.
   const [mode, setMode] = useState(() => (gateConfigured() ? 'redeem' : 'file'));
+
+  /* Google. Hidden entirely unless the gate says it is configured — a button
+     that opens a browser only to be told 501 is worse than no button.
+     Signing up needs a pen name as well as a code: Google can fill in the
+     email and stand in for the password, but the pen name is chosen,
+     permanent, and what the invite tree hangs off. */
+  const [googleOn, setGoogleOn] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  useEffect(() => { let live = true; googleAvailable().then((v) => { if (live) setGoogleOn(v); }); return () => { live = false; }; }, []);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
@@ -114,6 +124,45 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
     try { setSigilSeed(await seedFromUserId(payload.uid)); } catch { /* cosmetic only */ }
     setTimeout(() => onUnlock?.(payload), 2100);
   }, [onUnlock]);
+
+  /* A pen name is not optional for a Google signup, and it has to look valid
+     before the trip is worth taking. This is the app's own cheap check — the
+     gate re-checks availability at /start and refuses there. */
+  const googleSignupReady =
+    code.trim().length > 0 && /^[a-z0-9_]{3,20}$/i.test(username.trim());
+
+  const runGoogle = useCallback(async (flowMode) => {
+    setGoogleBusy(true);
+    setError(null);
+    try {
+      const r = await googleFlow(flowMode, {
+        code: code.trim() || undefined,
+        username: username.trim() || undefined,
+      });
+      // Signing up hands back the whole redeem result; signing in hands back a
+      // session, and the key comes from the same place the password path gets
+      // it. Either way what lands here is a signed key verified offline.
+      let accessKey = r.accessKey;
+      let name = r.username || username.trim();
+      if (!accessKey && r.token) {
+        const issued = await fetchKeyWithSession(r.token);
+        accessKey = issued.accessKey;
+        name = issued.username || name;
+      }
+      if (!accessKey) throw new GateError('bad-token');
+      const payload = await verifyAccess(accessKey, name);
+      storeAccess(accessKey, name);
+      hapticSelect();
+      await finish(payload);
+    } catch (e) {
+      // Cancelling is not a failed attempt. Dismissing the browser tab must
+      // not march somebody towards the app closing itself.
+      const reason = e?.code || e?.message || 'unknown';
+      if (reason !== 'cancelled') setError(gateErrorText(reason));
+    } finally {
+      setGoogleBusy(false);
+    }
+  }, [code, username, finish]);
 
   const submit = useCallback(async () => {
     if (!canSubmit) return;
@@ -439,6 +488,27 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               {busy ? 'Checking…' : mode === 'redeem' ? 'Redeem and open AuthNo' : 'Unlock AuthNo'}
             </button>
 
+            {/* Google. On the redeem screen it needs the code AND the pen name
+                first — it can fill in the email and stand in for the password,
+                but not a name that is chosen once and permanent. Sending
+                somebody out to Google and back to a form still asking for it
+                would be a round trip that answered nothing. */}
+            {googleOn && (mode === 'redeem' || mode === 'password') && !locked && (
+              <button
+                onClick={() => runGoogle(mode === 'redeem' ? 'redeem' : 'signin')}
+                disabled={busy || googleBusy || (mode === 'redeem' && !googleSignupReady)}
+                style={{
+                  ...S.googleBtn,
+                  opacity: (busy || googleBusy || (mode === 'redeem' && !googleSignupReady)) ? 0.45 : 1,
+                }}
+              >
+                <GoogleMark />
+                {googleBusy
+                  ? 'Waiting for Google…'
+                  : mode === 'redeem' ? 'Sign up with Google' : 'Continue with Google'}
+              </button>
+            )}
+
             {/* Small on purpose. Redeeming is the main path because a code is
                 the only way to have an account at all; the rest are for people
                 who already have one, or who have no signal, and they should be
@@ -582,5 +652,27 @@ const S = {
     color: '#fff', fontFamily: 'Sora, sans-serif', fontWeight: 700, fontSize: 15.5,
     transition: 'opacity .2s',
   },
+  googleBtn: {
+    width: '100%', padding: '12px 20px', borderRadius: 13, marginTop: 10,
+    border: '1px solid var(--onb-border, rgba(255,255,255,0.16))',
+    background: 'var(--onb-surface, rgba(255,255,255,0.06))',
+    color: 'var(--onb-text1, #fff)', fontFamily: 'Sora, sans-serif',
+    fontWeight: 700, fontSize: 14.5,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+    transition: 'opacity .2s',
+  },
   foot: { fontSize: 12, lineHeight: 1.6, color: 'var(--onb-text4, rgba(255,255,255,0.42))', margin: '18px 0 0' },
 };
+
+/** Google's mark, inline. A remote image would be one more thing to fail on a
+ *  screen whose whole job is working when the network does not. */
+function GoogleMark({ size = 17 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.5 24.6c0-1.6-.1-2.8-.4-4.1H24v7.4h12.9c-.3 2.2-1.7 5.4-4.8 7.6l7.6 5.9c4.5-4.2 6.8-10.3 6.8-16.8z" />
+      <path fill="#FBBC05" d="M10.4 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C1 16.4 0 20.1 0 24s1 7.6 2.6 10.8l7.8-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2 1.4-4.8 2.4-8.3 2.4-6.4 0-11.7-3.7-13.6-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z" />
+    </svg>
+  );
+}

@@ -3,6 +3,28 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.19
+
+_Signing in gets a second door, and the destructive buttons learn to ask._
+
+### Access
+
+- **Sign in with Google.** If your account has a Google account connected, the
+  sign-in screen offers it. It opens your browser rather than a window inside
+  AuthNo — that is Google's rule, and it is the right one: an app that hosts
+  the login box can read what you type into it.
+- **Sign up with Google**, once you have typed an invite code and picked a pen
+  name. Google fills in the email and stands in for a password. The code is
+  still what admits you; a Google account on its own is not an invitation.
+- **Connect Google to an account you already have**, from Settings → About.
+- **None of this makes AuthNo need a network.** Signing in with Google fetches
+  a key once, exactly like a password does. Every start after that verifies it
+  on your device, on a plane, in a tunnel, on the day the website is down.
+
+### Everything that cannot be undone now asks first
+
+- Signing out asks before it does it, wherever it is offered.
+
 ## 1.1.18-beta.12
 
 _The closed beta gets a door — and, more importantly, a way out of it.
