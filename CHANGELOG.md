@@ -3,7 +3,7 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
-## 1.1.19
+## 1.1.19-beta.0
 
 _Signing in gets a second door, and the destructive buttons learn to ask._
 
