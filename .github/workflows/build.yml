@@ -18,6 +18,16 @@ on:
         required: false
         type: string
 
+# Only the newest run per ref survives. Pushing three times to a branch used to
+# pay for three full matrices and throw the first two away — which matters now
+# that a private repo bills by the minute rather than being free.
+#
+# Tags are deliberately NOT cancellable: a release run that gets superseded is
+# a release that silently never publishes.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 # ── 1. Build React once, reuse across all platform jobs ──────────────────────
 jobs:
   build-react:
@@ -166,6 +176,54 @@ jobs:
             echo "::error title=Gate URL missing from bundle::REACT_APP_GATE_API was set but does not appear in build/. Password sign-in would ship dead."
             exit 1
           fi
+      # ── Source maps: keep them, ship none ─────────────────────────────────
+      #
+      # CRA emits .map files and `build.files` is "build/**/*", so every map
+      # went into the Electron asar and, via Capacitor, into the APK. Measured
+      # on this bundle: 117 first-party files, 1,387,954 characters of original
+      # source with comments, reconstructable from any published installer with
+      # `npx asar extract`. That is not a hypothetical — it shipped.
+      #
+      # They are still worth having: without one, a crash report is an
+      # unreadable minified stack trace and stays unreadable forever. So they
+      # are kept HERE, as a build artifact only this repo can read, and removed
+      # from the bundle every platform job consumes.
+      #
+      # Deleting must come after the upload of the maps and before the upload
+      # of react-build. Reordering these two steps silently re-ships them.
+      - name: Keep the source maps out of reach
+        shell: bash
+        run: |
+          mkdir -p sourcemaps
+          # `find -exec cp` rather than a glob: bash would pass the literal
+          # pattern through when a directory happens to contain no maps.
+          find build -name '*.map' -exec cp {} sourcemaps/ \;
+          echo "kept $(find sourcemaps -name '*.map' | wc -l) map(s) for debugging"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: react-sourcemaps
+          path: sourcemaps/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Strip the source maps from the shipped bundle
+        shell: bash
+        run: |
+          find build -name '*.map' -delete
+          # The maps are gone; the pointers to them are not, and a dangling
+          # sourceMappingURL is a 404 in every devtools that opens the app.
+          find build/static -type f \( -name '*.js' -o -name '*.css' \) \
+            -exec sed -i -e '/^\/\/# sourceMappingURL=/d' -e 's|/\*# sourceMappingURL=[^*]*\*/||g' {} +
+          left=$(find build -name '*.map' | wc -l)
+          refs=$(grep -rl "sourceMappingURL" build/static 2>/dev/null | wc -l)
+          echo "maps remaining: $left, files still referencing one: $refs"
+          if [ "$left" != "0" ] || [ "$refs" != "0" ]; then
+            echo "::error title=Source maps would ship::build/ still contains $left map(s) and $refs reference(s). Every installer and APK from this run would carry the original source."
+            exit 1
+          fi
+          echo "✔ no source maps in the bundle the platform jobs will package"
+
       - uses: actions/upload-artifact@v4
         with: { name: react-build, path: build/, retention-days: 1 }
 
@@ -510,9 +568,25 @@ jobs:
   # These jobs restore the desktop build to CI. Previously only Android was
   # built here, which is exactly why `npm run dist:win` / `dist:linux` had
   # silently rotted. Both reuse the shared React artifact.
+  # Tags and dispatched releases only.
+  #
+  # These two built an installer on EVERY push and every pull request, and
+  # nothing consumed it unless the ref was a tag — the artifacts were uploaded,
+  # kept, and thrown away. Measured on one push: Windows 5m57s billed at the
+  # 2x rate = 12 minutes, Linux 6m15s = 7, against 6 for everything else. So
+  # ~19 of ~25 minutes per push bought nothing.
+  #
+  # Public repos get unlimited minutes, which is why this went unnoticed. A
+  # private one does not.
+  #
+  # The release job `needs:` both of these. A skipped `needs` dependency skips
+  # the dependant too — which is correct here, because release is itself
+  # tag-gated, so the two conditions agree. Loosening one without the other
+  # produces a release with no desktop installers in it.
   build-desktop-windows:
     name: Build Desktop (Windows)
     needs: build-react
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -547,9 +621,11 @@ jobs:
             dist-electron/*.msi
           if-no-files-found: warn
 
+  # Tags and dispatched releases only — see the note on the Windows job.
   build-desktop-linux:
     name: Build Desktop (Linux)
     needs: build-react
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
