@@ -14,6 +14,10 @@ coverage/
 # 🔹 REACT BUILD OUTPUT (NEVER COMMIT)
 # =========================================
 build/
+# Where CI parks the source maps after lifting them out of build/. They are
+# the original source in full, so this must never become a tracked directory
+# on a repo that is about to go private.
+sourcemaps/
 
 # =========================================
 # 🔹 ELECTRON BUILD OUTPUT (NEVER COMMIT)
