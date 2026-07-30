@@ -216,7 +216,11 @@ jobs:
           find build/static -type f \( -name '*.js' -o -name '*.css' \) \
             -exec sed -i -e '/^\/\/# sourceMappingURL=/d' -e 's|/\*# sourceMappingURL=[^*]*\*/||g' {} +
           left=$(find build -name '*.map' | wc -l)
-          refs=$(grep -rl "sourceMappingURL" build/static 2>/dev/null | wc -l)
+          # `|| true` is load-bearing. grep exits 1 when it matches NOTHING,
+          # this step runs under `bash -e -o pipefail`, and so the success
+          # case — zero references, exactly what we want — aborted the script
+          # before it could report it. The guard failed for being satisfied.
+          refs=$(grep -rl "sourceMappingURL" build/static 2>/dev/null | wc -l || true)
           echo "maps remaining: $left, files still referencing one: $refs"
           if [ "$left" != "0" ] || [ "$refs" != "0" ]; then
             echo "::error title=Source maps would ship::build/ still contains $left map(s) and $refs reference(s). Every installer and APK from this run would carry the original source."
