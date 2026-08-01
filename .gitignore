@@ -85,3 +85,8 @@ android/app/src/main/assets/public/
 
 # Licence signing private key — minting keys for buyers (NEVER commit)
 authno-license-private.json
+
+# Local release script config — signing passwords and a publishing token.
+scripts/release.env
+dist-release/
+extensions/extbk-sandbox/app/
