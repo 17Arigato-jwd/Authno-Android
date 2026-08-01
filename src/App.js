@@ -27,7 +27,7 @@ import { setSoundsEnabled } from "./utils/sounds";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
-import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
+import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook, isContentless } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
@@ -1007,7 +1007,14 @@ function AppInner({ navigateRef }) {
     } catch (e) {
       // Quota exceeded even after stripping covers — drop content bodies too.
       try {
-        const minimal = sessions.map(s => ({ id: s.id, title: s.title, filePath: s.filePath, type: s.type, updated: s.updated }));
+        // _mirrorStub marks these as deliberately incomplete. The next launch
+        // boots from this mirror, so without the flag there is nothing to
+        // distinguish "a book whose text we dropped to fit the quota" from
+        // "a book that is genuinely empty" — and the difference decides
+        // whether writing it back destroys a manuscript. utils/storage.js
+        // refuses to save either shape over an existing file regardless; this
+        // makes the state legible rather than inferred.
+        const minimal = sessions.map(s => ({ id: s.id, title: s.title, filePath: s.filePath, type: s.type, updated: s.updated, _mirrorStub: true }));
         localStorage.setItem("offlineWriterSessions", JSON.stringify(minimal));
       } catch { /* give up on the mirror; disk files remain the source of truth */ }
       console.warn('[AuthNo] session mirror trimmed — localStorage quota reached');
@@ -1174,6 +1181,11 @@ function AppInner({ navigateRef }) {
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       for (const s of sessions) {
+        // Nothing to save, and saveBook would refuse it anyway — but handing a
+        // contentless book to every extension's onSave hook is its own bug, so
+        // it never gets that far. This is the shape the app boots in after the
+        // localStorage mirror degrades under quota; see utils/storage.js.
+        if (isContentless(s)) continue;
         const fp = bookFingerprint(s);
         if (savedFingerprints.current.get(s.id) === fp) continue; // unchanged
         if (hookCount('onSave') > 0) await fireHook('onSave', { session: s, trigger: 'change' });

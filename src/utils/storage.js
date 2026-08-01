@@ -204,9 +204,46 @@ export function isUserPlaced(session) {
   return !!session?.filePath?.startsWith('content://');
 }
 
+/**
+ * True when a session carries no writable text at all — no chapters, and no
+ * legacy flat `content`.
+ *
+ * No book reaches the editor in this shape: creating one always seeds chapter
+ * 1, and opening a file always unpacks chapters. There is exactly one way to
+ * get here, and it is not a user action.
+ *
+ * App.js mirrors the session array into localStorage. That mirror has a ~5 MB
+ * quota, and a writer with a few hundred thousand words will exceed it. When
+ * the write throws, App.js degrades the mirror to `{id,title,filePath,type,
+ * updated}` stubs so *something* survives — deliberately, and documented.
+ *
+ * The trap is what happens next. On the following launch the mirror is the
+ * only source of sessions (initBookIndex is a no-op; nothing re-reads the
+ * .authbook files), so the app boots holding stubs. Those stubs still carry
+ * `filePath`, so two seconds later the autosave loop hands each one to
+ * saveBook, sessionToBook turns a chapter-less session into a single EMPTY
+ * chapter, and every manuscript is overwritten with nothing.
+ *
+ * Refusing the write is what makes that survivable: the file on disk is the
+ * real copy, and a save that would shrink a book to nothing is never what the
+ * writer meant. Being unable to save is a bad afternoon; this was the book.
+ */
+export function isContentless(session) {
+  if (!session) return true;
+  if (session.chapters?.length) return false;
+  return !(session.content ?? '').trim();
+}
+
 export async function autoSaveBook(session) {
   if (!isAndroid() || !session?.id) return { success: false, skipped: true };
   if (isUserPlaced(session)) return { success: false, skipped: true };
+  // Never let an empty in-memory copy overwrite a good autosave — see
+  // isContentless. The app-folder copy is the recovery copy for books the
+  // writer has not placed themselves, so it is the last thing to clobber.
+  if (isContentless(session)) {
+    logError('autoSaveBook', new Error('refused to autosave a book with no chapters or content'), { sessionTitle: session?.title });
+    return { success: false, skippedEmpty: true };
+  }
   try {
     const bytes = await encodeSession(session);
     const loc = await writeToAppDir(autosaveName(session), bytes);
@@ -256,6 +293,18 @@ export async function deleteBookFiles(session) {
 // ─── Core file I/O ────────────────────────────────────────────────────────────
 
 export async function saveBook(session) {
+  // Overwriting an existing file with a contentless session destroys it, and
+  // the only way to be holding one is a degraded mirror — see isContentless.
+  // Guarded here rather than at the call sites so every path that saves is
+  // covered, including ones added later.
+  //
+  // Only refuses when there is something to destroy: a contentless session
+  // with no filePath has nothing to overwrite, and blocking it would stop a
+  // genuinely new empty book from ever getting a file.
+  if (session?.filePath && isContentless(session)) {
+    logError('saveBook', new Error('refused to overwrite a saved book with a copy that has no chapters or content'), { sessionTitle: session?.title });
+    return { success: false, skippedEmpty: true };
+  }
   try {
     if (isElectron()) {
       const b64 = bytesToBase64(await encodeSession(session));
