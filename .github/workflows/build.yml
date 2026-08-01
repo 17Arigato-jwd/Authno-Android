@@ -236,11 +236,22 @@ jobs:
           find build -name '*.map' -exec cp {} sourcemaps/ \;
           echo "kept $(find sourcemaps -name '*.map' | wc -l) map(s) for debugging"
 
+      # ── Why every artifact below carries a retention-days ─────────────────
+      # GitHub's default is 90 days. On a public repo that is free and nobody
+      # notices; on a private one it is billed storage, and it filled up — a
+      # release run died with "Artifact storage quota has been hit" before it
+      # built anything, because ~19 MB per push had been accumulating for
+      # three months a run.
+      #
+      # These are all intermediates. Every artifact that a human actually
+      # wants ends up attached to a GitHub Release, and release assets do not
+      # count against Actions storage. A week is far longer than the hours
+      # anyone spends debugging a specific run.
       - uses: actions/upload-artifact@v4
         with:
           name: react-sourcemaps
           path: sourcemaps/
-          retention-days: 14
+          retention-days: 7
           if-no-files-found: warn
 
       - name: Strip the source maps from the shipped bundle
@@ -451,6 +462,7 @@ jobs:
           # (was misleadingly called "authno-android-debug").
           name: authno-android-apk
           path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 7
           if-no-files-found: warn
 
       - name: Upload release AAB
@@ -459,6 +471,7 @@ jobs:
         with:
           name: authno-android-release
           path: android/app/build/outputs/bundle/release/*.aab
+          retention-days: 7
           if-no-files-found: warn
 
       - name: "📊 Progress: All Done"
@@ -575,6 +588,7 @@ jobs:
           path: |
             dist/extbk-sandbox-*-linux-mac.tar.gz
             dist/extbk-sandbox-*-windows.zip
+          retention-days: 7
           if-no-files-found: error
 
       - name: Summary
@@ -659,6 +673,7 @@ jobs:
           path: |
             dist-electron/*.exe
             dist-electron/*.msi
+          retention-days: 7
           if-no-files-found: warn
 
   # Tags and dispatched releases only — see the note on the Windows job.
@@ -694,6 +709,7 @@ jobs:
             dist-electron/*.deb
             dist-electron/*.rpm
             dist-electron/*.tar.gz
+          retention-days: 7
           if-no-files-found: warn
 
   # ── 4. GitHub Release
