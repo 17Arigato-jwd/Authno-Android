@@ -51,6 +51,7 @@ import {
 } from "./utils/firstBookTour";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
+import { bookFingerprint } from "./utils/bookFingerprint";
 import ExtensionPage from "./components/ExtensionPage";
 
 // ── Code-split surfaces (boot-time diet) ─────────────────────────────────────
@@ -1165,14 +1166,15 @@ function AppInner({ navigateRef }) {
   // and fired every extension's onSave hook for every book — on each 2-second
   // debounce, even if only one keystroke happened in one chapter. That meant
   // constant SAF writes, wasted battery, and extensions spammed with change
-  // events. Track a per-session fingerprint and only touch what changed.
+  // events. Only touch what actually changed — see utils/bookFingerprint.js,
+  // which documents why each field it covers has to be in there.
   const savedFingerprints = useRef(new Map());
   useEffect(() => {
     if (!android || sessions.length === 0) return;
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       for (const s of sessions) {
-        const fp = `${s.updated ?? ''}|${s.title ?? ''}|${(s.chapters || []).length}`;
+        const fp = bookFingerprint(s);
         if (savedFingerprints.current.get(s.id) === fp) continue; // unchanged
         if (hookCount('onSave') > 0) await fireHook('onSave', { session: s, trigger: 'change' });
         if (!s.filePath?.startsWith('content://')) { savedFingerprints.current.set(s.id, fp); continue; }
@@ -1455,8 +1457,13 @@ function AppInner({ navigateRef }) {
       return { ...s, chapters, updated: new Date().toISOString(), history };
     }));
   }, [currentId]);
+  // Renaming counts as editing the book: it changes what is written to the
+  // file, so it has to move the book's "last edited" time the way the
+  // dashboard's rename (handleRenameChapterByIdx) already did. Without this,
+  // a renamed book kept its old timestamp and stayed where it was in the
+  // recently-edited ordering on the home screen.
   const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId
-    ? { ...x, title: t, history: recordOp(x.history, { kind: 'rename-book', chapTitle: t }) }
+    ? { ...x, title: t, updated: new Date().toISOString(), history: recordOp(x.history, { kind: 'rename-book', chapTitle: t }) }
     : x));
   // `target` is the { bookId, chapIdx } captured by the Editor at input time —
   // the debounced flush may arrive after navigation, and must still land in
@@ -1490,7 +1497,10 @@ function AppInner({ navigateRef }) {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
       const chapters = (s.chapters || []).map((ch) => ch.chap_idx === currentChapterIdx ? { ...ch, title: t } : ch);
-      return { ...s, chapters, history: recordOp(s.history, { kind: 'rename-chapter', chapIdx: currentChapterIdx, chapTitle: t }) };
+      // Same stamp the dashboard's rename does. Renaming a chapter from the
+      // editor and going straight back — with no typing afterwards to bump
+      // `updated` — used to leave the book looking untouched.
+      return { ...s, chapters, updated: new Date().toISOString(), history: recordOp(s.history, { kind: 'rename-chapter', chapIdx: currentChapterIdx, chapTitle: t }) };
     }));
   }, [currentId, currentChapterIdx]);
   // Rename any chapter by index (dashboard inline rename — no need to open the
