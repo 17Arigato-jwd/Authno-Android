@@ -236,6 +236,22 @@ export function ChapterRow({
                 >
                   {synopsis}
                 </div>
+              ) : chap.preview ? (
+                // Deferred loading: the body is not in memory, so the opening
+                // lines stand in for it. Shown instead of "+ Add synopsis"
+                // because a chapter you cannot yet see is better represented by
+                // its own words than by an empty invitation.
+                <div
+                  onClick={startEdit}
+                  title="Tap to add a synopsis"
+                  style={{
+                    fontSize: '13px', lineHeight: 1.5, color: 'var(--text-5)', cursor: 'text',
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden', fontStyle: 'italic',
+                  }}
+                >
+                  {chap.preview}
+                </div>
               ) : (
                 <button
                   onClick={startEdit}

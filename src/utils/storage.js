@@ -15,6 +15,7 @@
 
 import { isElectron, isAndroid } from './platform';
 import { logError } from './ErrorLogger';
+import { hasUnhydratedChapters } from './largeBooks';
 import {
   packSession, unpackSession, bookToSession, sessionToBook,
   detectFormat, fromLegacySession, base64ToBytes, bytesToBase64,
@@ -184,6 +185,45 @@ export function folderFromPath(filePath) {
   return parts[parts.length - 2] || 'Internal Storage';
 }
 
+/**
+ * Re-read a book from its own file and return the full session.
+ *
+ * This is what makes deferred loading possible: a book opened in preview mode
+ * keeps its chapter list but not the bodies, and comes back here for one when
+ * the reader opens a chapter.
+ *
+ * It reads the WHOLE file rather than a single chapter, because the .authbook
+ * format packs every chapter into one Reed-Solomon-protected payload — there is
+ * no seekable per-chapter region to read. Fetching "just chapter 9" would mean
+ * unpacking all of it anyway, so the caller unpacks once and keeps the result.
+ *
+ * Returns null rather than throwing when the file cannot be read. Callers use
+ * that to leave the chapter unloaded and say so, which is recoverable; an
+ * exception here would surface as a crash mid-read instead.
+ */
+export async function readSessionFromFile(session) {
+  const path = session?.filePath;
+  if (!path) return null;
+  try {
+    if (isElectron()) {
+      const res = await window.electron?.readBookBytes?.({ filePath: path });
+      if (!res?.base64) return null;
+      return await decodeBytes(base64ToBytes(res.base64), path);
+    }
+    if (isAndroid() && path.startsWith('content://')) {
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
+      const res = await plugin.readBytesFromUri({ uri: path });
+      if (!res?.base64) return null;
+      return await decodeBytes(base64ToBytes(res.base64), path);
+    }
+    return null;
+  } catch (e) {
+    logError('readSessionFromFile', e, { sessionTitle: session?.title });
+    return null;
+  }
+}
+
 export async function initBookIndex() {}              // no-op — App.js calls on startup
 export function listKnownBooks() { return []; }       // no-op — HomeScreen handles []
 export async function pruneBookIndex() { return []; } // no-op — HomeScreen handles []
@@ -304,6 +344,18 @@ export async function saveBook(session) {
   if (session?.filePath && isContentless(session)) {
     logError('saveBook', new Error('refused to overwrite a saved book with a copy that has no chapters or content'), { sessionTitle: session?.title });
     return { success: false, skippedEmpty: true };
+  }
+
+  // A book opened with deferred loading holds `content: null` for every chapter
+  // the reader has not opened yet. Encoding that writes those chapters out
+  // EMPTY — the same destruction as above, only chapter by chapter, and harder
+  // to notice because the book still looks structurally intact afterwards.
+  //
+  // Callers load the rest before saving; this is the backstop for any that
+  // forget, and for paths added later that never knew deferred loading exists.
+  if (session?.filePath && hasUnhydratedChapters(session)) {
+    logError('saveBook', new Error('refused to save a book whose chapters are not all loaded'), { sessionTitle: session?.title });
+    return { success: false, needsHydration: true };
   }
   try {
     if (isElectron()) {

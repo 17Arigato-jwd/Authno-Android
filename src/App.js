@@ -27,7 +27,7 @@ import { setSoundsEnabled } from "./utils/sounds";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
-import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook, isContentless } from "./utils/storage";
+import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook, isContentless, readSessionFromFile } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
@@ -52,6 +52,10 @@ import {
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import { bookFingerprint } from "./utils/bookFingerprint";
+import {
+  isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
+  hasUnhydratedChapters, canDeferLoad, getLargeBookChoice, setLargeBookChoice,
+} from "./utils/largeBooks";
 import ExtensionPage from "./components/ExtensionPage";
 
 // ── Code-split surfaces (boot-time diet) ─────────────────────────────────────
@@ -69,6 +73,9 @@ const AccessGate = lazy(() => import("./components/AccessGate"));
 const FirstBookTour    = lazy(() => import("./components/FirstBookTour"));
 const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
 const FileIntegrityModalLazy = lazy(() => import("./components/FileIntegrityModal"));
+// Only ever mounts for a book past the size threshold, so it has no business
+// in the main bundle.
+const LargeBookDialogLazy = lazy(() => import("./components/LargeBookDialog"));
 
 // ── DesignSystem ─────────────────────────────────────────────────────────────
 // BackgroundRouter replaces the old <Background /> import.
@@ -1191,7 +1198,27 @@ function AppInner({ navigateRef }) {
         if (hookCount('onSave') > 0) await fireHook('onSave', { session: s, trigger: 'change' });
         if (!s.filePath?.startsWith('content://')) { savedFingerprints.current.set(s.id, fp); continue; }
         try {
-          const result = await saveBook(s);
+          // A book opened with deferred loading has to be completed before it
+          // can be written: the .authbook packs every chapter into one payload,
+          // so there is no way to save just the edited one. Read the file back,
+          // fill in the chapters still outstanding, and write the whole thing.
+          //
+          // hydrateAll only fills nulls, so an edit the writer just made to a
+          // loaded chapter survives the merge rather than being reverted to
+          // what is on disk.
+          let toSave = s;
+          if (hasUnhydratedChapters(s)) {
+            const fresh = await readSessionFromFile(s);
+            toSave = hydrateAll(s, fresh);
+            if (hasUnhydratedChapters(toSave)) {
+              // Still incomplete — the file is unreadable or has fewer chapters
+              // than the list. Writing now would drop whatever is missing, so
+              // don't, and don't mark it saved either: the retry is the point.
+              continue;
+            }
+            setSessions((prev) => prev.map((x) => (x.id === s.id ? hydrateAll(x, fresh) : x)));
+          }
+          const result = await saveBook(toSave);
           if (result?.staleUri) { setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))); continue; }
           if (result?.filePath && result.filePath !== s.filePath) setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x)));
           savedFingerprints.current.set(s.id, fp);
@@ -1323,13 +1350,65 @@ function AppInner({ navigateRef }) {
     // button to a normal new book until the storyboard workflow ships.
     newBook();
   };
+  // ── Opening a very large book ────────────────────────────────────────────
+  // Books past the threshold get the choice offered by LargeBookDialog before
+  // they open. The answer can be remembered per book, because a writer who
+  // lives in one big manuscript should be asked once, not every session.
+  const [largeBookPrompt, setLargeBookPrompt] = useState(null); // the pending session
+  const openBookNow = useCallback((id, { preview = false } = {}) => {
+    if (preview) {
+      setSessions((prev) => prev.map((s) => (s.id === id && !s._preview ? toPreviewSession(s) : s)));
+    }
+    setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
+    if (android) setDrawerOpen(false);
+  }, [android]);
+
   const handleSelect = (id, sessionObj) => {
     hapticSelect();
     if (sessionObj) setSessions((prev) => prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]);
-    setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
-    if (android) setDrawerOpen(false);
+    const target = sessionObj ?? sessions.find((s) => s.id === id);
+    // Already in preview mode, or small enough not to matter — straight in.
+    //
+    // canDeferLoad matters as much as the size: deferred loading fetches each
+    // chapter back from the book's own file, so a book that has never been
+    // saved anywhere has nothing to fetch from. Offering preview mode there
+    // would hand the writer a chapter list whose chapters cannot be opened.
+    // ...and only where a file can actually be read back. On the web build
+    // there is no filesystem to fetch a chapter from, so preview mode there
+    // would drop the bodies with no way to return them.
+    const canDefer = canDeferLoad(target) && (android || !!window.electron);
+    if (target && !target._preview && isLargeBook(target) && canDefer) {
+      const remembered = getLargeBookChoice(id);
+      if (!remembered) { setLargeBookPrompt(target); return; }
+      openBookNow(id, { preview: remembered === 'preview' });
+      return;
+    }
+    openBookNow(id);
   };
-  const handleEditChapter = useCallback((chapIdx) => { hapticSelect(); setCurrentChapterIdx(chapIdx); setView("editor"); }, []);
+
+  // Opening a chapter is where a deferred body actually gets fetched. The view
+  // switches first either way: waiting on a file read before showing anything
+  // would make a large book feel broken rather than merely large.
+  const handleEditChapter = useCallback((chapIdx) => {
+    hapticSelect();
+    setCurrentChapterIdx(chapIdx); setView("editor");
+    const book = sessionsRef.current?.find((s) => s.id === currentId);
+    const chap = (book?.chapters || []).find((c) => c.chap_idx === chapIdx);
+    if (!book || !isUnhydrated(chap)) return;
+    (async () => {
+      const fresh = await readSessionFromFile(book);
+      if (!fresh) {
+        // Back to the chapter list rather than leaving a blank editor open.
+        // An empty editor over an unloaded chapter invites typing into it, and
+        // while the save guard stops that reaching the file, the writer would
+        // be composing into something that is not really their chapter.
+        toast('That chapter could not be loaded from the file', { variant: 'danger', duration: 5000 });
+        setView('book-dashboard');
+        return;
+      }
+      setSessions((prev) => prev.map((s) => (s.id === book.id ? hydrateChapter(s, chapIdx, fresh) : s)));
+    })();
+  }, [currentId]);
 
   // ── Resume Writing: one call drops the user back into the editor at the
   // recorded book/chapter/caret. Used by the 'resume' startup mode, the home
@@ -1907,6 +1986,29 @@ function AppInner({ navigateRef }) {
             onInjectEdit={coachInjectEdit}
             onCleanup={coachCleanupDemo}
             onFinish={() => { setFirstTour(getTourState()); setView("home"); }}
+          />
+        </Suspense>
+      )}
+
+      {largeBookPrompt && (
+        <Suspense fallback={null}>
+          <LargeBookDialogLazy
+            open
+            book={largeBookPrompt}
+            accentHex={customization.accentHex}
+            onPreview={({ remember }) => {
+              if (remember) setLargeBookChoice(largeBookPrompt.id, 'preview');
+              const id = largeBookPrompt.id;
+              setLargeBookPrompt(null);
+              openBookNow(id, { preview: true });
+            }}
+            onOpenAnyway={({ remember }) => {
+              if (remember) setLargeBookChoice(largeBookPrompt.id, 'full');
+              const id = largeBookPrompt.id;
+              setLargeBookPrompt(null);
+              openBookNow(id);
+            }}
+            onCancel={() => setLargeBookPrompt(null)}
           />
         </Suspense>
       )}

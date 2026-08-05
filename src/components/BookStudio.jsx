@@ -158,6 +158,12 @@ export default function BookStudio({
 
   const previewText = useMemo(() => {
     if (!selected) return '';
+    // Deferred loading: `content: null` means the body is not in memory yet,
+    // and the snippet kept when the book was opened stands in for it. Falling
+    // through to htmlToText(null) would render nothing and the empty-state
+    // below would tell the writer this chapter is empty — a lie about their
+    // own work, and exactly the kind that makes people think they lost it.
+    if (selected.content === null) return selected.preview || '';
     const t = htmlToText(selected.content || '').trim();
     return t.length > 1400 ? `${t.slice(0, 1400)}…` : t;
   }, [selected]);
@@ -394,7 +400,11 @@ export default function BookStudio({
                   {previewText ? (
                     <div style={{ fontSize: 14, lineHeight: 1.8, color: 'var(--text-2)', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-editor)' }}>{previewText}</div>
                   ) : (
-                    <div style={{ fontSize: 13, color: 'var(--text-5)', fontStyle: 'italic' }}>This chapter is empty — open it in the editor to start writing.</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-5)', fontStyle: 'italic' }}>
+                      {selected.content === null
+                        ? 'Open this chapter to read it.'
+                        : 'This chapter is empty — open it in the editor to start writing.'}
+                    </div>
                   )}
                 </div>
 
