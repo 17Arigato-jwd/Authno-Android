@@ -873,7 +873,11 @@ function AppInner({ navigateRef }) {
       CapApp.minimizeApp();
     }).then(h => { listener = h; });
     return () => { listener?.remove(); };
-  }, [android, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view]);
+    // extPageState is in here because the handler reads its _prevView. Moving
+    // between two extension pages changes it WITHOUT changing `view`, so the
+    // listener kept the first page's _prevView and back sent you to whatever
+    // screen you had opened the previous extension from.
+  }, [android, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view, extPageState]);
 
   // ── Re-verify the stored licence on boot ─────────────────────────────────
   // The tier itself lives in localStorage, so it can be hand-edited. When this
@@ -1668,7 +1672,10 @@ function AppInner({ navigateRef }) {
     }
   }, [sessions, currentId, showError]);
 
-  const filtered = sessions.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
+  // Untitled books are reachable through import and through the extension API,
+  // and this runs during render — an undefined title here took out the whole
+  // app, not just the list.
+  const filtered = sessions.filter((s) => (s.title || '').toLowerCase().includes(search.toLowerCase()));
   const current  = sessions.find((s) => s.id === currentId) || null;
 
   const editorCurrent = React.useMemo(() => {

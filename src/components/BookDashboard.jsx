@@ -464,7 +464,11 @@ export default function BookDashboard({
     let list = chapters;
     if (chapterSearch.trim()) {
       const q = chapterSearch.toLowerCase();
-      list = list.filter(c => c.title.toLowerCase().includes(q));
+      // A chapter with no title is rare but reachable — the encoder writes
+      // `title` straight through while the decoder defaults it, so a book that
+      // round-trips through a third-party tool can come back untitled. Typing
+      // in this box then took the whole chapter list down.
+      list = list.filter(c => (c.title || '').toLowerCase().includes(q));
     }
     return sortOrder === 'newest' ? [...list].reverse() : list;
   }, [chapters, chapterSearch, sortOrder]);

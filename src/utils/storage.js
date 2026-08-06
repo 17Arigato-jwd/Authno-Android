@@ -15,7 +15,7 @@
 
 import { isElectron, isAndroid } from './platform';
 import { logError } from './ErrorLogger';
-import { hasUnhydratedChapters } from './largeBooks';
+import { hasUnhydratedChapters, hydrateAll } from './largeBooks';
 import {
   packSession, unpackSession, bookToSession, sessionToBook,
   detectFormat, fromLegacySession, base64ToBytes, bytesToBase64,
@@ -618,7 +618,35 @@ function _safeName(session) {
 /**
  * Export all chapters as a plain text file.
  */
+
+/**
+ * Return a session with every chapter loaded, fetching the file if needed.
+ *
+ * Export is the one operation where a partially-loaded book fails silently in
+ * the worst possible way: the text helpers below are all null-safe, so an
+ * unloaded chapter does not throw — it renders as nothing. The writer gets a
+ * PDF of their novel with chapters that are simply blank, and nothing says so.
+ *
+ * Applied inside each export rather than at the four call sites in App.js,
+ * because rescue.js and the extension runtime export too, and the escape hatch
+ * is the last place that should grow its own copy of this rule.
+ *
+ * Throws rather than exporting what it has. Callers already wrap exports in
+ * try/catch and surface the error, and a refused export is recoverable in a
+ * way that a silently truncated manuscript is not.
+ */
+async function withAllChapters(session) {
+  if (!hasUnhydratedChapters(session)) return session;
+  const fresh = await readSessionFromFile(session);
+  const full = hydrateAll(session, fresh);
+  if (hasUnhydratedChapters(full)) {
+    throw new Error('Could not load the whole book to export it — some chapters are still unread from the file.');
+  }
+  return full;
+}
+
 export async function exportAsTxt(session, options = {}) {
+  session = await withAllChapters(session);
   const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const lines = [];
   lines.push(session.title || 'Untitled');
@@ -647,6 +675,7 @@ export async function exportAsTxt(session, options = {}) {
  * Page 3+: chapters.
  */
 export async function exportAsHtml(session, options = {}) {
+  session = await withAllChapters(session);
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const title     = session.title    || 'Untitled';
   const language  = session.language || 'en';
@@ -775,6 +804,7 @@ function toXhtml(html) {
  * "Coming soon" placeholder.
  */
 export async function exportAsPdf(session, options = {}) {
+  session = await withAllChapters(session);
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
   const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
 
@@ -871,6 +901,7 @@ export async function exportAsPdf(session, options = {}) {
 }
 
 export async function exportAsEpub(session, options = {}) {
+  session = await withAllChapters(session);
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const bookId    = session.id || String(Date.now());
 

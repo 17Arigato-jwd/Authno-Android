@@ -88,3 +88,58 @@ describe('the destruction path this guards', () => {
     expect(!!fresh.filePath).toBe(false);
   });
 });
+
+describe('exports refuse a partially-loaded book', () => {
+  // The text helpers in storage.js are all null-safe, so an unloaded chapter
+  // does not throw on the way out — it renders as nothing. Without this guard
+  // the writer gets their novel with blank chapters and no indication why.
+  const preview = {
+    id: 'b1',
+    title: 'My Novel',
+    filePath: 'content://com.android.providers/document/1234',
+    chapters: [
+      { chap_idx: 1, title: 'One', order: 1, content: '<p>loaded</p>', preview: 'loaded' },
+      { chap_idx: 2, title: 'Two', order: 2, content: null, preview: 'not loaded yet' },
+    ],
+  };
+
+  // Under jsdom there is no Electron bridge and no Android plugin, so
+  // readSessionFromFile returns null and hydrateAll fails closed — the same
+  // path as a genuinely unreadable file on a device.
+  test.each(['exportAsTxt', 'exportAsHtml', 'exportAsEpub'])(
+    '%s throws rather than emitting empty chapters',
+    async (name) => {
+      const mod = await import('./storage');
+      await expect(mod[name](preview, { returnBytes: true })).rejects.toThrow(/whole book/i);
+    }
+  );
+
+  test('a fully loaded book still exports', async () => {
+    const { exportAsTxt } = await import('./storage');
+    const whole = {
+      ...preview,
+      chapters: preview.chapters.map((c) => ({ ...c, content: c.content ?? '<p>now here</p>' })),
+    };
+    await expect(exportAsTxt(whole, { returnBytes: true })).resolves.toBeDefined();
+  });
+});
+
+describe('chapter titles are defaulted on the way out, not just in', () => {
+  test('an untitled chapter is written as Untitled', async () => {
+    const { sessionToBook } = await import('./authbook');
+    const book = sessionToBook({
+      id: 'b1', title: 'Novel',
+      chapters: [{ chap_idx: 1, order: 1, content: '<p>x</p>' }], // no title
+    });
+    expect(book.chapters[0].title).toBe('Untitled');
+  });
+
+  test('a real title is left alone', async () => {
+    const { sessionToBook } = await import('./authbook');
+    const book = sessionToBook({
+      id: 'b1', title: 'Novel',
+      chapters: [{ chap_idx: 1, order: 1, title: 'The Arrival', content: '<p>x</p>' }],
+    });
+    expect(book.chapters[0].title).toBe('The Arrival');
+  });
+});

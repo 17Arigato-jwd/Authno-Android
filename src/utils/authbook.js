@@ -198,7 +198,11 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
     format_version: FORMAT_VERSION,
     chapters: (book.chapters || []).map(c => ({
       chap_idx:   c.chap_idx,
-      title:      c.title,
+      // Defaulted on the way out as well as the way in. The reader already
+      // does `ch.title || 'Untitled'`; without the same on the writer, a
+      // chapter that arrived untitled was written back untitled and stayed
+      // that way, and every consumer that assumed a string had to guess.
+      title:      c.title || 'Untitled',
       order:      c.order,
       word_count: _wordCount(c.content || ''),
       created:    c.created || now,
@@ -528,9 +532,14 @@ export function sessionToBook(session) {
   const _persistable = persistableHistory(session.history);
   if (session.chapters?.length) {
     // Already has chapter structure — sync chapter 1 content from session.content
-    const chapters = session.chapters.map((c, i) =>
-      i === 0 ? { ...c, content: session.content ?? c.content } : c
-    );
+    // Chapter titles are defaulted here, the same way the book title is on the
+    // next line and the way the reader already defaults them. Leaving one
+    // undefined let it reach code that assumed a string — searching the
+    // chapter list on such a book took the list down.
+    const chapters = session.chapters.map((c, i) => {
+      const titled = c.title ? c : { ...c, title: 'Untitled' };
+      return i === 0 ? { ...titled, content: session.content ?? c.content } : titled;
+    });
     return {
       meta: {
         formatVersion: FORMAT_VERSION,
