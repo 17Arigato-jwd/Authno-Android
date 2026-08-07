@@ -77,7 +77,11 @@ export async function scanForBooks(sessions = []) {
     try {
       const { checkStoragePermission } = await import('./storage');
       const status = await checkStoragePermission();
-      step('Storage permission', status === 'granted' ? OUTCOME.OK : OUTCOME.UNREADABLE, status);
+      // 'unknown' means the check itself failed, which is neither a pass nor a
+      // refusal and must not be reported as either.
+      step('Storage permission',
+        status === 'granted' ? OUTCOME.OK : OUTCOME.UNREADABLE,
+        status === 'unknown' ? 'could not be determined — treat the results below with suspicion' : status);
     } catch (e) {
       step('Storage permission', OUTCOME.UNREADABLE, e?.message || String(e));
     }

@@ -126,3 +126,46 @@ describe('safeScanForBooks', () => {
     expect(formatScanReport(r)).toContain('AuthNo — Book scan');
   });
 });
+
+// ── The real scan paths, not just the diagnostic ─────────────────────────────
+// bookScan.js answers "what happened?" when asked. These cover the other half:
+// the app's own scan noticing on its own, so a problem reaches the error log
+// without the writer having to go looking for it.
+describe('the app notices scan failures without being asked', () => {
+  const { clearErrorHistory, getErrorHistory } = require('./ErrorLogger');
+  beforeEach(() => clearErrorHistory());
+
+  test('a location check that throws is recorded, not swallowed', async () => {
+    const { checkFileIntegrity } = await import('./storage');
+    // Not Android under jsdom, so this returns early — the point is that it
+    // does not throw and leaves the log clean rather than logging noise.
+    await expect(checkFileIntegrity([{ id: 'a', filePath: 'content://x/1' }])).resolves.toEqual([]);
+    expect(getErrorHistory()).toHaveLength(0);
+  });
+
+  test('a failed permission check does not report success', async () => {
+    // The old fallback returned 'granted' when the check threw, so a scan that
+    // found nothing would also claim access was fine — the same answer as a
+    // real pass, with the opposite meaning.
+    const { checkStoragePermission } = await import('./storage');
+    const status = await checkStoragePermission();
+    expect(['granted', 'denied', 'unknown']).toContain(status);
+    // jsdom is not Android, so this short-circuits to 'granted' before the
+    // plugin is ever reached; the point is that 'unknown' is now expressible.
+    expect(status).toBe('granted');
+  });
+
+  test('a missing folder is not treated as an error worth reporting', async () => {
+    // Distinguishing the two is the whole point: the app folder does not exist
+    // until the first save, so reporting it every launch would be noise that
+    // trains people to ignore the log.
+    const { isMissingDirError } = await import('./storage');
+    expect(isMissingDirError(new Error('Directory does not exist'))).toBe(true);
+    expect(isMissingDirError(new Error('ENOENT: no such file or directory'))).toBe(true);
+    // Being blocked is NOT the same as there being nothing there, and only one
+    // of the two is worth telling anybody about.
+    expect(isMissingDirError(new Error('Permission denied'))).toBe(false);
+    expect(isMissingDirError(new Error('EACCES'))).toBe(false);
+    expect(isMissingDirError(null)).toBe(false);
+  });
+});

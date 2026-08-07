@@ -124,11 +124,40 @@ async function readAppDir() {
             path: `${SAVE_SUBDIR}/${f.name}`, directory: dir,
           });
           books.push(await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`));
-        } catch { /* skip corrupt */ }
+        } catch (e) {
+          // Skipping a damaged file is right — one bad book must not stop the
+          // other forty loading. Skipping it SILENTLY was not: a book that
+          // failed to appear looked exactly like a book that was never there,
+          // and there was nothing to send us.
+          //
+          // Safe to log per file now that repeats are counted rather than
+          // appended; forty failures are one entry with a count, not forty
+          // entries that flush everything else out of the history.
+          logError('bookScan:readFile', e, { file: f.name, folder: String(dir) });
+        }
       }
-    } catch { /* directory not available */ }
+    } catch (e) {
+      // A missing folder is normal — it is created on first save — so that is
+      // not worth an entry. Anything else means we were stopped from looking,
+      // which is the thing most likely to be behind "my books are all gone".
+      if (!isMissingDirError(e)) logError('bookScan:readFolder', e, { folder: String(dir) });
+    }
   }
   return books;
+}
+
+/**
+ * Distinguish "there is no folder yet" from "we were not allowed to look".
+ *
+ * The app folder does not exist until the first save, so treating its absence
+ * as a fault would put an entry in the log on every launch of a fresh install
+ * and train people to ignore it. Being blocked from reading it is the opposite:
+ * it is the most likely thing behind "all my books are gone".
+ */
+export function isMissingDirError(e) {
+  const m = (e?.message || String(e || '')).toLowerCase();
+  return m.includes('does not exist') || m.includes('not exist')
+    || m.includes('no such file') || m.includes('enoent');
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -140,8 +169,17 @@ export async function checkStoragePermission() {
     const plugin = registerPlugin('AuthnoFilePicker');
     const { granted } = await plugin.checkFullStoragePermission();
     return granted ? 'granted' : 'denied';
-  } catch {
-    return 'granted';
+  } catch (e) {
+    // Reporting 'granted' when the check itself failed is the same answer with
+    // the opposite meaning: the app proceeds as though it has access, and the
+    // scan then says "permission: granted" while listing nothing — which sends
+    // whoever reads it looking anywhere but the actual cause.
+    //
+    // 'unknown' keeps the permissive behaviour for callers that only gate on
+    // 'denied' (an older build with no plugin must still work) while letting a
+    // diagnostic say it could not tell.
+    logError('bookScan:permission', e);
+    return 'unknown';
   }
 }
 
@@ -504,13 +542,21 @@ export async function checkFileIntegrity(sessions) {
       if (!s.filePath?.startsWith('content://')) continue;
       try {
         const result = await plugin.checkUri({ uri: s.filePath });
-        if (!result?.accessible) broken.push(s);
-      } catch {
-        broken.push(s);
+        // `_unreachable` travels with the session so the UI can say WHY, rather
+        // than listing a book as broken and leaving the writer to guess.
+        if (!result?.accessible) broken.push({ ...s, _unreachable: 'the saved location no longer resolves' });
+      } catch (e) {
+        const why = e?.message || String(e);
+        broken.push({ ...s, _unreachable: why });
+        logError('bookScan:checkLocation', e, { sessionTitle: s.title, filePath: s.filePath });
       }
     }
     return broken;
-  } catch {
+  } catch (e) {
+    // Returning [] here reports "every book is fine" when the truth is that we
+    // could not check any of them. Same answer, opposite meaning, and it used
+    // to leave nothing behind.
+    logError('bookScan:checkLocation', e, { sessions: sessions.length });
     return [];
   }
 }
