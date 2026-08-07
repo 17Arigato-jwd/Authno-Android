@@ -1364,9 +1364,30 @@ function AppInner({ navigateRef }) {
   // they open. The answer can be remembered per book, because a writer who
   // lives in one big manuscript should be asked once, not every session.
   const [largeBookPrompt, setLargeBookPrompt] = useState(null); // the pending session
-  const openBookNow = useCallback((id, { preview = false } = {}) => {
+  const openBookNow = useCallback(async (id, { preview = false } = {}) => {
     if (preview) {
-      setSessions((prev) => prev.map((s) => (s.id === id && !s._preview ? toPreviewSession(s) : s)));
+      // Prove the file is readable BEFORE dropping the chapter bodies.
+      //
+      // canDeferLoad only knows there is a filePath, and not every filePath can
+      // be read back. A book opened from another app's share sheet carries a
+      // content:// URI granted for that launch only — createDocument and
+      // openDocument take persistable permission, an incoming intent cannot —
+      // so it looks identical to a saved book and stops resolving later.
+      //
+      // Dropping text we have not just proven we can re-read is the one way
+      // this feature loses work, so it does the read first and falls back to
+      // opening in full. Costs one file read on a path the writer has already
+      // agreed to wait for, and the result is not wasted: it is exactly what
+      // the chapters would have been rehydrated from.
+      const book = sessionsRef.current?.find((s) => s.id === id);
+      if (book && !book._preview) {
+        const probe = await readSessionFromFile(book);
+        if (!probe) {
+          toast('Could not read this book’s file, so it opened in full instead', { variant: 'warning', duration: 5000 });
+        } else {
+          setSessions((prev) => prev.map((s) => (s.id === id && !s._preview ? toPreviewSession(s) : s)));
+        }
+      }
     }
     setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
     if (android) setDrawerOpen(false);
