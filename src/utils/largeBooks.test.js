@@ -1,6 +1,6 @@
 import {
   estimateBookBytes, isLargeBook, shouldWarn, formatSize, snippetOf,
-  isUnhydrated, hasUnhydratedChapters, toPreviewSession, hydrateChapter, hydrateAll, canDeferLoad,
+  isUnhydrated, hasUnhydratedChapters, toPreviewSession, hydrateChapter, hydrateAll, canDeferLoad, isTextKnown,
   LARGE_BOOK_BYTES, WARN_BOOK_BYTES,
 } from './largeBooks';
 
@@ -202,5 +202,41 @@ describe('canDeferLoad', () => {
     expect(canDeferLoad({ id: 'draft', title: 'Untitled' })).toBe(false);
     expect(canDeferLoad({ filePath: '' })).toBe(false);
     expect(canDeferLoad(null)).toBe(false);
+  });
+});
+
+describe('isTextKnown', () => {
+  const real = book([chap(1, '<p>words</p>')]);
+
+  test('a book we hold in full is known', () => {
+    expect(isTextKnown(real)).toBe(true);
+    expect(isTextKnown(book([chap(1, '')]))).toBe(true); // genuinely empty
+  });
+
+  test('a preview-mode book is not', () => {
+    expect(isTextKnown(toPreviewSession(real))).toBe(false);
+  });
+
+  test('a quota-degraded mirror stub is not', () => {
+    expect(isTextKnown({ id: 'b1', title: 'Novel', filePath: 'content://x/1', _mirrorStub: true })).toBe(false);
+  });
+
+  test('a legacy stub with a file but no chapters is not', () => {
+    // Predates the _mirrorStub flag; a real book always has chapter 1.
+    expect(isTextKnown({ id: 'b1', title: 'Novel', filePath: 'content://x/1' })).toBe(false);
+  });
+
+  test('a partially loaded book is not', () => {
+    expect(isTextKnown(book([chap(1, '<p>a</p>'), chap(2, null)]))).toBe(false);
+  });
+
+  test('a brand new unsaved book with no chapters yet IS known', () => {
+    // No filePath, so nothing was dropped — it really is new and empty.
+    expect(isTextKnown({ id: 'new', title: 'Untitled Book', chapters: [] })).toBe(true);
+  });
+
+  test('nothing is not known', () => {
+    expect(isTextKnown(null)).toBe(false);
+    expect(isTextKnown(undefined)).toBe(false);
   });
 });

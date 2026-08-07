@@ -116,6 +116,34 @@ export function toPreviewSession(session) {
 }
 
 /**
+ * True when we can actually see this book's text, and so can say something
+ * about what is in it.
+ *
+ * There are several ways to be holding a book whose text is not in memory —
+ * preview mode dropped it, the localStorage mirror degraded under quota, or an
+ * older build left a stub with no chapters at all. Every one of them LOOKS
+ * empty to any check that inspects chapter content.
+ *
+ * That distinction decides real behaviour. "Start on a blank page" reuses an
+ * existing empty untitled book rather than stacking a new one each launch;
+ * without this, an untitled book in any of those states qualified, and the
+ * writer would be dropped into their real manuscript believing it was a fresh
+ * blank one. The save guards stop that reaching the file, but "your book looks
+ * empty and you are typing into it" is its own kind of alarming.
+ *
+ * Absence of evidence is not evidence of emptiness.
+ */
+export function isTextKnown(session) {
+  if (!session) return false;
+  if (session._preview || session._mirrorStub) return false;
+  if (hasUnhydratedChapters(session)) return false;
+  // A saved book with no chapters in memory is a stub from a build that
+  // predates the _mirrorStub flag. A real book always has at least chapter 1.
+  if (session.filePath && !(session.chapters || []).length) return false;
+  return true;
+}
+
+/**
  * True when a book could be loaded a chapter at a time.
  *
  * Deferred loading fetches each body back from the book's own file, so this is

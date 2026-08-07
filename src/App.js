@@ -54,7 +54,7 @@ import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensio
 import { bookFingerprint } from "./utils/bookFingerprint";
 import {
   isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
-  hasUnhydratedChapters, canDeferLoad, getLargeBookChoice, setLargeBookChoice,
+  hasUnhydratedChapters, canDeferLoad, isTextKnown, getLargeBookChoice, setLargeBookChoice,
 } from "./utils/largeBooks";
 import ExtensionPage from "./components/ExtensionPage";
 
@@ -980,8 +980,13 @@ function AppInner({ navigateRef }) {
     } else if (behavior === "blank") {
       // Reuse an existing pristine (empty, untitled) book instead of stacking a
       // fresh Untitled Book on every launch — the "blank keeps piling up" fix.
+      // isTextKnown first: a book whose text is not in memory — preview mode,
+      // a quota-degraded stub — reads as empty to the content checks below
+      // without being empty. Reusing one drops the writer into their real
+      // manuscript believing it is a fresh blank book.
       const isPristine = (s) =>
         s.type === "book" && (s.title === "Untitled Book" || !s.title) &&
+        isTextKnown(s) &&
         !(s.content && s.content.replace(/<[^>]*>/g, "").trim()) &&
         (s.chapters || []).every((c) => !(c.content && c.content.replace(/<[^>]*>/g, "").trim()));
       const existing = sessions.find(isPristine);
