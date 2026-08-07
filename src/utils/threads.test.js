@@ -86,3 +86,24 @@ test('markdown outline lists threads, TODO checkboxes and chapter locations', ()
   expect(md).toContain('- crew assembles _(Chapter 1)_');
   expect(md).toContain('- [ ] plant the twist');
 });
+
+describe('naming is forgiving in both directions', () => {
+  // Both helpers already fall back for a blank name; throwing for a missing
+  // one was an inconsistency rather than a contract.
+  test('a thread with no name given gets the fallback, not a crash', () => {
+    const { addThread, emptyThreadsData } = require('./threads');
+    expect(() => addThread(emptyThreadsData(), { typeId: 'plot' })).not.toThrow();
+    expect(addThread(emptyThreadsData(), { typeId: 'plot' }).thread.name).toBe('Untitled thread');
+  });
+
+  test('a type with no name given gets the fallback, not a crash', () => {
+    const { addType, emptyThreadsData } = require('./threads');
+    expect(() => addType(emptyThreadsData(), {})).not.toThrow();
+    expect(addType(emptyThreadsData(), {}).type.name).toBe('Custom');
+  });
+
+  test('a blank or whitespace name still falls back', () => {
+    const { addThread, emptyThreadsData } = require('./threads');
+    expect(addThread(emptyThreadsData(), { typeId: 'p', name: '   ' }).thread.name).toBe('Untitled thread');
+  });
+});
