@@ -802,10 +802,48 @@ function ShortcutsPanel({ accentHex }) {
 }
 
 // ── Developer options (v1.1.18-beta.1) ──────────────────────────────────────
+// Outcome → colour. Deliberate skips are muted rather than warning-coloured:
+// a book that was never saved to a file is not a fault to chase.
+const OUTCOME_COLOR = {
+  ok: 'var(--color-success, #3ba55d)',
+  damaged: 'var(--color-danger, #ed4245)',
+  unreadable: 'var(--color-danger, #ed4245)',
+  missing: 'var(--color-warning, #f59e0b)',
+  skipped: 'var(--text-5)',
+};
+
 function DeveloperPanel({ settings, accentHex, sessions = [], onSeeChanges, onStartTour, onReplayWelcome }) {
   const [showErrorLog, setShowErrorLog] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [scan, setScan] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanCopied, setScanCopied] = useState(false);
+
+  const runScan = async () => {
+    setScanning(true);
+    try {
+      const { safeScanForBooks } = await import('../utils/bookScan');
+      setScan(await safeScanForBooks(sessions));
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const copyScan = async () => {
+    if (!scan) return;
+    const { formatScanReport } = await import('../utils/bookScan');
+    const text = formatScanReport(scan);
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setScanCopied(true); setTimeout(() => setScanCopied(false), 1800);
+    } catch { /* clipboard blocked */ }
+  };
 
   const copyDiagnostics = async () => {
     const { avatarDataUrl, ...safeSettings } = settings || {};
@@ -856,8 +894,60 @@ function DeveloperPanel({ settings, accentHex, sessions = [], onSeeChanges, onSt
       <Label>Diagnostics</Label>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
         {devBtn('View error log', () => setShowErrorLog(true), { icon: DSIcons.Bug })}
+        {devBtn(scanning ? 'Scanning…' : 'Scan for books', runScan, { icon: DSIcons.Search })}
         {devBtn(copied ? 'Copied ✓' : 'Copy diagnostics', copyDiagnostics, { icon: DSIcons.Copy })}
       </div>
+
+      {/* Scan results. Every file the scan touched, and what happened to it —
+          including the ones that worked, because "it found nothing" and "it
+          never looked" are different answers and used to be indistinguishable. */}
+      {scan && (
+        <div style={{ marginTop: 10, border: '1px solid var(--border-sm)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border-sm)' }}>
+            {/* "0 of 2 opened" reads as a failure when in truth nothing needed
+                opening — on desktop every entry is deliberately skipped. Count
+                only what was actually examined, so a clean scan looks clean. */}
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+              {(() => {
+                const checked = scan.summary.examined - scan.summary.skipped;
+                if (scan.summary.examined === 0) return 'Nothing found to examine';
+                if (checked === 0) return `Nothing needed opening (${scan.summary.skipped} skipped)`;
+                return `${scan.summary.ok} of ${checked} opened`;
+              })()}
+            </span>
+            {scan.summary.problems > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-danger)', background: 'rgba(237,66,69,0.12)', borderRadius: 6, padding: '2px 7px' }}>
+                {scan.summary.problems} problem{scan.summary.problems === 1 ? '' : 's'}
+              </span>
+            )}
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-5)' }}>{scan.durationMs} ms</span>
+            <button onClick={copyScan}
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-md)', color: 'var(--text-2)', cursor: 'pointer', fontSize: 11.5, fontWeight: 600 }}>
+              {scanCopied ? 'Copied ✓' : 'Copy report'}
+            </button>
+          </div>
+          <div style={{ maxHeight: 260, overflowY: 'auto', padding: '8px 12px' }}>
+            {scan.steps.map((st, i) => (
+              <div key={`s${i}`} style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', color: 'var(--text-4)' }}>
+                <span style={{ color: OUTCOME_COLOR[st.status] || 'var(--text-5)', fontWeight: 700, minWidth: 76 }}>{st.status}</span>
+                <span style={{ color: 'var(--text-2)' }}>{st.name}</span>
+                {st.detail && <span style={{ color: 'var(--text-5)' }}>— {st.detail}</span>}
+              </div>
+            ))}
+            {scan.files.length > 0 && <div style={{ height: 1, background: 'var(--border-sm)', margin: '7px 0' }} />}
+            {scan.files.map((f, i) => (
+              <div key={`f${i}`} style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', alignItems: 'baseline' }}>
+                <span style={{ color: OUTCOME_COLOR[f.outcome] || 'var(--text-5)', fontWeight: 700, minWidth: 76 }}>{f.outcome}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: 'var(--text-1)', wordBreak: 'break-word' }}>{f.name}</span>
+                  {f.title && <span style={{ color: 'var(--text-4)' }}> — “{f.title}”, {f.chapters} chapter{f.chapters === 1 ? '' : 's'}</span>}
+                  {f.detail && <div style={{ color: 'var(--text-5)' }}>{f.stage}: {f.detail}</div>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <SettingsDivider />
       <Label>Tours & guides</Label>
@@ -1105,6 +1195,18 @@ function ErrorLogModal({ onClose, accentHex }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 14 }}>{e.icon}</span>
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-1)' }}>{e.category}</span>
+                {/* Repeats are counted rather than duplicated, so the count is
+                    the only thing showing that this is happening constantly. */}
+                {e.count > 1 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-md)', borderRadius: 6, padding: '1px 6px' }}>
+                    ×{e.count}
+                  </span>
+                )}
+                {e.severity === 'data' && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-danger)', background: 'rgba(237,66,69,0.12)', borderRadius: 6, padding: '1px 6px' }}>
+                    affects your work
+                  </span>
+                )}
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-5)' }}>{new Date(e.timestamp).toLocaleString()}</span>
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--text-2)', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)' }}>{e.message}</div>
