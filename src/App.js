@@ -52,6 +52,7 @@ import {
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
 import { bookFingerprint } from "./utils/bookFingerprint";
+import { makeGate } from "./utils/exclusive";
 import {
   isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
   hasUnhydratedChapters, canDeferLoad, isTextKnown, getLargeBookChoice, setLargeBookChoice,
@@ -1192,11 +1193,33 @@ function AppInner({ navigateRef }) {
   // events. Only touch what actually changed — see utils/bookFingerprint.js,
   // which documents why each field it covers has to be in there.
   const savedFingerprints = useRef(new Map());
+  // One pass at a time.
+  //
+  // clearTimeout cancels a timer that has not fired; it cannot stop a callback
+  // already running, and this one awaits file I/O. So: the pass starts, begins
+  // writing a large book, the writer types again, the effect re-arms, and two
+  // seconds later a second pass starts while the first is still writing to the
+  // same URI.
+  //
+  // It is not a rare race either — it is guaranteed for any book that takes
+  // longer than the debounce to write, because the fingerprint is only recorded
+  // AFTER a successful save. Until then the book still looks unsaved, so the
+  // second pass re-saves it. Exactly the large books deferred loading exists
+  // for are the ones slow enough to trip it.
+  const autoSaveGate = useRef(null);
+  if (!autoSaveGate.current) autoSaveGate.current = makeGate();
   useEffect(() => {
     if (!android || sessions.length === 0) return;
     clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      for (const s of sessions) {
+    autoSaveTimer.current = setTimeout(async function pass() {
+      // Turned-away passes are remembered, not dropped: the skipped tick may
+      // be the only one that would have saved the latest edit, and if the
+      // writer has stopped typing nothing will re-arm the effect.
+      if (!autoSaveGate.current.tryEnter()) return;
+      try {
+      // Read through the ref so a re-armed pass sees the current books rather
+      // than whatever this effect closed over when it was scheduled.
+      for (const s of (sessionsRef.current || sessions)) {
         // Nothing to save, and saveBook would refuse it anyway — but handing a
         // contentless book to every extension's onSave hook is its own bug, so
         // it never gets that far. This is the shape the app boots in after the
@@ -1233,6 +1256,9 @@ function AppInner({ navigateRef }) {
           savedFingerprints.current.set(s.id, fp);
           if (hookCount('onSave') > 0) { const saved = result?.filePath ? { ...s, filePath: result.filePath } : s; await fireHook('onSave', { session: saved, trigger: 'autosave' }); }
         } catch (err) { console.error('[AuthNo AutoSave]', err); }
+      }
+      } finally {
+        if (autoSaveGate.current.exit()) autoSaveTimer.current = setTimeout(pass, 2000);
       }
     }, 2000);
     return () => clearTimeout(autoSaveTimer.current);
