@@ -7,16 +7,34 @@
   src/DesignSystem/tokens.js.  Never write colour literals here —
   update ds_colors.xml (and tokens.js) instead.
 -->
-<LinearLayout
+<!--
+  The card background is a tintable ImageView rather than a drawable on the
+  root. RemoteViews cannot recolour a shape set with setBackgroundResource, so
+  the two static drawables this replaces could only ever be dark or light —
+  which is why Sepia, Paper, OLED and Material You all rendered as plain Dark.
+  An ImageView CAN be tinted at runtime, so one silhouette serves all six.
+-->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@drawable/widget_background"
-    android:padding="14dp"
     android:clickable="true"
     android:focusable="true">
+
+    <ImageView
+        android:id="@+id/widget_card_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_card_shape"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="14dp">
 
     <!-- ── Header row: book title + streak number ── -->
     <LinearLayout
@@ -117,7 +135,7 @@
         android:text="Start writing"
         android:textSize="12sp"
         android:textStyle="bold"
-        android:background="@drawable/widget_btn_bg"
+        android:background="@drawable/widget_btn_state_dark"
         android:textColor="@color/ds_text_secondary" />
 
     <!--
@@ -157,7 +175,7 @@
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end"
-            android:background="@drawable/widget_btn_bg"
+            android:background="@drawable/widget_btn_state_dark"
             android:textColor="@color/ds_text_secondary"
             android:contentDescription="Add a chapter to this book" />
 
@@ -175,7 +193,7 @@
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end"
-            android:background="@drawable/widget_btn_bg"
+            android:background="@drawable/widget_btn_state_dark"
             android:textColor="@color/ds_text_secondary"
             android:contentDescription="Show the next book on this widget" />
 
@@ -192,7 +210,7 @@
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end"
-            android:background="@drawable/widget_btn_bg"
+            android:background="@drawable/widget_btn_state_dark"
             android:textColor="@color/ds_text_secondary"
             android:contentDescription="Reload this widget from the app's saved data" />
 
@@ -207,4 +225,6 @@
         android:scaleType="fitXY"
         android:adjustViewBounds="true" />
 
-</LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>

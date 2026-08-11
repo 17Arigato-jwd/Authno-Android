@@ -34,6 +34,10 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     // Written by WidgetDataPlugin, read by ResumeWidgetProvider. Lives here
     // because both widgets share one SharedPreferences file.
     static final String KEY_RESUME_JSON    = "authno_resume";
+    // The active app theme's colours. One boolean (KEY_IS_DARK) could only
+    // ever render Dark or Light, so Sepia, Paper, OLED and Material You all
+    // came out as plain Dark.
+    static final String KEY_THEME_JSON     = "authno_theme";
 
     // Actions handled by this receiver itself. Both are sent as EXPLICIT
     // intents (new Intent(ctx, StreakWidgetProvider.class)), so they need no
@@ -140,14 +144,25 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         RemoteViews views =
                 new RemoteViews(ctx.getPackageName(), R.layout.streak_widget);
 
-        // Theme the card at runtime — the layout's dark drawable used to be
-        // the only option, so the widget ignored light app themes.
-        views.setInt(R.id.widget_root, "setBackgroundResource",
-                isDark ? R.drawable.widget_background : R.drawable.widget_background_light);
-        views.setInt(R.id.widget_start_btn, "setBackgroundResource",
-                isDark ? R.drawable.widget_btn_bg : R.drawable.widget_btn_bg_light);
-        views.setTextColor(R.id.widget_start_btn,
-                DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT));
+        // Paint from the app's actual theme. The two static drawables this
+        // replaces could only ever be dark or light, so four of the six themes
+        // had no way to express themselves. Tinting a shape in an ImageView is
+        // what makes one silhouette serve all of them.
+        WidgetTheme theme = WidgetTheme.parse(prefs.getString(KEY_THEME_JSON, ""), isDark);
+        int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
+
+        views.setInt(R.id.widget_card_bg, "setColorFilter", theme.bg);
+        views.setTextColor(R.id.widget_title, theme.textDim);
+        views.setTextColor(R.id.widget_streak_label, theme.textDim);
+        views.setTextColor(R.id.widget_progress_label, theme.textDim);
+
+        // Resting and pressed states on the design system's durations, chosen
+        // by theme lightness because both are translucent overlays on the card
+        // rather than opaque fills.
+        int btnBg = theme.isDark ? R.drawable.widget_btn_state_dark
+                                 : R.drawable.widget_btn_state_light;
+        views.setInt(R.id.widget_start_btn, "setBackgroundResource", btnBg);
+        views.setTextColor(R.id.widget_start_btn, accent);
 
         // Tapping the widget opens MainActivity with a deep-link extra so the
         // app can navigate straight to the correct book.
@@ -196,12 +211,10 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widget_refresh_btn,
                 PendingIntent.getBroadcast(ctx, widgetId * 10 + 4, refresh, flags));
 
-        // Theme the new buttons with the primary one.
-        int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
+        // The action row gets the same two states and the same accent.
         int[] actionBtns = { R.id.widget_new_chapter_btn, R.id.widget_next_book_btn, R.id.widget_refresh_btn };
         for (int btn : actionBtns) {
-            views.setInt(btn, "setBackgroundResource",
-                    isDark ? R.drawable.widget_btn_bg : R.drawable.widget_btn_bg_light);
+            views.setInt(btn, "setBackgroundResource", btnBg);
             views.setTextColor(btn, accent);
         }
 

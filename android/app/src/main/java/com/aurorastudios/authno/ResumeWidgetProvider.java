@@ -14,13 +14,12 @@ import org.json.JSONObject;
  * The Resume card — "where was I?", answered in one tap.
  *
  * Data flow:
- *   App.js  →  widgetBridge.buildResumePayload()  →  WidgetDataPlugin.syncBooks()
- *           →  SharedPreferences[KEY_RESUME_JSON]  →  here
+ *   App.js  →  widgetBridge.buildResumePayload() + theme.buildWidgetTheme()
+ *           →  WidgetDataPlugin.syncBooks()  →  SharedPreferences  →  here
  *
- * Unlike the streak widget this needs no configuration activity and stores no
- * per-instance state: there is only ever one "last place you were writing", so
- * every instance shows the same thing and nothing has to be chosen when it is
- * placed. Placing it should cost one drag.
+ * No configuration activity and no per-instance state: there is only ever one
+ * "last place you were writing", so every instance shows the same thing and
+ * nothing has to be chosen when it is placed.
  */
 public class ResumeWidgetProvider extends AppWidgetProvider {
 
@@ -37,46 +36,74 @@ public class ResumeWidgetProvider extends AppWidgetProvider {
         String accentHex = prefs.getString(StreakWidgetProvider.KEY_ACCENT_COLOR, "#5a00d9");
         boolean isDark   = prefs.getBoolean(StreakWidgetProvider.KEY_IS_DARK, true);
         String resumeRaw = prefs.getString(StreakWidgetProvider.KEY_RESUME_JSON, "");
+        WidgetTheme theme = WidgetTheme.parse(
+                prefs.getString(StreakWidgetProvider.KEY_THEME_JSON, ""), isDark);
 
         RemoteViews views = new RemoteViews(ctx.getPackageName(), R.layout.resume_widget);
+        int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
 
-        views.setInt(R.id.resume_root, "setBackgroundResource",
-                isDark ? R.drawable.widget_background : R.drawable.widget_background_light);
+        applyTheme(views, theme, accent);
 
         JSONObject r = parse(resumeRaw);
 
         if (r == null) {
-            // Nothing written yet, or the recorded book has been deleted. Say
-            // so plainly — a card claiming a chapter that is not there, with a
-            // tap that lands nowhere, is worse than an honest empty state.
+            // Nothing written yet, or the recorded book has been deleted. Say so
+            // plainly — a card naming a chapter that is not there, with a button
+            // that lands nowhere, is worse than an honest empty state. The
+            // button still opens the app, because that IS the next step here.
             views.setTextViewText(R.id.resume_book, "AuthNo");
             views.setTextViewText(R.id.resume_chapter, "Nothing open yet");
-            views.setTextViewText(R.id.resume_meta, "Tap to start writing");
-            views.setOnClickPendingIntent(R.id.resume_root, openApp(ctx, widgetId, null));
+            views.setTextViewText(R.id.resume_meta, "No writing recorded");
+            views.setTextViewText(R.id.resume_button, "Open AuthNo");
+            views.setOnClickPendingIntent(R.id.resume_button, openApp(ctx, widgetId, null));
             mgr.updateAppWidget(widgetId, views);
             return;
         }
 
-        String bookTitle = r.optString("bookTitle", "Untitled Book");
-        String chapTitle = r.optString("chapTitle", "Untitled chapter");
-        String bookId    = r.optString("bookId", null);
-        int words        = r.optInt("words", 0);
-        long ts          = r.optLong("ts", 0L);
+        String bookId = r.optString("bookId", null);
+        views.setTextViewText(R.id.resume_book, r.optString("bookTitle", "Untitled Book"));
+        views.setTextViewText(R.id.resume_chapter, r.optString("chapTitle", "Untitled chapter"));
+        views.setTextViewText(R.id.resume_meta,
+                ResumeText.meta(r.optInt("words", 0), r.optLong("ts", 0L)));
+        views.setTextViewText(R.id.resume_button, "Continue writing");
 
-        views.setTextViewText(R.id.resume_book, bookTitle);
-        views.setTextViewText(R.id.resume_chapter, chapTitle);
-        views.setTextViewText(R.id.resume_meta, ResumeText.meta(words, ts));
-
-        // The accent goes on the chapter name — the one thing the eye should
-        // land on, and the only element that reads as the action.
-        views.setTextColor(R.id.resume_chapter,
-                DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT));
-
-        // The whole card is the button. There is exactly one thing to do here,
-        // so a separate tap target would only be somewhere to miss.
-        views.setOnClickPendingIntent(R.id.resume_root, openApp(ctx, widgetId, bookId));
+        // ONLY the button. The card is information; a whole-surface tap target
+        // on a home screen gets hit while scrolling, swiping between pages, or
+        // picking the widget up to move it, and the cost of a mistake is the
+        // whole app opening.
+        views.setOnClickPendingIntent(R.id.resume_button, openApp(ctx, widgetId, bookId));
 
         mgr.updateAppWidget(widgetId, views);
+    }
+
+    /**
+     * Paint the card in the app's actual theme.
+     *
+     * The background is tinted rather than swapped for one of two static
+     * drawables: RemoteViews cannot recolour a shape set with
+     * setBackgroundResource, which is why the older widgets could only ever be
+     * dark or light and rendered Sepia, Paper and OLED as plain Dark. An
+     * ImageView can be tinted, so one silhouette covers all six.
+     */
+    private static void applyTheme(RemoteViews views, WidgetTheme theme, int accent) {
+        views.setInt(R.id.resume_card_bg, "setColorFilter", theme.bg);
+
+        views.setTextColor(R.id.resume_book, theme.textDim);
+        views.setTextColor(R.id.resume_chapter, theme.textPrimary);
+        views.setTextColor(R.id.resume_meta, theme.textDim);
+
+        // The accent goes on the button label — the only element that is an
+        // action, and the one place the writer's chosen colour should land.
+        views.setTextColor(R.id.resume_button, accent);
+
+        // Resting and pressed states, crossfading on the design system's
+        // durations. Which pair depends only on whether the theme is dark,
+        // because both are translucent overlays on the card beneath rather
+        // than opaque fills — the same way the design system defines
+        // surfaces.low / surfaces.mid.
+        views.setInt(R.id.resume_button, "setBackgroundResource",
+                theme.isDark ? R.drawable.widget_btn_state_dark
+                             : R.drawable.widget_btn_state_light);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -86,7 +113,7 @@ public class ResumeWidgetProvider extends AppWidgetProvider {
         try {
             JSONObject o = new JSONObject(raw);
             // A payload with no book is the same as no payload: the empty state
-            // is correct and the tap must not pretend to open something.
+            // is correct and the button must not pretend to open something.
             return o.optString("bookId", "").isEmpty() ? null : o;
         } catch (Exception ignored) { return null; }
     }
@@ -94,8 +121,8 @@ public class ResumeWidgetProvider extends AppWidgetProvider {
     /**
      * Resume, or plain open when there is nothing to resume.
      *
-     * Request codes are offset well clear of StreakWidgetProvider's widgetId*10
-     * scheme. AppWidget ids are unique across providers, so the two cannot
+     * Request codes are offset clear of StreakWidgetProvider's widgetId*10
+     * scheme. AppWidget ids are unique across providers so the two cannot
      * collide on the id itself, but keeping the arithmetic distinct means a
      * future button here cannot quietly reuse one of the streak widget's slots.
      */
@@ -109,5 +136,4 @@ public class ResumeWidgetProvider extends AppWidgetProvider {
         return PendingIntent.getActivity(ctx, widgetId * 10 + 7, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
-
 }

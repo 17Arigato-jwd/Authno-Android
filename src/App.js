@@ -1049,7 +1049,7 @@ function AppInner({ navigateRef }) {
       // isDark is read inside syncWidget; listing the theme here is what makes
       // a theme switch actually reach the widget (it used to keep the old
       // palette until the next keystroke — the "widget ignores theme" report).
-      syncWidget(sessions, customization.accentHex);
+      syncWidget(sessions, customization.accentHex, theme);
       // Launcher shortcut label follows the last-written book.
       const last = getLastResume();
       const lastBook = sessions.find((s) => s.id === last?.bookId)

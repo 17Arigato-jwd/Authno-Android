@@ -467,8 +467,16 @@ export function buildWidgetTheme(theme) {
   return {
     bgColor:       theme.backgrounds.modal,
     textPrimary:   theme.text.t1,
+    textSecondary: theme.text.t2,
     textDim:       theme.text.t4,
     textFaint:     theme.text.t5,
     progressTrack: theme.surfaces.mid,
+    // Which way the surface overlays go. The design system models a raised
+    // surface as a translucent white over the background on dark themes and a
+    // translucent black on light ones (see surfaces.* in each theme), so one
+    // bit is all the widget needs to pick the right pressed-state overlay for
+    // any of the six themes — the overlay is relative to whatever is beneath.
+    isDark:        theme.meta?.isDark !== false,
+    themeId:       theme.meta?.id ?? 'unknown',
   };
 }

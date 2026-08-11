@@ -109,11 +109,24 @@ function chapterWordCount(chap) {
  * @param {Array}  sessions   Full sessions array from App state
  * @param {string} accentHex  e.g. "#5a00d9"
  */
-export async function syncWidget(sessions, accentHex) {
-  // N15: tell the native widget whether the app theme is dark so its text and
-  // surfaces flip with the theme instead of staying dark-only.
-  let themeIsDark = true;
-  try { themeIsDark = !document.documentElement.classList.contains('light-mode'); } catch { /* default dark */ }
+export async function syncWidget(sessions, accentHex, theme) {
+  // The widget used to get one bit — "is the app dark?" — inferred from a DOM
+  // class, which is why Sepia, Paper and OLED all rendered as plain Dark. It
+  // now gets the actual theme's colours, so all six render as themselves.
+  //
+  // The DOM sniff stays as the fallback for callers that have no theme to hand.
+  let widgetTheme = null;
+  try {
+    if (theme) {
+      const { buildWidgetTheme } = await import('../theme/ThemeBase');
+      widgetTheme = buildWidgetTheme(theme);
+    }
+  } catch { /* fall through to the inferred bit below */ }
+
+  let themeIsDark = widgetTheme ? widgetTheme.isDark : true;
+  if (!widgetTheme) {
+    try { themeIsDark = !document.documentElement.classList.contains('light-mode'); } catch { /* default dark */ }
+  }
   try {
     const plugin = await getPlugin();
     if (!plugin) return; // Not on Android, or Capacitor unavailable
@@ -143,6 +156,7 @@ export async function syncWidget(sessions, accentHex) {
       accentHex: accentHex ?? '#5a00d9',
       isDark: themeIsDark,
       resumeJson,
+      themeJson: widgetTheme ? JSON.stringify(widgetTheme) : '',
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort

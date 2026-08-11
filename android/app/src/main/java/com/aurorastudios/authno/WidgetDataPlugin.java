@@ -47,6 +47,9 @@ public class WidgetDataPlugin extends Plugin {
         // or when the recorded book has since been deleted — the resume card
         // shows its own empty state rather than a button that cannot work.
         String resumeJson = call.getString("resumeJson", "");
+        // The active theme's colours, so all six themes render as themselves
+        // rather than collapsing to Dark or Light.
+        String themeJson  = call.getString("themeJson", "");
 
         Context ctx = getContext();
 
@@ -58,6 +61,7 @@ public class WidgetDataPlugin extends Plugin {
         ed.putString(StreakWidgetProvider.KEY_ACCENT_COLOR, accentHex);
         ed.putBoolean(StreakWidgetProvider.KEY_IS_DARK, isDark != null ? isDark : true);
         ed.putString(StreakWidgetProvider.KEY_RESUME_JSON, resumeJson != null ? resumeJson : "");
+        ed.putString(StreakWidgetProvider.KEY_THEME_JSON, themeJson != null ? themeJson : "");
         ed.apply();
 
         // 2. Also write authno_books.json so the file-first path in

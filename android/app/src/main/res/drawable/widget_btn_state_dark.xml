@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  widget_btn_state_dark.xml — the resume button, resting and pressed.
+
+  Two states, crossfading. The durations come from src/utils/motion.js:
+  DUR.fast (0.13s) on the way in, DUR.base (0.18s) on the way out — the
+  design system's "fast start, soft landing", which is the same shape as its
+  ease-out curve. A selector cannot carry a bezier, so the asymmetry between
+  the two durations is what expresses it.
+
+  The colours are translucent WHITE rather than fixed greys, because the design
+  system models a raised surface as an overlay on whatever is beneath it
+  (surfaces.low / surfaces.mid are rgba(255,255,255,…) in every dark theme).
+  That is what makes one drawable correct on Dark, OLED and Material You alike:
+  it tints the theme's own background rather than replacing it.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:enterFadeDuration="130"
+    android:exitFadeDuration="180">
+
+    <!-- Pressed: surfaces.mid stepped up — clearly changed, never a flash. -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#26ffffff" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+
+    <!-- Resting: surfaces.mid, rgba(255,255,255,0.05) → #0dffffff. -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#0dffffff" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</selector>
