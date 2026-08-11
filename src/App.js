@@ -1483,6 +1483,31 @@ function AppInner({ navigateRef }) {
     if (android) setDrawerOpen(false);
   }, [sessions, android]);
 
+  /**
+   * Add a chapter to a named book and open it.
+   *
+   * Parameterised by book rather than reading `currentId`, because the widget's
+   * New-chapter button names the book it is bound to and the app may not have
+   * that one open — setting currentId first and adding second would race the
+   * state update.
+   */
+  const newChapterIn = useCallback((bookId) => {
+    const id = bookId ?? currentId;
+    const cur = (sessionsRef.current || sessions).find(s => s.id === id);
+    if (!cur) return;
+    const now = new Date().toISOString();
+    const maxIdx   = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.chap_idx)) : 0;
+    const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.order))    : 0;
+    const newIdx   = maxIdx + 1;
+    const newChap  = { chap_idx: newIdx, title: `Chapter ${newIdx}`, order: maxOrder + 1, content: '', created: now, updated: now };
+    setSessions(prev => prev.map(s => s.id !== id ? s : {
+      ...s, chapters: [...(s.chapters || []), newChap], updated: now,
+      history: recordOp(s.history, { kind: 'add-chapter', chapIdx: newIdx, chapTitle: newChap.title, content: '' }),
+    }));
+    setCurrentId(id); setCurrentChapterIdx(newIdx); setView('editor');
+  }, [currentId, sessions]);
+  const handleNewChapter = useCallback(() => newChapterIn(currentId), [newChapterIn, currentId]);
+
   // Widget Start-writing button and launcher shortcuts land here (forwarded
   // by MainActivity as authno-launch-action).
   useEffect(() => {
@@ -1490,11 +1515,14 @@ function AppInner({ navigateRef }) {
       const { action, bookId } = e.detail || {};
       if (action === "resume") resumeWriting(bookId || undefined);
       else if (action === "new-book") newBook();
+      // The widget's New-chapter button names its linked book, which may not
+      // be the one currently open.
+      else if (action === "new-chapter") newChapterIn(bookId || undefined);
     };
     window.addEventListener("authno-launch-action", onLaunch);
     return () => window.removeEventListener("authno-launch-action", onLaunch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resumeWriting]);
+  }, [resumeWriting, newChapterIn]);
 
   // Text shared from another app (ACTION_SEND) opens the import sheet.
   useEffect(() => {
@@ -1542,20 +1570,6 @@ function AppInner({ navigateRef }) {
     }
     toast("Added to your book", { variant: "success" });
   };
-  const handleNewChapter = useCallback(() => {
-    const cur = sessions.find(s => s.id === currentId);
-    if (!cur) return;
-    const now = new Date().toISOString();
-    const maxIdx   = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.chap_idx)) : 0;
-    const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.order))    : 0;
-    const newIdx   = maxIdx + 1;
-    const newChap  = { chap_idx: newIdx, title: `Chapter ${newIdx}`, order: maxOrder + 1, content: '', created: now, updated: now };
-    setSessions(prev => prev.map(s => s.id !== currentId ? s : {
-      ...s, chapters: [...(s.chapters || []), newChap], updated: now,
-      history: recordOp(s.history, { kind: 'add-chapter', chapIdx: newIdx, chapTitle: newChap.title, content: '' }),
-    }));
-    setCurrentChapterIdx(newIdx); setView('editor');
-  }, [currentId, sessions]);
   const handleUpdateSession = useCallback((updates) => {
     setSessions((prev) => prev.map((s) => s.id === currentId ? { ...s, ...updates, updated: new Date().toISOString() } : s));
   }, [currentId]);

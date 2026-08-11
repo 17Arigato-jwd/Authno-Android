@@ -120,6 +120,84 @@
         android:background="@drawable/widget_btn_bg"
         android:textColor="@color/ds_text_secondary" />
 
+    <!--
+      ── Action row ──
+      Three compact buttons. Two of them do their work WITHOUT opening the app:
+      Next book and Refresh are broadcasts back to StreakWidgetProvider, which
+      re-renders in place.
+
+      Text-only on purpose. The one thing this layout already proves works
+      inside RemoteViews on the launcher's process is a vector in an ImageView
+      src; compound drawables and android:drawableTint are less certain and
+      drawableTint needs API 23 against a minSdk of 22. On a surface that
+      cannot be tested from here, matching the proven pattern beats a nicer
+      button that might render blank on somebody's launcher.
+
+      Colours are set at runtime by StreakWidgetProvider, same as the primary
+      button above.
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp"
+        android:baselineAligned="false">
+
+        <TextView
+            android:id="@+id/widget_new_chapter_btn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="5dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="+ Chapter"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:background="@drawable/widget_btn_bg"
+            android:textColor="@color/ds_text_secondary"
+            android:contentDescription="Add a chapter to this book" />
+
+        <TextView
+            android:id="@+id/widget_next_book_btn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="5dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="Next book"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:background="@drawable/widget_btn_bg"
+            android:textColor="@color/ds_text_secondary"
+            android:contentDescription="Show the next book on this widget" />
+
+        <TextView
+            android:id="@+id/widget_refresh_btn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="Refresh"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:background="@drawable/widget_btn_bg"
+            android:textColor="@color/ds_text_secondary"
+            android:contentDescription="Reload this widget from the app's saved data" />
+
+    </LinearLayout>
+
     <!-- ── Calendar bitmap ── -->
     <ImageView
         android:id="@+id/widget_calendar"

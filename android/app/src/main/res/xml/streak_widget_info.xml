@@ -25,4 +25,27 @@
     android:widgetCategory="home_screen"
 
     android:previewImage="@mipmap/ic_launcher"
+
+    android:targetCellWidth="4"
+    android:targetCellHeight="4"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="420dp"
+    android:previewLayout="@layout/streak_widget"
+
     android:description="@string/widget_description" />
+
+<!--
+  On the newer attributes above:
+
+  previewLayout (API 31+) shows the real widget in the picker. previewImage
+  pointed at @mipmap/ic_launcher, so what the picker offered was the app icon
+  in a box — it told nobody what they were about to place. previewImage stays
+  as the fallback for older launchers, which ignore previewLayout.
+
+  targetCell* (API 31+) asks for a sensible default size in grid cells rather
+  than letting the launcher derive one from minWidth. maxResize* stops it being
+  stretched to a size the calendar bitmap cannot fill cleanly.
+
+  All four are ignored below API 31, and compileSdk is 34, so they resolve at
+  build time on every device.
+-->
