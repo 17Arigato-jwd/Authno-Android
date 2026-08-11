@@ -44,6 +44,61 @@ async function getPlugin() {
   }
 }
 
+// ── Resume card ───────────────────────────────────────────────────────────────
+
+/**
+ * What the resume widget shows: the book and chapter you were last writing in.
+ *
+ * Pure, and exported, because the widget itself cannot be tested from here —
+ * this is the part where the interesting mistakes live (a deleted book, a
+ * deleted chapter, a book whose text is not loaded) and the part that can be
+ * pinned down without a device.
+ *
+ * @returns {null | { bookId, bookTitle, chapIdx, chapTitle, words, ts }}
+ */
+export function buildResumePayload(sessions, last) {
+  if (!last?.bookId) return null;
+  const book = (sessions || []).find((s) => s?.id === last.bookId);
+  // The recorded book may have been deleted since. Showing a card for a book
+  // that no longer exists gives a button that cannot work.
+  if (!book) return null;
+
+  // Sorted by `order`, matching everywhere else that means "the first chapter".
+  // Array position is not that chapter after a reorder — the lesson from
+  // sessionToBook, where taking the wrong one cost a chapter of prose.
+  const chapters = [...(book.chapters || [])]
+    .sort((a, b) => (a?.order ?? a?.chap_idx ?? 0) - (b?.order ?? b?.chap_idx ?? 0));
+
+  // The recorded chapter can be gone while the book survives. Falling back to
+  // the first chapter keeps the card useful; the alternative is hiding the
+  // whole thing because one chapter was deleted.
+  const chap = chapters.find((c) => c?.chap_idx === last.chapIdx) ?? chapters[0] ?? null;
+
+  return {
+    bookId:    book.id,
+    bookTitle: book.title || 'Untitled Book',
+    chapIdx:   chap?.chap_idx ?? null,
+    chapTitle: chap?.title || 'Untitled chapter',
+    words:     chapterWordCount(chap),
+    ts:        last.ts ?? null,
+  };
+}
+
+/**
+ * Words in one chapter, preferring the count the app maintains per edit.
+ *
+ * The cached count is also the only answer available for a chapter whose text
+ * has not been read from the file yet (deferred loading leaves `content: null`
+ * but keeps `word_count`), so counting from the text alone would report zero
+ * on exactly the large books that most need the card.
+ */
+function chapterWordCount(chap) {
+  if (!chap) return 0;
+  if (typeof chap.word_count === 'number') return chap.word_count;
+  const text = String(chap.content ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return text ? text.split(' ').length : 0;
+}
+
 // ── syncWidget ────────────────────────────────────────────────────────────────
 
 /**
@@ -73,10 +128,21 @@ export async function syncWidget(sessions, accentHex) {
         streak: s.streak ?? {},
       }));
 
+    // The resume card needs where you stopped, which lives in localStorage
+    // rather than in the sessions array. Imported lazily so this module stays
+    // usable off-device, where resumeState has nothing to read.
+    let resumeJson = '';
+    try {
+      const { getLastResume } = await import('./resumeState');
+      const payload = buildResumePayload(sessions, getLastResume());
+      if (payload) resumeJson = JSON.stringify(payload);
+    } catch { /* no resume recorded yet — the card shows its empty state */ }
+
     await plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
       isDark: themeIsDark,
+      resumeJson,
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort

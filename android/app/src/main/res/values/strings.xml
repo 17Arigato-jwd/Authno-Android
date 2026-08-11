@@ -8,5 +8,7 @@
     <!-- Streak Widget -->
     <string name="widget_label">AuthNo Streak</string>
     <string name="widget_config_label">Link a Book</string>
+    <string name="resume_widget_label">AuthNo Resume</string>
+    <string name="resume_widget_description">The chapter you were last writing in. Tap to pick up where you left off.</string>
     <string name="widget_description">Your writing streak for one book, with buttons to start writing, add a chapter, or switch which book it shows.</string>
 </resources>

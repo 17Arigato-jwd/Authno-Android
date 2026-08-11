@@ -273,6 +273,22 @@
                 android:resource="@xml/streak_widget_info" />
         </receiver>
 
+        <!-- ── Resume card widget ──
+             No <intent-filter> beyond APPWIDGET_UPDATE and no configure
+             activity: there is only one "last place you were writing", so
+             nothing has to be chosen when it is placed. -->
+        <receiver
+            android:name=".ResumeWidgetProvider"
+            android:label="@string/resume_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/resume_widget_info" />
+        </receiver>
+
         <!-- ── Widget config ── -->
         <activity
             android:name=".StreakWidgetConfigActivity"

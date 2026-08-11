@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  resume_widget.xml
+  The Resume card — a small widget that says where you stopped and puts you
+  back there in one tap.
+
+  Deliberately not the streak widget with less on it. The streak widget answers
+  "how am I doing?"; this answers "where was I?", which is the question that
+  actually gets somebody writing. So: no calendar, no progress bar, no counters
+  competing for the eye — the chapter name is the largest thing on the card,
+  and the whole surface is the button.
+
+  Sized for a 2×1 slot, which is where a card like this belongs. Everything has
+  to survive at roughly 160×70dp, so the layout is three stacked lines with a
+  single row of secondary text.
+
+  Colours reference @color/ds_* from ds_colors.xml, which mirrors
+  src/DesignSystem/tokens.js. Never write colour literals here.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/resume_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="12dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- ── Top line: what this card is, plus the book it belongs to ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:id="@+id/resume_icon"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:src="@drawable/ic_book_gradient"
+            android:layout_marginEnd="6dp"
+            android:contentDescription="Book" />
+
+        <!-- The book title is the context, not the headline — one line, and it
+             yields space to the chapter name below. -->
+        <TextView
+            android:id="@+id/resume_book"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="AuthNo"
+            android:textColor="@color/ds_text_subtle"
+            android:textSize="10sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+    </LinearLayout>
+
+    <!-- ── The headline: the chapter you were in ──
+         Two lines, because chapter names are titles and get long. This is the
+         thing the writer is scanning for. -->
+    <TextView
+        android:id="@+id/resume_chapter"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="3dp"
+        android:text="Nothing open yet"
+        android:textColor="@color/ds_text_secondary"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- ── Bottom line: word count, and when ──
+         Read as one sentence ("1,204 words · 2h ago"), so it is one TextView
+         rather than two views fighting over the width. -->
+    <TextView
+        android:id="@+id/resume_meta"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Open AuthNo to get started"
+        android:textColor="@color/ds_text_subtle"
+        android:textSize="10sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+</LinearLayout>

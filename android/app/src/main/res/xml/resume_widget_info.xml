@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  resume_widget_info.xml
+  Metadata for the Resume card.
+
+  Sized as a 2×1 (roughly 160×70dp). That is the point of this widget: the
+  streak widget is a 4×4 that has to earn its space, and a lot of home screens
+  have a spare row but not a spare block. It resizes horizontally so it can be
+  stretched to a full-width strip, but not vertically — there is no more
+  content to reveal, and a tall version would just be a small card with a hole
+  under it.
+
+  No android:configure. There is only one "last place you were writing", so
+  there is nothing to choose when the widget is placed; dropping it should cost
+  one drag.
+-->
+<appwidget-provider
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:minWidth="160dp"
+    android:minHeight="70dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="70dp"
+
+    android:updatePeriodMillis="1800000"
+
+    android:initialLayout="@layout/resume_widget"
+
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen"
+
+    android:previewImage="@mipmap/ic_launcher"
+
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="110dp"
+    android:previewLayout="@layout/resume_widget"
+
+    android:description="@string/resume_widget_description" />

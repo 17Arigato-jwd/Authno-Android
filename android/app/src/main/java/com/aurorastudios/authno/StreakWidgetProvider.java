@@ -31,6 +31,9 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     static final String KEY_ACCENT_COLOR   = "authno_accent_color";
     static final String KEY_IS_DARK        = "authno_is_dark";
     static final String WIDGET_BOOK_PREFIX = "widget_book_";
+    // Written by WidgetDataPlugin, read by ResumeWidgetProvider. Lives here
+    // because both widgets share one SharedPreferences file.
+    static final String KEY_RESUME_JSON    = "authno_resume";
 
     // Actions handled by this receiver itself. Both are sent as EXPLICIT
     // intents (new Intent(ctx, StreakWidgetProvider.class)), so they need no

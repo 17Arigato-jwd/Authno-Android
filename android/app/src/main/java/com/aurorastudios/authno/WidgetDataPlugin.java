@@ -40,9 +40,13 @@ public class WidgetDataPlugin extends Plugin {
      */
     @PluginMethod
     public void syncBooks(PluginCall call) {
-        String booksJson = call.getString("booksJson", "[]");
-        String accentHex = call.getString("accentHex", "#5a00d9");
-        Boolean isDark   = call.getBoolean("isDark", Boolean.TRUE);
+        String booksJson  = call.getString("booksJson", "[]");
+        String accentHex  = call.getString("accentHex", "#5a00d9");
+        Boolean isDark    = call.getBoolean("isDark", Boolean.TRUE);
+        // Where the writer stopped. Empty when nothing has been written yet,
+        // or when the recorded book has since been deleted — the resume card
+        // shows its own empty state rather than a button that cannot work.
+        String resumeJson = call.getString("resumeJson", "");
 
         Context ctx = getContext();
 
@@ -53,6 +57,7 @@ public class WidgetDataPlugin extends Plugin {
         ed.putString(StreakWidgetProvider.KEY_BOOKS_JSON, booksJson);
         ed.putString(StreakWidgetProvider.KEY_ACCENT_COLOR, accentHex);
         ed.putBoolean(StreakWidgetProvider.KEY_IS_DARK, isDark != null ? isDark : true);
+        ed.putString(StreakWidgetProvider.KEY_RESUME_JSON, resumeJson != null ? resumeJson : "");
         ed.apply();
 
         // 2. Also write authno_books.json so the file-first path in
@@ -61,12 +66,15 @@ public class WidgetDataPlugin extends Plugin {
         //    the SharedPreferences data we just set above.
         writeBooksCacheFile(ctx, booksJson);
 
-        // 3. Refresh every widget instance that is currently on the launcher
+        // 3. Refresh every widget instance that is currently on the launcher.
+        //    Both kinds — a sync that only refreshed the streak widget would
+        //    leave the resume card showing yesterday's chapter.
         AppWidgetManager mgr = AppWidgetManager.getInstance(ctx);
-        int[] ids = mgr.getAppWidgetIds(
-                new ComponentName(ctx, StreakWidgetProvider.class));
-        for (int id : ids) {
+        for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, StreakWidgetProvider.class))) {
             StreakWidgetProvider.updateWidget(ctx, mgr, id);
+        }
+        for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, ResumeWidgetProvider.class))) {
+            ResumeWidgetProvider.updateWidget(ctx, mgr, id);
         }
 
         call.resolve();
