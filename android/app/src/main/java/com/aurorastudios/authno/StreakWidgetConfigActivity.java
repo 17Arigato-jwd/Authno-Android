@@ -117,7 +117,24 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
         root.addView(subtitle);
 
         if (books.isEmpty()) {
-            subtitle.setText("Open AuthNo first to sync your books, then re-add the widget.");
+            // Two ways to arrive at an empty list, and they need different
+            // answers. Books whose streaks are switched off are absent from
+            // the synced list on purpose — telling that writer to "open AuthNo
+            // to sync" sends them to do something they have already done, for
+            // a list that is empty by their own choice.
+            boolean streaksOn = prefs.getBoolean(StreakWidgetProvider.KEY_STREAKS_ENABLED, true);
+            boolean someBookOptedOut = hasEntries(
+                    prefs.getString(StreakWidgetProvider.KEY_STREAKS_OFF_JSON, "[]"));
+
+            if (!streaksOn) {
+                subtitle.setText("Streaks are turned off, so there is nothing for this widget to show. "
+                        + "You can turn them back on in Settings \u2192 Writing Goal.");
+            } else if (someBookOptedOut) {
+                subtitle.setText("Every book has its streak switched off. Turn one back on in "
+                        + "Settings \u2192 Writing Goal and it will appear here.");
+            } else {
+                subtitle.setText("Open AuthNo first to sync your books, then re-add the widget.");
+            }
 
             // "Open App" button
             TextView openBtn = makeButton("Open AuthNo", accent);
@@ -286,6 +303,11 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
     }
 
     // ── Data helpers ──────────────────────────────────────────────────────────
+
+    /** Does the streaks-off list name anything at all? */
+    private static boolean hasEntries(String json) {
+        try { return new JSONArray(json).length() > 0; } catch (Exception e) { return false; }
+    }
 
     private static List<BookItem> parseBooks(String json) {
         List<BookItem> list = new ArrayList<>();
