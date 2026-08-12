@@ -89,3 +89,75 @@ describe('buildResumePayload', () => {
     expect(JSON.parse(JSON.stringify(out))).toEqual(out);
   });
 });
+
+/**
+ * syncWidget's one job is to reach the native plugin. It stopped doing that
+ * silently — see the comment on getPlugin — because Capacitor's plugin object
+ * is a Proxy that answers `then` with a callable, so returning it from an
+ * `async` function fed it to the runtime's thenable-unwrapping, which never
+ * settled. No error reached the caller; the widgets simply stopped updating.
+ *
+ * The mock below is the part of Capacitor that matters: a proxy that responds
+ * to every property with a plugin-method wrapper, `then` included.
+ */
+describe('syncWidget reaches the plugin', () => {
+  const calls = [];
+
+  const capacitorLikeProxy = (impl) => new Proxy({}, {
+    get(_t, prop) {
+      if (prop === '$$typeof' || prop === 'toJSON') return undefined;
+      return (...args) => {
+        if (typeof impl[prop] === 'function') return impl[prop](...args);
+        // Capacitor's behaviour for an unknown method: a rejected promise,
+        // which is what makes `then` so dangerous.
+        return Promise.reject(new Error(`"WidgetData.${String(prop)}()" is not implemented`));
+      };
+    },
+  });
+
+  beforeEach(() => {
+    calls.length = 0;
+    jest.resetModules();
+    jest.doMock('@capacitor/core', () => ({
+      registerPlugin: () => capacitorLikeProxy({
+        syncBooks: (payload) => { calls.push(payload); return Promise.resolve(); },
+      }),
+    }), { virtual: true });
+  });
+
+  afterEach(() => { jest.dounmock?.('@capacitor/core'); });
+
+  const sessions = [{ id: 'b1', title: 'The Long Novel', chapters: [chap(1)], streak: { goalWords: 300 } }];
+
+  test('syncBooks is actually called, and within a tick or two', async () => {
+    const { syncWidget } = require('./widgetBridge');
+    // A timeout, because the failure mode is a hang rather than a throw: the
+    // await never settles and the test would otherwise sit here until Jest
+    // gives up with an unrelated message.
+    await Promise.race([
+      syncWidget(sessions, '#5a00d9', null),
+      new Promise((_r, rej) => setTimeout(() => rej(new Error('syncWidget never settled')), 2000)),
+    ]);
+    expect(calls).toHaveLength(1);
+  });
+
+  test('it sends the books, the accent and the resume slot', async () => {
+    const { syncWidget } = require('./widgetBridge');
+    await syncWidget(sessions, '#ff8800', null);
+    expect(calls).toHaveLength(1);
+    const p = calls[0];
+    expect(p.accentHex).toBe('#ff8800');
+    expect(JSON.parse(p.booksJson)).toEqual([
+      { id: 'b1', title: 'The Long Novel', streak: { goalWords: 300 } },
+    ]);
+    expect(typeof p.resumeJson).toBe('string');
+    expect(typeof p.themeJson).toBe('string');
+  });
+
+  test('a plugin that is not there is not an error', async () => {
+    jest.resetModules();
+    jest.doMock('@capacitor/core', () => { throw new Error('no capacitor here'); }, { virtual: true });
+    const { syncWidget } = require('./widgetBridge');
+    await expect(syncWidget(sessions, '#5a00d9', null)).resolves.toBeUndefined();
+  });
+});

@@ -33,12 +33,35 @@ import { useEffect } from 'react';
 
 let _pluginCache = null;
 
+/**
+ * The plugin, in a box.
+ *
+ * The box is not decoration. Capacitor's plugin object is a Proxy whose `get`
+ * trap answers EVERY property with a callable — including `then`. That makes it
+ * a thenable, so returning it from an `async` function hands it to the
+ * runtime's promise-resolution machinery, which calls `proxy.then(resolve,
+ * reject)` expecting a promise. Capacitor treats that as a call to a plugin
+ * method named "then", finds no such method, and throws — inside a promise
+ * nobody owns. `resolve` and `reject` are never invoked.
+ *
+ * The result is not an error the caller can see. `await getPlugin()` simply
+ * never settles: the awaiting function stops, forever, one line before it does
+ * its work, and the only outward sign is an unhandled rejection reading
+ * `"WidgetData" plugin is not implemented on web`. On device the message reads
+ * `"WidgetData.then()" is not implemented on android` and the hang is
+ * identical, so the widgets stopped receiving data on every platform at once.
+ *
+ * Wrapping keeps the proxy out of the resolution path. Do not "simplify" this
+ * back to returning the plugin directly.
+ *
+ * @returns {Promise<null | { plugin: object }>}
+ */
 async function getPlugin() {
-  if (_pluginCache) return _pluginCache;
+  if (_pluginCache) return { plugin: _pluginCache };
   try {
     const { registerPlugin } = await import('@capacitor/core');
     _pluginCache = registerPlugin('WidgetData');
-    return _pluginCache;
+    return { plugin: _pluginCache };
   } catch {
     return null;
   }
@@ -128,8 +151,8 @@ export async function syncWidget(sessions, accentHex, theme) {
     try { themeIsDark = !document.documentElement.classList.contains('light-mode'); } catch { /* default dark */ }
   }
   try {
-    const plugin = await getPlugin();
-    if (!plugin) return; // Not on Android, or Capacitor unavailable
+    const box = await getPlugin();
+    if (!box) return; // Not on Android, or Capacitor unavailable
 
     // Strip large fields (content, preview) — the widget only needs
     // id, title, and the streak object.
@@ -151,7 +174,7 @@ export async function syncWidget(sessions, accentHex, theme) {
       if (payload) resumeJson = JSON.stringify(payload);
     } catch { /* no resume recorded yet — the card shows its empty state */ }
 
-    await plugin.syncBooks({
+    await box.plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
       isDark: themeIsDark,

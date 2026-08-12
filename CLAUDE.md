@@ -47,5 +47,12 @@ For gated builds, set `REACT_APP_REQUIRE_INVITE=true` and
 key you mint test keys with, or every key reads as a bad signature.
 
 Browser checks: build, serve `build/`, drive with playwright-core
-(`executablePath: '/opt/pw-browsers/chromium'`, `--no-sandbox`). The
-`"WidgetData" plugin is not implemented on web` error is expected off-device.
+(`executablePath: '/opt/pw-browsers/chromium'`, `--no-sandbox`).
+
+`"WidgetData" plugin is not implemented on web` is expected off-device, but
+only as a *caught* error — a `console.debug` from `widgetBridge` in a dev
+build, and nothing at all in a production one. If it ever shows up again as an
+uncaught page error or an unhandled rejection, that is the thenable bug back:
+Capacitor's plugin object is a Proxy that answers `then` with a callable, so
+handing it to promise resolution makes `await` hang forever instead of
+throwing. See the comment on `getPlugin`.

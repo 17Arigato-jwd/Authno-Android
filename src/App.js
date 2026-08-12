@@ -1046,9 +1046,14 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     clearTimeout(widgetSyncTimer.current);
     widgetSyncTimer.current = setTimeout(() => {
-      // isDark is read inside syncWidget; listing the theme here is what makes
-      // a theme switch actually reach the widget (it used to keep the old
-      // palette until the next keystroke — the "widget ignores theme" report).
+      // The whole theme goes across, so the whole theme has to be watched.
+      // The dependency used to be theme?.meta?.isDark, from when the widget
+      // received one bit; with six themes that only notices a change that
+      // crosses light/dark. Dark → OLED and Sepia → Paper both leave the bit
+      // alone, so the widget kept the previous palette until the next
+      // keystroke — the same "widget ignores theme" report, one layer down.
+      // `theme` is state in ThemeProvider, so its identity is stable between
+      // actual theme changes and this does not fire on every render.
       syncWidget(sessions, customization.accentHex, theme);
       // Launcher shortcut label follows the last-written book.
       const last = getLastResume();
@@ -1057,7 +1062,7 @@ function AppInner({ navigateRef }) {
       updateAppShortcuts(lastBook);
     }, 1500);
     return () => clearTimeout(widgetSyncTimer.current);
-  }, [sessions, customization.accentHex, theme?.meta?.isDark]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessions, customization.accentHex, theme]); // eslint-disable-line react-hooks/exhaustive-deps
   useWidgetDeepLink((bookId) => { handleSelect(bookId); });
   useEffect(() => { if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId); }, [currentId]);
 
