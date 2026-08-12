@@ -2,6 +2,7 @@ package com.aurorastudios.authno;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -113,9 +114,19 @@ public class WidgetThemeTest {
         for (boolean dark : new boolean[]{true, false}) {
             WidgetTheme t = WidgetTheme.fallback(dark);
             for (int c : new int[]{t.bg, t.textPrimary, t.textSecondary, t.textDim,
-                                   t.textFaint, t.textHasData, t.progressTrack}) {
+                                   t.textFaint, t.textHasData, t.progressTrack,
+                                   t.surface, t.surfaceRaised, t.border}) {
                 assertEquals("opaque", 0xFF000000, c & 0xFF000000);
             }
+        }
+    }
+
+    /** The config screen paints rows on these, so they must differ from the sheet. */
+    @Test public void aRaisedSurfaceIsDistinctFromTheBackground() {
+        for (boolean dark : new boolean[]{true, false}) {
+            WidgetTheme t = WidgetTheme.fallback(dark);
+            assertNotEquals(t.bg, t.surface);
+            assertNotEquals(t.surface, t.surfaceRaised);
         }
     }
 
@@ -138,5 +149,32 @@ public class WidgetThemeTest {
         WidgetTheme t = WidgetTheme.parse(
                 "{\"progressTrack\":\"rgba(255,255,255,0.08)\",\"isDark\":true}", true);
         assertEquals(WidgetTheme.fallback(true).progressTrack, t.progressTrack);
+    }
+
+    // ── readableOn ───────────────────────────────────────────────────────────
+    // The accent is the writer's own colour and every hue is allowed, so the
+    // label on an accent-filled button cannot be hardcoded to white.
+
+    @Test public void aDarkAccentTakesWhiteText() {
+        assertEquals(0xFFFFFFFF, WidgetTheme.readableOn(0xFF5A00D9)); // the default violet
+        assertEquals(0xFFFFFFFF, WidgetTheme.readableOn(0xFF000000));
+        assertEquals(0xFFFFFFFF, WidgetTheme.readableOn(0xFF1A1B1E));
+    }
+
+    @Test public void aLightAccentTakesBlackText() {
+        assertEquals(0xFF000000, WidgetTheme.readableOn(0xFFFFFFFF));
+        assertEquals(0xFF000000, WidgetTheme.readableOn(0xFFFFC107)); // amber
+        assertEquals(0xFF000000, WidgetTheme.readableOn(0xFF7FFF7F)); // pale green
+    }
+
+    /** Green dominates perceived luminance; blue barely registers. */
+    @Test public void itWeighsChannelsPerceptually() {
+        assertEquals(0xFF000000, WidgetTheme.readableOn(0xFF00FF00));
+        assertEquals(0xFFFFFFFF, WidgetTheme.readableOn(0xFF0000FF));
+    }
+
+    /** Alpha in the accent must not be mistaken for a colour channel. */
+    @Test public void alphaIsIgnored() {
+        assertEquals(WidgetTheme.readableOn(0xFFFFFFFF), WidgetTheme.readableOn(0x00FFFFFF));
     }
 }

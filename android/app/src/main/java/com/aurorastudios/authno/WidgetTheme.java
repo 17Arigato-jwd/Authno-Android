@@ -22,10 +22,15 @@ final class WidgetTheme {
     final int textFaint;
     final int textHasData;
     final int progressTrack;
+    /** A raised row on {@link #bg}, and the box that sits inside one. */
+    final int surface;
+    final int surfaceRaised;
+    final int border;
     final boolean isDark;
 
     private WidgetTheme(int bg, int textPrimary, int textSecondary, int textDim,
-                        int textFaint, int textHasData, int progressTrack, boolean isDark) {
+                        int textFaint, int textHasData, int progressTrack,
+                        int surface, int surfaceRaised, int border, boolean isDark) {
         this.bg = bg;
         this.textPrimary = textPrimary;
         this.textSecondary = textSecondary;
@@ -33,6 +38,9 @@ final class WidgetTheme {
         this.textFaint = textFaint;
         this.textHasData = textHasData;
         this.progressTrack = progressTrack;
+        this.surface = surface;
+        this.surfaceRaised = surfaceRaised;
+        this.border = border;
         this.isDark = isDark;
     }
 
@@ -40,9 +48,11 @@ final class WidgetTheme {
     static WidgetTheme fallback(boolean isDark) {
         return isDark
                 ? new WidgetTheme(0xFF1A1B1E, 0xFFFFFFFF, 0xFFDCDDDE, 0xFF72767D,
-                                  0xFF4F545C, 0xFFB9BBBE, 0xFF2B2D31, true)
+                                  0xFF4F545C, 0xFFB9BBBE, 0xFF2B2D31,
+                                  0xFF1F2023, 0xFF25262A, 0xFF303135, true)
                 : new WidgetTheme(0xFFFFFFFF, 0xFF111113, 0xFF2B2D31, 0xFF6B6F76,
-                                  0xFFA3A7AD, 0xFF4D5156, 0xFFD7D9DD, false);
+                                  0xFFA3A7AD, 0xFF4D5156, 0xFFD7D9DD,
+                                  0xFFF7F7F8, 0xFFF0F0F1, 0xFFE6E6E7, false);
     }
 
     /**
@@ -65,10 +75,34 @@ final class WidgetTheme {
                     color(o.optString("textFaint", null), base.textFaint),
                     color(o.optString("textHasData", null), base.textHasData),
                     color(o.optString("progressTrack", null), base.progressTrack),
+                    color(o.optString("surface", null), base.surface),
+                    color(o.optString("surfaceRaised", null), base.surfaceRaised),
+                    color(o.optString("border", null), base.border),
                     dark);
         } catch (Exception ignored) {
             return fb;
         }
+    }
+
+    /**
+     * Black or white, whichever can actually be read on {@code background}.
+     *
+     * The accent is the writer's own colour and every hue is allowed, so a
+     * label hardcoded to white disappears the moment somebody picks amber or
+     * pale green. WCAG relative luminance, with the 0.179 threshold that
+     * maximises the worse of the two contrast ratios.
+     */
+    static int readableOn(int background) {
+        double r = channel((background >> 16) & 0xFF);
+        double g = channel((background >> 8) & 0xFF);
+        double b = channel(background & 0xFF);
+        double l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return l > 0.179 ? 0xFF000000 : 0xFFFFFFFF;
+    }
+
+    private static double channel(int v) {
+        double c = v / 255.0;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
     }
 
     /**

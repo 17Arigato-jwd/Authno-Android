@@ -78,24 +78,32 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
     private void buildUI() {
         SharedPreferences prefs =
                 getSharedPreferences(StreakWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE);
-        String booksJson = readBooksFile();
-        if (booksJson == null) booksJson = prefs.getString(StreakWidgetProvider.KEY_BOOKS_JSON, "[]");
+        // One reader, shared with the provider and the cycle button, so the
+        // three can never disagree about which books exist.
+        String booksJson = StreakWidgetProvider.readBooksJson(this, prefs);
         String accentHex = prefs.getString(StreakWidgetProvider.KEY_ACCENT_COLOR, "#5a00d9");
         int accent = parseColor(accentHex);
+
+        // This screen is as much a widget surface as the card is, and it was
+        // hardcoded to the Dark palette — so a writer on Paper or Sepia tapped
+        // "add widget" and got a black sheet in the middle of a light system.
+        WidgetTheme theme = WidgetTheme.parse(
+                prefs.getString(StreakWidgetProvider.KEY_THEME_JSON, ""),
+                prefs.getBoolean(StreakWidgetProvider.KEY_IS_DARK, true));
 
         List<BookItem> books = parseBooks(booksJson);
 
         // Root
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.parseColor("#131417"));
+        root.setBackgroundColor(theme.bg);
         root.setPadding(dp(20), dp(24), dp(20), dp(24));
         setContentView(root);
 
         // Title
         TextView title = new TextView(this);
         title.setText("Link a Book");
-        title.setTextColor(Color.parseColor("#f2f3f5"));
+        title.setTextColor(theme.textPrimary);
         title.setTextSize(20);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         title.setPadding(0, 0, 0, dp(6));
@@ -103,7 +111,7 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
 
         // Subtitle
         TextView subtitle = new TextView(this);
-        subtitle.setTextColor(Color.parseColor("#72767d"));
+        subtitle.setTextColor(theme.textDim);
         subtitle.setTextSize(13);
         subtitle.setPadding(0, 0, 0, dp(20));
         root.addView(subtitle);
@@ -127,7 +135,7 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
             ListView list = new ListView(this);
             list.setBackgroundColor(Color.TRANSPARENT);
             list.setDivider(null);
-            list.setAdapter(new BookAdapter(this, books, accent));
+            list.setAdapter(new BookAdapter(this, books, accent, theme));
             list.setOnItemClickListener((parent, view, pos, id) ->
                     confirmSelection(books.get(pos), accentHex));
             root.addView(list, new LinearLayout.LayoutParams(
@@ -153,22 +161,9 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
         finish();
     }
 
-
-    private String readBooksFile() {
-        try {
-            java.io.File f = new java.io.File(getFilesDir(), "authno_books.json");
-            if (!f.exists()) return null;
-            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(f));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-            String json = sb.toString().trim();
-            return json.isEmpty() ? null : json;
-        } catch (Exception e) {
-            return null;
-        }
-    }
+    // (readBooksFile lived here and was a second copy of the provider's
+    // file-then-prefs read. Two copies of "which books exist" is one more than
+    // the number of answers there can be, so buildUI now calls the provider's.)
 
     // ── Book list adapter ──────────────────────────────────────────────────────
 
@@ -182,10 +177,12 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
 
     private static class BookAdapter extends ArrayAdapter<BookItem> {
         private final int accent;
+        private final WidgetTheme theme;
 
-        BookAdapter(Context ctx, List<BookItem> items, int accent) {
+        BookAdapter(Context ctx, List<BookItem> items, int accent, WidgetTheme theme) {
             super(ctx, 0, items);
             this.accent = accent;
+            this.theme = theme;
         }
 
         @Override
@@ -205,7 +202,7 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
             GradientDrawable iconBg = new GradientDrawable();
             iconBg.setShape(GradientDrawable.RECTANGLE);
             iconBg.setCornerRadius(dp(ctx, 10));
-            iconBg.setColor(Color.parseColor("#1e1f23"));
+            iconBg.setColor(theme.surfaceRaised);
             iconBg.setStroke(1, setAlpha(accent, 0x30));
             iconBox.setBackground(iconBg);
             int iconSize = dp(ctx, 40);
@@ -234,7 +231,7 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
 
             TextView titleTv = new TextView(ctx);
             titleTv.setText(item != null ? item.title : "");
-            titleTv.setTextColor(Color.parseColor("#f2f3f5"));
+            titleTv.setTextColor(theme.textPrimary);
             titleTv.setTextSize(14);
             titleTv.setTypeface(null, android.graphics.Typeface.BOLD);
             titleTv.setMaxLines(1);
@@ -262,7 +259,7 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
 
             TextView streakTv = new TextView(ctx);
             streakTv.setText(s > 0 ? s + " day streak" : "No streak yet");
-            streakTv.setTextColor(s > 0 ? accent : Color.parseColor("#72767d"));
+            streakTv.setTextColor(s > 0 ? accent : theme.textDim);
             streakTv.setTextSize(12);
             streakRow.addView(streakTv);
 
@@ -274,7 +271,8 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
             GradientDrawable rowBg = new GradientDrawable();
             rowBg.setShape(GradientDrawable.RECTANGLE);
             rowBg.setCornerRadius(dp(ctx, 14));
-            rowBg.setColor(Color.parseColor("#1a1b1e"));
+            rowBg.setColor(theme.surface);
+            rowBg.setStroke(1, theme.border);
             row.setBackground(rowBg);
 
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
@@ -354,7 +352,10 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
     private TextView makeButton(String text, int accent) {
         TextView btn = new TextView(this);
         btn.setText(text);
-        btn.setTextColor(Color.WHITE);
+        // Not Color.WHITE. The accent is the writer's own colour and every hue
+        // is allowed, so a hardcoded white label vanishes on amber or pale
+        // green — the one button on this screen, unreadable.
+        btn.setTextColor(WidgetTheme.readableOn(accent));
         btn.setTextSize(14);
         btn.setTypeface(null, android.graphics.Typeface.BOLD);
         btn.setGravity(Gravity.CENTER);
