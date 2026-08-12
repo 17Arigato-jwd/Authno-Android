@@ -29,6 +29,7 @@ export default function BurgerMenu({
   current,
   setSessions,
   onOpenSettings,
+  onOpenNotes,
   onOpen,
   accentHex,
   anchorRef,
@@ -272,6 +273,11 @@ export default function BurgerMenu({
       )}
       {onReadAloud && isSpeechSupported() &&
         row({ icon: <DSIcons.Volume size={15} />, label: "Read aloud", hint: "Ctrl+Shift+R", disabled: !current, onClick: () => { onClose?.(); onReadAloud(); } })}
+      {/* Not disabled on !current: a note is the thing you write when there
+          is no book open yet, so gating it on one would remove it from the
+          case it exists for. */}
+      {onOpenNotes &&
+        row({ icon: <DSIcons.Edit size={15} />, label: "Notes", hint: "Ctrl+J", onClick: () => { onClose?.(); onOpenNotes(); } })}
       {/* Settings lives here only on Android — the desktop sidebar already has
           it, and three entry points from one screen was two too many. */}
       {android && (
@@ -286,6 +292,8 @@ export default function BurgerMenu({
   const homeItems = (
     <>
       {row({ icon: <DSIcons.FolderOpen size={15} />, label: "Open…", hint: "Ctrl+O", disabled: busy, onClick: handleOpen })}
+      {onOpenNotes &&
+        row({ icon: <DSIcons.Edit size={15} />, label: "Notes", hint: "Ctrl+J", onClick: () => { onClose?.(); onOpenNotes(); } })}
       {android && (
         <>
           {divider("dh")}

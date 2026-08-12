@@ -298,7 +298,12 @@ function BookCard({ title, meta, onClick, accentHex, theme, cover, coverMime }) 
 export default function HomeScreen({
   sessions, accentHex, onNewBook, onSelect,
   onToggleSidebar, onToggleMenu, burgerBtnRef,
-  current, goalWords, onStreakUpdate, streakEnabled,
+  // `current`, `goalWords`, `onStreakUpdate` and `streakEnabled` are still
+  // passed by App for symmetry with the other home layouts, and deliberately
+  // NOT destructured here: this screen has no streak UI to drive with them.
+  // Naming them would suggest it honours the streak switch, and the next
+  // person to add a flame here would find the prop already in scope and
+  // assume it was wired. The Flame icon below belongs to the Continue card.
   onRefresh,
   onReadAloud = () => {},
   onOpenExtensions = () => {},

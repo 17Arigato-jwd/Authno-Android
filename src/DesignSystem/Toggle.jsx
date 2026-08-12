@@ -22,6 +22,8 @@ import { COLORS, TYPOGRAPHY } from './tokens';
  *   size        'sm' | 'md' | 'lg'
  *   disabled    bool
  *   label       string   shown to the right
+ *   ariaLabel   string   for a toggle whose meaning comes from a nearby row
+ *                        rather than its own `label` (most of Settings)
  */
 export function Toggle({
   on,
@@ -32,6 +34,7 @@ export function Toggle({
   size = 'md',
   disabled = false,
   label,
+  ariaLabel,
   style = {},
 }) {
   // Accept either prop name — `on` wins if both are provided
@@ -55,12 +58,40 @@ export function Toggle({
         ...style,
       }}
     >
+      {/*
+        role/aria/tabIndex are not decoration. This was a bare <div> with an
+        onClick: no role, no state exposed, no tab stop and no key handling —
+        so every switch in Settings (streaks, reminders, haptics, sounds,
+        reduce-animations) could only be operated by pointing at it, and a
+        screen reader read the row's label with nothing to say whether it was
+        on or off. There is no hidden <input> to fall back on either.
+
+        A native checkbox would be the simpler fix, but the visible element
+        here IS the control; hiding an input behind it means two things to
+        keep in sync. role="switch" on the thing that is already interactive
+        is the smaller change and the one that cannot drift.
+      */}
       <div
+        role="switch"
+        aria-checked={isOn}
+        aria-disabled={disabled || undefined}
+        aria-label={ariaLabel ?? label ?? undefined}
+        tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && onChange?.(!isOn)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          // Space and Enter, per the switch pattern. preventDefault on Space
+          // or the settings sheet scrolls out from under the writer's thumb.
+          if (e.key === ' ' || e.key === 'Enter' || e.key === 'Spacebar') {
+            e.preventDefault();
+            onChange?.(!isOn);
+          }
+        }}
         style={{
           width: s.track[0], height: s.track[1],
           borderRadius: s.track[1] / 2,
           padding: (s.track[1] - s.thumb) / 2,
+          outlineOffset: 2,
           background: isOn
             ? `linear-gradient(135deg, ${accent}, ${accent}cc)`
             : trackOff,

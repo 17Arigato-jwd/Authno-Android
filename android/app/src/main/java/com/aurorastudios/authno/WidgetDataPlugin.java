@@ -50,6 +50,11 @@ public class WidgetDataPlugin extends Plugin {
         // The active theme's colours, so all six themes render as themselves
         // rather than collapsing to Dark or Light.
         String themeJson  = call.getString("themeJson", "");
+        // The streak switches. Books that are not counting are already absent
+        // from booksJson; these two let the widget say WHY a book is missing
+        // rather than reporting a live book as deleted.
+        Boolean streaksOn = call.getBoolean("streaksEnabled", Boolean.TRUE);
+        String streaksOff = call.getString("streaksOffJson", "[]");
 
         Context ctx = getContext();
 
@@ -62,6 +67,8 @@ public class WidgetDataPlugin extends Plugin {
         ed.putBoolean(StreakWidgetProvider.KEY_IS_DARK, isDark != null ? isDark : true);
         ed.putString(StreakWidgetProvider.KEY_RESUME_JSON, resumeJson != null ? resumeJson : "");
         ed.putString(StreakWidgetProvider.KEY_THEME_JSON, themeJson != null ? themeJson : "");
+        ed.putBoolean(StreakWidgetProvider.KEY_STREAKS_ENABLED, streaksOn == null || streaksOn);
+        ed.putString(StreakWidgetProvider.KEY_STREAKS_OFF_JSON, streaksOff != null ? streaksOff : "[]");
         ed.apply();
 
         // 2. Also write authno_books.json so the file-first path in

@@ -28,6 +28,7 @@
  */
 
 import { useEffect } from 'react';
+import { booksWithStreaks, streaksEnabledGlobally, streaksEnabledFor } from './streakSettings';
 
 // ── Capacitor plugin bridge ───────────────────────────────────────────────────
 
@@ -131,8 +132,10 @@ function chapterWordCount(chap) {
  *
  * @param {Array}  sessions   Full sessions array from App state
  * @param {string} accentHex  e.g. "#5a00d9"
+ * @param {object} theme      the active theme object (see buildWidgetTheme)
+ * @param {object} settings   writerSettings — read for the streak switches
  */
-export async function syncWidget(sessions, accentHex, theme) {
+export async function syncWidget(sessions, accentHex, theme, settings) {
   // The widget used to get one bit — "is the app dark?" — inferred from a DOM
   // class, which is why Sepia, Paper and OLED all rendered as plain Dark. It
   // now gets the actual theme's colours, so all six render as themselves.
@@ -156,8 +159,13 @@ export async function syncWidget(sessions, accentHex, theme) {
 
     // Strip large fields (content, preview) — the widget only needs
     // id, title, and the streak object.
-    const slim = sessions
-      .filter(s => s.type !== 'storyboard')
+    //
+    // Books with streaks switched off are dropped rather than sent with a
+    // flag. The streak widget IS a streak, so a book that is not counting has
+    // nothing to show there; leaving it in the list would keep it selectable
+    // in the widget's config screen and cycleable with the Next-book button,
+    // both of which would land on a card showing a frozen number.
+    const slim = booksWithStreaks(sessions, settings)
       .map(s => ({
         id:     s.id,
         title:  s.title || 'Untitled Book',
@@ -174,12 +182,22 @@ export async function syncWidget(sessions, accentHex, theme) {
       if (payload) resumeJson = JSON.stringify(payload);
     } catch { /* no resume recorded yet — the card shows its empty state */ }
 
+    // Ids of books that exist but are not counting. Without this the widget
+    // cannot tell "the book you linked was deleted" from "you switched its
+    // streak off" — they look identical once the book is out of booksJson —
+    // and it would report a live book as missing.
+    const offIds = (sessions || [])
+      .filter((s) => s && s.type !== 'storyboard' && !streaksEnabledFor(s, settings))
+      .map((s) => s.id);
+
     await box.plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
       isDark: themeIsDark,
       resumeJson,
       themeJson: widgetTheme ? JSON.stringify(widgetTheme) : '',
+      streaksEnabled: streaksEnabledGlobally(settings),
+      streaksOffJson: JSON.stringify(offIds),
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort

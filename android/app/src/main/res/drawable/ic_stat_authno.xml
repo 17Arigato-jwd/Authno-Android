@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ic_stat_authno.xml — the status-bar icon for a writing reminder.
+
+  Flat white on transparent, and it has to be. Android takes a notification's
+  small icon, throws away every colour in it and keeps only the alpha channel,
+  then tints the silhouette to match the system bar. Handing it the gradient
+  flame (ic_flame_gradient) would produce a solid blob: the gradient collapses
+  to opaque, the inner highlight is 0x47 alpha and would render as a faint
+  smudge, and the whole thing would read as a filled teardrop.
+
+  So this is the same flame, drawn as a silhouette with the highlight cut OUT
+  of the body rather than painted over it — an evenOdd fill, which survives
+  being reduced to alpha because the hole is genuinely transparent.
+
+  24dp with the shape kept inside a ~22dp box: the system crops small icons
+  to a circle on some launchers and anything touching the edge loses a slice.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M12,2.25c-0.38,0 -0.7,0.21 -0.88,0.54C9.27,6.27 6,10.5 6,14.5a6,6 0,0 0,12 0c0,-4 -3.27,-8.23 -5.12,-11.71A1,1 0,0 0,12 2.25ZM12,8.4c-0.2,0 -0.38,0.11 -0.48,0.29C10.74,10.05 10,11.9 10,13.5a2,2 0,0 0,4 0c0,-1.6 -0.74,-3.45 -1.52,-4.81A0.54,0.54 0,0 0,12 8.4Z" />
+
+</vector>

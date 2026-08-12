@@ -8,7 +8,9 @@ import BurgerMenu from "./components/BurgerMenu";
 import Sidebar from "./components/Sidebar";
 import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
-import { FlameButton } from "./components/Streak";
+import { FlameButton, computeStreak, getTodayKey } from "./components/Streak";
+import { booksWithStreaks, streaksEnabledFor, reminderConfig } from "./utils/streakSettings";
+import { syncReminder, reportProgress } from "./utils/reminders";
 import { isAndroid, isElectron } from "./utils/platform";
 import { DEFAULT_WORD_GOAL } from "./components/constants";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
@@ -27,6 +29,7 @@ import { setSoundsEnabled } from "./utils/sounds";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
+import NotesPanel from "./components/NotesPanel";
 import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook, isContentless, readSessionFromFile } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
@@ -683,6 +686,7 @@ function AppInner({ navigateRef }) {
   const [fontCustomizerOpen, setFontCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
+  const [notesOpen, setNotesOpen] = useState(false);               // quick-capture notes sheet
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
   const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
   const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
@@ -863,6 +867,7 @@ function AppInner({ navigateRef }) {
     if (!android) return;
     let listener;
     CapApp.addListener('backButton', () => {
+      if (notesOpen)      { setNotesOpen(false);       return; }
       if (menuOpen)       { setMenuOpen(false);        return; }
       if (historyOpen)    { setHistoryOpen(false);     return; }
       if (drawerOpen)     { setDrawerOpen(false);      return; }
@@ -878,7 +883,7 @@ function AppInner({ navigateRef }) {
     // between two extension pages changes it WITHOUT changing `view`, so the
     // listener kept the first page's _prevView and back sent you to whatever
     // screen you had opened the previous extension from.
-  }, [android, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view, extPageState]);
+  }, [android, notesOpen, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view, extPageState]);
 
   // ── Re-verify the stored licence on boot ─────────────────────────────────
   // The tier itself lives in localStorage, so it can be hand-edited. When this
@@ -1054,7 +1059,10 @@ function AppInner({ navigateRef }) {
       // keystroke — the same "widget ignores theme" report, one layer down.
       // `theme` is state in ThemeProvider, so its identity is stable between
       // actual theme changes and this does not fire on every render.
-      syncWidget(sessions, customization.accentHex, theme);
+      // settings goes across because the streak switches decide which books
+      // the widget may show at all — a book with its streak off has nothing
+      // to put on a streak card.
+      syncWidget(sessions, customization.accentHex, theme, settings);
       // Launcher shortcut label follows the last-written book.
       const last = getLastResume();
       const lastBook = sessions.find((s) => s.id === last?.bookId)
@@ -1062,7 +1070,44 @@ function AppInner({ navigateRef }) {
       updateAppShortcuts(lastBook);
     }, 1500);
     return () => clearTimeout(widgetSyncTimer.current);
-  }, [sessions, customization.accentHex, theme]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessions, customization.accentHex, theme, settings.streakEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── The writing reminder ──────────────────────────────────────────────────
+  // Two effects, because they answer different questions on different clocks.
+  //
+  // This one owns the alarm: schedule it, move it, cancel it. It watches only
+  // the settings that change the answer, not `sessions` — a keystroke must not
+  // re-arm an alarm.
+  useEffect(() => {
+    syncReminder(sessions, settings);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.streakEnabled, settings.streakReminder, sessions.length]);
+
+  // And this one keeps the stored progress current, so a reminder firing with
+  // the app closed knows whether today's goal was already met. Debounced on
+  // the same idea as the widget sync: it follows the words, which means it
+  // would otherwise run on every keystroke.
+  const progressTimer = useRef(null);
+  useEffect(() => {
+    if (!reminderConfig(settings).enabled) return undefined;
+    clearTimeout(progressTimer.current);
+    progressTimer.current = setTimeout(() => {
+      const counting = booksWithStreaks(sessions, settings);
+      const todayKey = getTodayKey();
+      let met = false;
+      let best = 0;
+      for (const b of counting) {
+        const entry = b.streak?.log?.[todayKey];
+        const goal = b.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL;
+        const words = typeof entry === 'number' ? entry : (entry?.words ?? 0);
+        if (words >= (entry?.goal ?? goal)) met = true;
+        best = Math.max(best, computeStreak(b.streak?.log ?? {}));
+      }
+      reportProgress(met, best);
+    }, 2000);
+    return () => clearTimeout(progressTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, settings.streakEnabled, settings.streakReminder, settings.dailyWordGoal]);
   useWidgetDeepLink((bookId) => { handleSelect(bookId); });
   useEffect(() => { if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId); }, [currentId]);
 
@@ -1523,6 +1568,10 @@ function AppInner({ navigateRef }) {
       // The widget's New-chapter button names its linked book, which may not
       // be the one currently open.
       else if (action === "new-chapter") newChapterIn(bookId || undefined);
+      // Reserved for the notes widget's capture button — see
+      // docs/todo/notes-widget.md. Wired now so the app half is already
+      // there when the widget lands.
+      else if (action === "new-note") setNotesOpen(true);
     };
     window.addEventListener("authno-launch-action", onLaunch);
     return () => window.removeEventListener("authno-launch-action", onLaunch);
@@ -1899,8 +1948,9 @@ function AppInner({ navigateRef }) {
   // ── App-wide shortcuts (beta.1, "Standard set" per the author's pick) ─────
   // Ctrl+, Settings · Ctrl+N New book · Ctrl+O Open · Ctrl+Shift+N New chapter
   // Ctrl+Alt+I Chapter info · Ctrl+Shift+T Threads · Ctrl+Shift+R Read aloud
-  // Ctrl+Shift+E Export. (Ctrl+K/S/Shift+Z live in their own handlers; Ctrl+I
-  // stays italic and Ctrl+E stays centre-align inside the editor.)
+  // Ctrl+Shift+E Export · Ctrl+J Notes. (Ctrl+K/S/Shift+Z live in their own
+  // handlers; Ctrl+I stays italic and Ctrl+E stays centre-align inside the
+  // editor.)
   useEffect(() => {
     const down = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -1924,6 +1974,9 @@ function AppInner({ navigateRef }) {
         else startReadAloud(currentId, view === "editor" ? currentChapterIdx : null);
       }
       else if (k === "e" && e.shiftKey) { e.preventDefault(); if (currentId) setExportPanelOpen(true); }
+      // Notes open from anywhere, book or no book — an idea does not wait for
+      // the right screen to be in front of you.
+      else if (k === "j" && !e.shiftKey && !e.altKey) { e.preventDefault(); setNotesOpen(true); }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
@@ -2163,7 +2216,7 @@ function AppInner({ navigateRef }) {
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           current={current} goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
-          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={streaksEnabledFor(current, settings)}
           onRefresh={async () => {
             try { const { listSavedBooks } = await import('./utils/storage'); const books = await listSavedBooks(); if (books.length) setSessions(prev => { const ids = new Set(prev.map(s => s.id)); return [...prev, ...books.filter(b => !ids.has(b.id))]; }); }
             catch (e) { showError('refresh', e); }
@@ -2215,7 +2268,7 @@ function AppInner({ navigateRef }) {
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
-          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={streaksEnabledFor(current, settings)}
         />
         ) : (
         <BookStudio
@@ -2230,7 +2283,7 @@ function AppInner({ navigateRef }) {
           defaultSort={settings.chapterSort ?? "story"}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
-          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={streaksEnabledFor(current, settings)}
         />
         )
       ) : (
@@ -2248,7 +2301,7 @@ function AppInner({ navigateRef }) {
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
-          burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          burgerBtnRef={burgerBtnRef} streakEnabled={streaksEnabledFor(current, settings)}
           resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
           syncNonce={editorSyncNonce} onOpenHistory={() => setHistoryOpen(true)}
           spellcheckOn={settings.spellcheck ?? true} editorWidth={settings.editorWidth ?? "full"}
@@ -2291,6 +2344,13 @@ function AppInner({ navigateRef }) {
         />
       )}
 
+      {/* Quick-capture notes — deliberately reachable from every screen,
+          because the point is catching an idea before it goes. */}
+      <NotesPanel
+        isOpen={notesOpen} onClose={() => setNotesOpen(false)}
+        accentHex={customization.accentHex}
+      />
+
       {/* Change history — Docs-style version panel (desktop side panel / mobile sheet) */}
       <HistoryPanel
         open={historyOpen} onClose={() => setHistoryOpen(false)}
@@ -2303,6 +2363,7 @@ function AppInner({ navigateRef }) {
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
+        onOpenNotes={() => { setMenuOpen(false); setNotesOpen(true); }}
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
         context={view === "home" ? "home" : "book"}

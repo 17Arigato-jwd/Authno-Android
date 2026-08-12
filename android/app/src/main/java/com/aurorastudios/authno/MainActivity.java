@@ -49,6 +49,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AppIconPlugin.class);       // launcher icon switcher (Settings → Appearance)
         registerPlugin(AppShortcutsPlugin.class);  // long-press launcher shortcuts
         registerPlugin(MaterialYouPlugin.class);   // Android 12+ dynamic colour (Settings → Appearance)
+        registerPlugin(RemindersPlugin.class);     // daily writing reminder (Settings → Writing Goal)
         super.onCreate(savedInstanceState);
 
         internalFilesDir = getFilesDir();

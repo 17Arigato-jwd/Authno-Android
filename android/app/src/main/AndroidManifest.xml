@@ -300,6 +300,28 @@
             </intent-filter>
         </activity>
 
+        <!-- ── Writing reminder ──
+             The alarm receiver takes no <intent-filter>: RemindersPlugin
+             addresses it with an explicit intent, so it needs no advertised
+             action and stays unexported — a notification nothing else can
+             make the app post. -->
+        <receiver
+            android:name=".ReminderReceiver"
+            android:exported="false" />
+
+        <!-- Re-arms that alarm after a restart or an app update. These two
+             DO need filters, because the system is the sender. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
         <!-- ── File provider ── -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -324,6 +346,14 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         android:minSdkVersion="30" />
+    <!-- Alarms do not survive a reboot. Without this the writing reminder
+         stops the next time the phone restarts and never comes back, while
+         the setting still reads as on. See BootReceiver.
+         Note there is deliberately NO SCHEDULE_EXACT_ALARM: the reminder uses
+         setInexactRepeating, because a special-access permission screen is a
+         wildly disproportionate ask for the difference between 20:00 and
+         20:20. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Package visibility -->
     <queries>

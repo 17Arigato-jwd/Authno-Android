@@ -38,6 +38,12 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     // ever render Dark or Light, so Sepia, Paper, OLED and Material You all
     // came out as plain Dark.
     static final String KEY_THEME_JSON     = "authno_theme";
+    // Streaks can be switched off globally or per book (Settings → Writing
+    // Goal). A book that is not counting is absent from KEY_BOOKS_JSON, so
+    // without these the widget could only say "no book linked" — reporting a
+    // live book as deleted, which is a worse answer than the truth.
+    static final String KEY_STREAKS_ENABLED  = "authno_streaks_enabled";
+    static final String KEY_STREAKS_OFF_JSON = "authno_streaks_off";
 
     // Actions handled by this receiver itself. Both are sent as EXPLICIT
     // intents (new Intent(ctx, StreakWidgetProvider.class)), so they need no
@@ -233,11 +239,30 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         if (book != null) {
             StreakWidgetRenderer.populate(ctx, views, book, accentHex, theme);
         } else {
-            // Widget not configured yet (or the linked book was deleted)
-            views.setTextViewText(R.id.widget_title, "Tap to open AuthNo");
+            // Three different reasons the book is not here, and saying the
+            // wrong one is worse than saying nothing: a writer who switched
+            // streaks off would otherwise be told their book was deleted.
+            boolean streaksOn = prefs.getBoolean(KEY_STREAKS_ENABLED, true);
+            boolean thisOneOff = isStreakOff(prefs.getString(KEY_STREAKS_OFF_JSON, "[]"), bookId);
+
             views.setTextViewText(R.id.widget_streak_count, "—");
-            views.setTextViewText(R.id.widget_streak_label, "no book linked");
-            views.setTextViewText(R.id.widget_progress_label, "Open the app to sync");
+            if (!streaksOn) {
+                views.setTextViewText(R.id.widget_title, "Streaks are off");
+                views.setTextViewText(R.id.widget_streak_label, "turned off in Settings");
+                views.setTextViewText(R.id.widget_progress_label, "Tap to open AuthNo");
+            } else if (thisOneOff) {
+                views.setTextViewText(R.id.widget_title, "Streak is off");
+                views.setTextViewText(R.id.widget_streak_label, "off for this book");
+                views.setTextViewText(R.id.widget_progress_label, "Tap to open AuthNo");
+            } else {
+                // Not configured yet, or the linked book really was deleted.
+                views.setTextViewText(R.id.widget_title, "Tap to open AuthNo");
+                views.setTextViewText(R.id.widget_streak_label, "no book linked");
+                views.setTextViewText(R.id.widget_progress_label, "Open the app to sync");
+            }
+            // Nothing to draw a month of: leaving the last render's calendar
+            // up would show a streak the widget just said is not running.
+            views.setImageViewBitmap(R.id.widget_calendar, null);
         }
 
         mgr.updateAppWidget(widgetId, views);
@@ -267,6 +292,18 @@ public class StreakWidgetProvider extends AppWidgetProvider {
             }
         } catch (Exception ignored) {}
         return prefs.getString(KEY_BOOKS_JSON, "[]");
+    }
+
+    /** Is this specific book one the writer switched streaks off for? */
+    static boolean isStreakOff(String offJson, String bookId) {
+        if (bookId == null || bookId.isEmpty()) return false;
+        try {
+            JSONArray arr = new JSONArray(offJson);
+            for (int i = 0; i < arr.length(); i++) {
+                if (bookId.equals(arr.optString(i))) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     static int bookCount(String booksJson) {
