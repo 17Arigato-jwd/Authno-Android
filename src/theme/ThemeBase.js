@@ -470,7 +470,12 @@ export function buildWidgetTheme(theme) {
     textSecondary: theme.text.t2,
     textDim:       theme.text.t4,
     textFaint:     theme.text.t5,
-    progressTrack: theme.surfaces.mid,
+    textHasData:   theme.text.t3,
+    // Solid, not surfaces.mid. That token is rgba(...) — correct in CSS, where
+    // it composites over the page, but a widget draws onto an unknown wallpaper
+    // and the native side deliberately refuses translucent colours. Blending it
+    // here gives the same result as a solid the widget can actually use.
+    progressTrack: interpolateHex(theme.backgrounds.modal, theme.text.t1, 0.14),
     // Which way the surface overlays go. The design system models a raised
     // surface as a translucent white over the background on dark themes and a
     // translucent black on light ones (see surfaces.* in each theme), so one

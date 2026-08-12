@@ -29,30 +29,17 @@ import java.util.Map;
  */
 public class StreakWidgetRenderer {
 
-    // ── Theme palette (N15) ───────────────────────────────────────────────────
-    // The widget previously used the dark token set unconditionally, so on a
-    // light app theme it stayed dark. populate() now receives the app theme's
-    // isDark flag and selects the matching palette.
-    static final class Palette {
-        final int textPrimary, textSecondary, textDim, textFaint, textHasData, progressTrack;
-        Palette(int p, int s, int d, int f, int h, int t) {
-            textPrimary = p; textSecondary = s; textDim = d; textFaint = f; textHasData = h; progressTrack = t;
-        }
-    }
-    private static final Palette DARK = new Palette(
-        DSTokens.COLORS.TEXT_PRIMARY,
-        DSTokens.COLORS.TEXT_SECONDARY,
-        DSTokens.COLORS.TEXT_SUBTLE,
-        DSTokens.COLORS.TEXT_DISABLED,
-        DSTokens.COLORS.TEXT_MUTED,
-        DSTokens.COLORS.SURFACE_3);
-    private static final Palette LIGHT = new Palette(
-        Color.parseColor("#111113"),   // text primary on light
-        Color.parseColor("#2b2d31"),
-        Color.parseColor("#6b6f76"),
-        Color.parseColor("#a3a7ad"),
-        Color.parseColor("#4d5156"),
-        Color.parseColor("#d7d9dd")); // progress track on light
+    // ── Theme palette ─────────────────────────────────────────────────────────
+    // This used to hold its own DARK/LIGHT Palette pair, which was a bug once
+    // the provider started painting from the real app theme: the provider set
+    // themed colours on widget_title, widget_streak_label and
+    // widget_progress_label, then called populate(), which wrote over all three
+    // from the hardcoded pair. The renderer runs last, so the theme only
+    // survived on the "no book linked" branch — i.e. never, in normal use.
+    //
+    // WidgetTheme carries exactly the six roles the Palette did (plus bg), so
+    // it is now the palette. Its fallback() pair holds the same values the
+    // constants here did, which also means one place to change them.
 
     private static final String[] DAY_HEADERS = {"M", "T", "W", "T", "F", "S", "S"};
 
@@ -68,12 +55,18 @@ public class StreakWidgetRenderer {
      */
     public static void populate(Context ctx, RemoteViews views,
                                 JSONObject book, String accentHex) {
-        populate(ctx, views, book, accentHex, true);
+        populate(ctx, views, book, accentHex, WidgetTheme.fallback(true));
+    }
+
+    /** Kept for callers that only know the app's lightness, not its theme. */
+    public static void populate(Context ctx, RemoteViews views,
+                                JSONObject book, String accentHex, boolean isDark) {
+        populate(ctx, views, book, accentHex, WidgetTheme.fallback(isDark));
     }
 
     public static void populate(Context ctx, RemoteViews views,
-                                JSONObject book, String accentHex, boolean isDark) {
-        Palette pal = isDark ? DARK : LIGHT;
+                                JSONObject book, String accentHex, WidgetTheme pal) {
+        if (pal == null) pal = WidgetTheme.fallback(true);
         int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
 
         try {
@@ -107,8 +100,13 @@ public class StreakWidgetRenderer {
             views.setTextColor(R.id.widget_streak_label, pal.textDim);
 
             // Today progress label
+            // "met" rather than a tick glyph. A widget label cannot carry a
+            // vector without a compound drawable, which is uncertain below API
+            // 23, and an emoji tick renders in whatever font the launcher has.
+            // The word also survives for anyone who cannot see the colour
+            // change on the next line, which was otherwise the only other cue.
             String progressLabel = wordsToday + " / " + goalToday + " words today"
-                    + (todayMet ? " ✓" : "");
+                    + (todayMet ? " · met" : "");
             views.setTextViewText(R.id.widget_progress_label, progressLabel);
             views.setTextColor(R.id.widget_progress_label, todayMet ? accent : pal.textDim);
 
@@ -132,7 +130,7 @@ public class StreakWidgetRenderer {
                                          String todayKey,
                                          int accent,
                                          float density,
-                                         Palette pal) {
+                                         WidgetTheme pal) {
         final int COLS     = 7;
         final int CELL_W   = (int) (34 * density);
         final int CELL_H   = (int) (28 * density);

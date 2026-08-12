@@ -152,9 +152,15 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
 
         views.setInt(R.id.widget_card_bg, "setColorFilter", theme.bg);
-        views.setTextColor(R.id.widget_title, theme.textDim);
+
+        // A base coat: the layout's android:textColor defaults are the dark
+        // tokens, so on a light theme any view not repainted below would be
+        // near-invisible. StreakWidgetRenderer repaints these three from the
+        // same theme, so the two passes agree rather than fight.
+        views.setTextColor(R.id.widget_title, theme.textSecondary);
         views.setTextColor(R.id.widget_streak_label, theme.textDim);
         views.setTextColor(R.id.widget_progress_label, theme.textDim);
+        views.setTextColor(R.id.widget_streak_count, theme.textDim);
 
         // Resting and pressed states on the design system's durations, chosen
         // by theme lightness because both are translucent overlays on the card
@@ -225,7 +231,7 @@ public class StreakWidgetProvider extends AppWidgetProvider {
                 bookCount(booksJson) > 1 ? android.view.View.VISIBLE : android.view.View.GONE);
 
         if (book != null) {
-            StreakWidgetRenderer.populate(ctx, views, book, accentHex, isDark);
+            StreakWidgetRenderer.populate(ctx, views, book, accentHex, theme);
         } else {
             // Widget not configured yet (or the linked book was deleted)
             views.setTextViewText(R.id.widget_title, "Tap to open AuthNo");

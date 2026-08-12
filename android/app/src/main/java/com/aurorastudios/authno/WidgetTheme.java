@@ -19,21 +19,30 @@ final class WidgetTheme {
     final int textPrimary;
     final int textSecondary;
     final int textDim;
+    final int textFaint;
+    final int textHasData;
+    final int progressTrack;
     final boolean isDark;
 
-    private WidgetTheme(int bg, int textPrimary, int textSecondary, int textDim, boolean isDark) {
+    private WidgetTheme(int bg, int textPrimary, int textSecondary, int textDim,
+                        int textFaint, int textHasData, int progressTrack, boolean isDark) {
         this.bg = bg;
         this.textPrimary = textPrimary;
         this.textSecondary = textSecondary;
         this.textDim = textDim;
+        this.textFaint = textFaint;
+        this.textHasData = textHasData;
+        this.progressTrack = progressTrack;
         this.isDark = isDark;
     }
 
-    /** The dark design-system defaults, for a widget placed before any sync. */
+    /** The design-system defaults, for a widget placed before any sync. */
     static WidgetTheme fallback(boolean isDark) {
         return isDark
-                ? new WidgetTheme(0xFF1A1B1E, 0xFFFFFFFF, 0xFFDCDDDE, 0xFF72767D, true)
-                : new WidgetTheme(0xFFFFFFFF, 0xFF060607, 0xFF2E3338, 0xFF747F8D, false);
+                ? new WidgetTheme(0xFF1A1B1E, 0xFFFFFFFF, 0xFFDCDDDE, 0xFF72767D,
+                                  0xFF4F545C, 0xFFB9BBBE, 0xFF2B2D31, true)
+                : new WidgetTheme(0xFFFFFFFF, 0xFF111113, 0xFF2B2D31, 0xFF6B6F76,
+                                  0xFFA3A7AD, 0xFF4D5156, 0xFFD7D9DD, false);
     }
 
     /**
@@ -53,6 +62,9 @@ final class WidgetTheme {
                     color(o.optString("textPrimary", null), base.textPrimary),
                     color(o.optString("textSecondary", null), base.textSecondary),
                     color(o.optString("textDim", null), base.textDim),
+                    color(o.optString("textFaint", null), base.textFaint),
+                    color(o.optString("textHasData", null), base.textHasData),
+                    color(o.optString("progressTrack", null), base.progressTrack),
                     dark);
         } catch (Exception ignored) {
             return fb;

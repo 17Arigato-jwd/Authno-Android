@@ -104,4 +104,39 @@ public class WidgetThemeTest {
         assertEquals(0xFF000000, WidgetTheme.fallback(true).bg & 0xFF000000);
         assertEquals(0xFF000000, WidgetTheme.fallback(false).bg & 0xFF000000);
     }
+
+    /**
+     * StreakWidgetRenderer draws its calendar straight from these, so a role
+     * left at 0 would paint transparent day numbers rather than fall back.
+     */
+    @Test public void everyCalendarRoleIsSet() {
+        for (boolean dark : new boolean[]{true, false}) {
+            WidgetTheme t = WidgetTheme.fallback(dark);
+            for (int c : new int[]{t.bg, t.textPrimary, t.textSecondary, t.textDim,
+                                   t.textFaint, t.textHasData, t.progressTrack}) {
+                assertEquals("opaque", 0xFF000000, c & 0xFF000000);
+            }
+        }
+    }
+
+    @Test public void theCalendarRolesComeFromThePayload() {
+        WidgetTheme t = WidgetTheme.parse(
+                "{\"textFaint\":\"#111111\",\"textHasData\":\"#222222\","
+                        + "\"progressTrack\":\"#333333\",\"isDark\":true}", true);
+        assertEquals(0xFF111111, t.textFaint);
+        assertEquals(0xFF222222, t.textHasData);
+        assertEquals(0xFF333333, t.progressTrack);
+    }
+
+    /**
+     * The design system's surface tokens are rgba(...) overlays. The progress
+     * track has to be a solid colour for the same reason the card does, so the
+     * app resolves it before sending; if it ever regresses to rgba the widget
+     * must land on the fallback rather than draw nothing.
+     */
+    @Test public void anRgbaProgressTrackFallsBackToSolid() {
+        WidgetTheme t = WidgetTheme.parse(
+                "{\"progressTrack\":\"rgba(255,255,255,0.08)\",\"isDark\":true}", true);
+        assertEquals(WidgetTheme.fallback(true).progressTrack, t.progressTrack);
+    }
 }

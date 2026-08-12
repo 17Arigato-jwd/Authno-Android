@@ -214,10 +214,15 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
             iconLp.setMarginEnd(dp(ctx, 14));
             iconBox.setLayoutParams(iconLp);
 
-            TextView bookEmoji = new TextView(ctx);
-            bookEmoji.setText("📖");
-            bookEmoji.setTextSize(18);
-            iconBox.addView(bookEmoji);
+            // The design system's book mark, not an emoji. An emoji is drawn by
+            // whichever font the launcher or OEM happens to ship, so it changes
+            // shape between devices and cannot take the accent colour — the two
+            // things a design system exists to stop.
+            ImageView bookIcon = new ImageView(ctx);
+            bookIcon.setImageResource(R.drawable.ic_book_gradient);
+            int glyph = dp(ctx, 20);
+            bookIcon.setLayoutParams(new LinearLayout.LayoutParams(glyph, glyph));
+            iconBox.addView(bookIcon);
             row.addView(iconBox, iconLp);
 
             // Text column
@@ -236,12 +241,32 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
             titleTv.setEllipsize(android.text.TextUtils.TruncateAt.END);
             textCol.addView(titleTv);
 
-            TextView streakTv = new TextView(ctx);
+            // Streak line: the flame is the design system's vector, shown only
+            // when there is a streak to show, so the row does not carry a dead
+            // icon for every book the writer has not started yet.
             int s = item != null ? item.streak : 0;
-            streakTv.setText(s > 0 ? "🔥 " + s + " day streak" : "No streak yet");
+
+            LinearLayout streakRow = new LinearLayout(ctx);
+            streakRow.setOrientation(LinearLayout.HORIZONTAL);
+            streakRow.setGravity(Gravity.CENTER_VERTICAL);
+
+            if (s > 0) {
+                ImageView flame = new ImageView(ctx);
+                flame.setImageResource(R.drawable.ic_flame_gradient);
+                int fs = dp(ctx, 13);
+                LinearLayout.LayoutParams flameLp = new LinearLayout.LayoutParams(fs, fs);
+                flameLp.setMarginEnd(dp(ctx, 5));
+                flame.setLayoutParams(flameLp);
+                streakRow.addView(flame);
+            }
+
+            TextView streakTv = new TextView(ctx);
+            streakTv.setText(s > 0 ? s + " day streak" : "No streak yet");
             streakTv.setTextColor(s > 0 ? accent : Color.parseColor("#72767d"));
             streakTv.setTextSize(12);
-            textCol.addView(streakTv);
+            streakRow.addView(streakTv);
+
+            textCol.addView(streakRow);
 
             row.addView(textCol);
 
