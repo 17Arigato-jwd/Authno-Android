@@ -29,6 +29,7 @@
 
 import { useEffect } from 'react';
 import { booksWithStreaks, streaksEnabledGlobally, streaksEnabledFor } from './streakSettings';
+import { countWords } from './wordCount';
 
 // ── Capacitor plugin bridge ───────────────────────────────────────────────────
 
@@ -119,8 +120,7 @@ export function buildResumePayload(sessions, last) {
 function chapterWordCount(chap) {
   if (!chap) return 0;
   if (typeof chap.word_count === 'number') return chap.word_count;
-  const text = String(chap.content ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  return text ? text.split(' ').length : 0;
+  return countWords(chap.content);
 }
 
 // ── syncWidget ────────────────────────────────────────────────────────────────

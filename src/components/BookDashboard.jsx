@@ -31,6 +31,7 @@ import { V, staggerContainer, MOBILE } from '../utils/motion';
 import { isSpeechSupported } from '../utils/readAloud';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
+import { countWords as wordCount } from '../utils/wordCount';
 
 // ─── MIME normaliser ──────────────────────────────────────────────────────────
 // Some Android gallery/file-picker implementations return an empty file.type for
@@ -73,10 +74,7 @@ function stripHtml(html) {
   return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export function wordCount(html) {
-  const t = stripHtml(html);
-  return t ? t.split(' ').length : 0;
-}
+export { wordCount };
 
 /**
  * Word count for a chapter, preferring the cached `word_count` (maintained on

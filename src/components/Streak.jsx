@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Flame } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
 import { MinimalButton, COLORS, DSIcons, CloseButton } from '../DesignSystem';
+import { countWords } from '../utils/wordCount';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -23,14 +24,10 @@ export function getTodayKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function countWords(html) {
-  if (!html) return 0;
-  // Same rule as history.js wordCountOf / authbook's manifest counter — the
-  // fallback must agree with the cached word_count it stands in for, or the
-  // streak baseline drifts by a few words after the first edit of a chapter.
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ');
-  return text.trim().split(/\s+/).filter(w => w.length > 0).length;
-}
+// The fallback must agree with the cached word_count it stands in for, or the
+// streak baseline drifts after the first edit of a chapter. Re-exported from
+// the one implementation so agreeing is not something anyone has to remember.
+export { countWords };
 
 /**
  * Words across the WHOLE book. The streak used to count only

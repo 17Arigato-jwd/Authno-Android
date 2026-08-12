@@ -25,6 +25,8 @@
  * ever treats null and empty as interchangeable.
  */
 
+import { countWords } from './wordCount';
+
 /** A book at or above this is offered deferred loading. */
 export const LARGE_BOOK_BYTES = 5 * 1024 * 1024;
 
@@ -186,10 +188,7 @@ export function clearLargeBookChoice(bookId) {
   setLargeBookChoice(bookId, null);
 }
 
-function countWords(html) {
-  const text = snippetOf(html, Infinity);
-  return text ? text.split(/\s+/).length : 0;
-}
+// Was its own whitespace split; shares the one counter now.
 
 /**
  * Fill in one chapter's body from a freshly-read copy of the book.
