@@ -281,7 +281,7 @@ function AppIconPicker({ accentHex }) {
                 <motion.span
                   initial={motionOK ? { scale: 0 } : false} animate={{ scale: 1 }} transition={SPRING}
                   style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <DSIcons.Check size={11} color="#fff" />
+                  <DSIcons.Check size={11} color="var(--on-accent, #fff)" />
                 </motion.span>
               )}
               {locked && !active && (
@@ -379,7 +379,7 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
               </div>
               {active && (
                 <div style={{ width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <DSIcons.Check size={10} color="#fff" />
+                  <DSIcons.Check size={10} color="var(--on-accent, #fff)" />
                 </div>
               )}
             </button>
@@ -626,7 +626,7 @@ function GeneralPanel(props) {
             </div>
             <button onClick={() => fileRef.current?.click()} aria-label="Change avatar"
               style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: accentHex, border: '2px solid var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <DSIcons.Camera size={10} color="#fff" />
+              <DSIcons.Camera size={10} color="var(--on-accent, #fff)" />
             </button>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} />
           </div>

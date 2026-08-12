@@ -789,7 +789,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
               style={{ width: '100%', margin: '5px 0 16px', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-1)', fontSize: 13, outline: 'none' }} />
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setLinkOpen(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-2)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Cancel</button>
-              <button onClick={insertLink} disabled={!linkUrl.trim()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: linkUrl.trim() ? accentHex : 'var(--surface)', color: linkUrl.trim() ? '#fff' : 'var(--text-5)', cursor: linkUrl.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 700 }}>Insert</button>
+              <button onClick={insertLink} disabled={!linkUrl.trim()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: linkUrl.trim() ? accentHex : 'var(--surface)', color: linkUrl.trim() ? 'var(--on-accent, #fff)' : 'var(--text-5)', cursor: linkUrl.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 700 }}>Insert</button>
             </div>
           </div>
         </div>, document.body)}

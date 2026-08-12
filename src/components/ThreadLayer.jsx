@@ -511,7 +511,7 @@ export function ThreadSelectionLayer({
                       style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 8, background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--text-1)', fontSize: 12.5, outline: 'none' }}
                     />
                     <button onClick={() => newName.trim() && createThreadAndCommit(ty.id, newName)}
-                      style={{ padding: '0 12px', borderRadius: 8, border: 'none', background: accentHex, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ padding: '0 12px', borderRadius: 8, border: 'none', background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                       Add
                     </button>
                   </div>

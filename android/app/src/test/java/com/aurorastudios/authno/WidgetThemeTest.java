@@ -165,6 +165,18 @@ public class WidgetThemeTest {
         assertEquals(0xFF000000, WidgetTheme.readableOn(0xFFFFFFFF));
         assertEquals(0xFF000000, WidgetTheme.readableOn(0xFFFFC107)); // amber
         assertEquals(0xFF000000, WidgetTheme.readableOn(0xFF7FFF7F)); // pale green
+        assertEquals(0xFF000000, WidgetTheme.readableOn(0xFFF59E0B)); // Gold preset
+        assertEquals(0xFF000000, WidgetTheme.readableOn(0xFF22C55E)); // Sage preset
+    }
+
+    /**
+     * A mid-tone that clears 3:1 in white keeps white. The threshold that
+     * maximises contrast would flip these, which would restyle buttons that
+     * are not broken.
+     */
+    @Test public void aMidToneAccentKeepsWhite() {
+        assertEquals(0xFFFFFFFF, WidgetTheme.readableOn(0xFFFF4500)); // Ember
+        assertEquals(0xFFFFFFFF, WidgetTheme.readableOn(0xFF3B82F6)); // Ocean
     }
 
     /** Green dominates perceived luminance; blue barely registers. */

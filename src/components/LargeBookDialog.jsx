@@ -118,7 +118,7 @@ export default function LargeBookDialog({ open, book, accentHex, onPreview, onOp
               <button onClick={() => onPreview?.({ remember })} autoFocus
                 style={{
                   padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer",
-                  fontSize: 13, fontWeight: 700, color: "#fff",
+                  fontSize: 13, fontWeight: 700, color: "var(--on-accent, #fff)",
                   background: accentHex || "var(--accent)",
                 }}>
                 Open in preview mode

@@ -275,7 +275,7 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
               </button>
             )}
             <button onClick={next} autoFocus
-              style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: accentHex, color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: accentHex, color: 'var(--on-accent, #fff)', cursor: "pointer", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
               {stepIndex === list.length - 1 ? "Finish" : "Next"} <DSIcons.ChevronRight size={13} color="currentColor" />
             </button>
           </div>

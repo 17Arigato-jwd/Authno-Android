@@ -465,7 +465,7 @@ export function OnboardingFunnel({
                   disabled={!current.canContinue}
                   style={{
                     flex: 1, height: 48, borderRadius: 14, border: "none",
-                    background: accentHex, color: "#fff", fontSize: 14.5, fontWeight: 800,
+                    background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 14.5, fontWeight: 800,
                     cursor: current.canContinue ? "pointer" : "default",
                     opacity: current.canContinue ? 1 : 0.45,
                     boxShadow: current.canContinue ? `0 6px 18px ${accentHex}55` : "none",

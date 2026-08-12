@@ -89,15 +89,18 @@ final class WidgetTheme {
      *
      * The accent is the writer's own colour and every hue is allowed, so a
      * label hardcoded to white disappears the moment somebody picks amber or
-     * pale green. WCAG relative luminance, with the 0.179 threshold that
-     * maximises the worse of the two contrast ratios.
+     * pale green.
+     *
+     * Keeps white until it drops below 3:1, then switches — the same rule and
+     * the same threshold as onAccent() in src/theme/ThemeBase.js, so a button
+     * does not read one way in the app and another on the home screen.
      */
     static int readableOn(int background) {
         double r = channel((background >> 16) & 0xFF);
         double g = channel((background >> 8) & 0xFF);
         double b = channel(background & 0xFF);
-        double l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        return l > 0.179 ? 0xFF000000 : 0xFFFFFFFF;
+        double l = 0.2126 * r + 0.7152 * g + 0.0722 * b;   // WCAG relative luminance
+        return l > 0.30 ? 0xFF000000 : 0xFFFFFFFF;
     }
 
     private static double channel(int v) {

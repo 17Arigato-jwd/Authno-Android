@@ -365,7 +365,7 @@ export function MetadataPanel({ session, accentHex, onClose, onSave }) {
           <button onClick={handleSave} style={{
             flex: 2, padding: '13px', borderRadius: '12px', cursor: 'pointer',
             background: accentHex, border: 'none',
-            color: '#fff', fontSize: '14px', fontWeight: 700,
+            color: 'var(--on-accent, #fff)', fontSize: '14px', fontWeight: 700,
           }}>Save</button>
         </div>
       </motion.div>
@@ -738,7 +738,7 @@ export default function BookDashboard({
             {/* Export button */}
             <button data-tour="export-book" onClick={() => setShowExport(true)} style={{
               width: '100%', padding: '15px', borderRadius: '14px', border: 'none',
-              background: accentHex, color: '#fff', fontSize: '15px', fontWeight: 700,
+              background: accentHex, color: 'var(--on-accent, #fff)', fontSize: '15px', fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: '9px', letterSpacing: '0.1px', marginBottom: '12px',
               boxShadow: `0 4px 20px ${accentHex}44`,
@@ -981,7 +981,7 @@ export default function BookDashboard({
         <button onClick={scrollToTop} style={{
           position: 'fixed', bottom: '28px', right: '20px',
           width: '50px', height: '50px', borderRadius: '50%',
-          background: accentHex, border: 'none', color: '#fff',
+          background: accentHex, border: 'none', color: 'var(--on-accent, #fff)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', boxShadow: `0 4px 24px ${accentHex}66`,
           zIndex: 50, transition: 'transform 0.18s ease',

@@ -366,8 +366,8 @@ export default function BookStudio({
                     </motion.button>
                   )}
                   <motion.button whileTap={motionOK ? PRESS : undefined} onClick={() => onEditChapter(selected.chap_idx)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 9, border: 'none', background: accentHex, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-                    <DSIcons.Edit size={14} color="#fff" /> Open in editor
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 9, border: 'none', background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                    <DSIcons.Edit size={14} color="var(--on-accent, #fff)" /> Open in editor
                   </motion.button>
                 </div>
 
@@ -482,7 +482,7 @@ export default function BookStudio({
               <button
                 disabled={!renameT.value.trim()}
                 onClick={() => { if (renameT.value.trim()) { onRenameChapter?.(renameT.chapIdx, renameT.value.trim()); setRenameT(null); } }}
-                style={{ padding: '9px 16px', borderRadius: 10, border: 'none', background: accentHex, color: '#fff', fontSize: 13, fontWeight: 700, cursor: renameT.value.trim() ? 'pointer' : 'default', opacity: renameT.value.trim() ? 1 : 0.5 }}>
+                style={{ padding: '9px 16px', borderRadius: 10, border: 'none', background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 13, fontWeight: 700, cursor: renameT.value.trim() ? 'pointer' : 'default', opacity: renameT.value.trim() ? 1 : 0.5 }}>
                 Rename
               </button>
             </div>

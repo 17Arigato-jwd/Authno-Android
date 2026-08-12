@@ -76,6 +76,39 @@ export function flattenOver(color, backgroundHex) {
 }
 
 /**
+ * onAccent(hex) → the text colour that can be read on an accent fill.
+ *
+ * The accent is the writer's own choice and the picker is a full HSV wheel, so
+ * every hue and every lightness is reachable. A label hardcoded to white was
+ * already failing on two of the six shipped presets — Gold #f59e0b and Sage
+ * #22c55e sit near 2:1 against white — and disappears outright on anything
+ * paler.
+ *
+ * Keeps white until it drops below 3:1, then switches. That is deliberately
+ * not the threshold that maximises contrast: maximising would also flip Ember
+ * and Ocean, which clear 3:1 and have read as white buttons since the app
+ * shipped. Restyling half the buttons is a redesign; this is a bug fix, so it
+ * only moves the ones that are actually unreadable. Past that point black is
+ * the better choice by a wide margin anyway — 9:1 or more — so there is no
+ * case where the rule picks the worse of the two.
+ *
+ * Mirrored natively in WidgetTheme.readableOn so the widgets and the app agree.
+ */
+export function onAccent(hex) {
+  return relativeLuminance(hex) > 0.30 ? '#111113' : '#ffffff';
+}
+
+/** WCAG 2.x relative luminance, 0 (black) to 1 (white). */
+function relativeLuminance(hex) {
+  const { r, g, b } = hexToRgb(hex || '#000000');
+  const lin = (v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
  * buildAccentPalette(primaryHex)
  * Returns { primary, light, dark, base, alpha: { a08..a55 } }
  */
@@ -188,6 +221,7 @@ export function applyTheme(theme, selector = ':root') {
     --input-placeholder:    ${theme.inputs.placeholder};
 
     --accent:               ${acc.primary};
+    --on-accent:            ${onAccent(acc.primary)};
     --accent-light:         ${acc.light};
     --accent-dark:          ${acc.dark};
     --accent-base:          ${acc.base};
@@ -348,6 +382,7 @@ function _reapplyAccentOverride() {
   if (!el) { el = document.createElement('style'); el.id = ACCENT_STYLE_ID; document.head.appendChild(el); }
   el.textContent = `:root {
     --accent:        ${acc.primary};
+    --on-accent:     ${onAccent(acc.primary)};
     --accent-light:  ${acc.light};
     --accent-dark:   ${acc.dark};
     --accent-base:   ${acc.base};

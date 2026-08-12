@@ -32,6 +32,8 @@ export {
   ThemeProvider,
   useTheme,
   buildAccentPalette,
+  onAccent,
+  flattenOver,
   injectThemeFonts,
   buildWidgetTheme,
   resolveToolbarBg,

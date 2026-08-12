@@ -12,7 +12,7 @@
  * perfectly good CSS colour. So the assertion has to live here, on the shape of
  * what crosses the bridge, for every theme that can be selected.
  */
-import { buildWidgetTheme, flattenOver } from './ThemeBase';
+import { buildWidgetTheme, flattenOver, onAccent } from './ThemeBase';
 import { BUILTIN_THEMES } from './registry';
 import { buildMaterialYouTheme } from './ThemeMaterialYou';
 
@@ -123,5 +123,64 @@ describe('flattenOver', () => {
 
   it('tolerates the whitespace real CSS carries', () => {
     expect(flattenOver('  rgba( 255 , 255 , 255 , 0.5 )  ', '#000000')).toBe('#808080');
+  });
+});
+
+/**
+ * onAccent decides the label colour on an accent-filled button, and the same
+ * rule is implemented natively in WidgetTheme.readableOn — the two have to
+ * agree or a button reads differently in the app and on the home screen.
+ */
+describe('onAccent', () => {
+  const WHITE = '#ffffff';
+  const INK   = '#111113';
+
+  it('puts white on a dark accent', () => {
+    expect(onAccent('#5a00d9')).toBe(WHITE); // the default violet
+    expect(onAccent('#a855f7')).toBe(WHITE); // Violet
+    expect(onAccent('#ec4899')).toBe(WHITE); // Rose
+  });
+
+  /**
+   * The two shipped presets that were already unreadable in white — both sit
+   * near 2:1 against it, well under the 4.5:1 that counts as readable. This is
+   * the case that makes the whole helper worth having.
+   */
+  it('puts ink on the pale presets', () => {
+    expect(onAccent('#f59e0b')).toBe(INK); // Gold
+    expect(onAccent('#22c55e')).toBe(INK); // Sage
+  });
+
+  /**
+   * These clear 3:1 in white and have read as white buttons since the app
+   * shipped, so the rule leaves them alone. Pinned because the obvious
+   * "maximise contrast" threshold would flip both, which is a redesign rather
+   * than a fix.
+   */
+  it('leaves the mid-tone presets as they were', () => {
+    expect(onAccent('#ff4500')).toBe(WHITE); // Ember, 3.4:1
+    expect(onAccent('#3b82f6')).toBe(WHITE); // Ocean, 3.8:1
+  });
+
+  it('handles the extremes the colour wheel allows', () => {
+    expect(onAccent('#ffffff')).toBe(INK);
+    expect(onAccent('#000000')).toBe(WHITE);
+    expect(onAccent('#00ff00')).toBe(INK);   // green dominates luminance
+    expect(onAccent('#0000ff')).toBe(WHITE); // blue barely registers
+  });
+
+  it('does not throw on a missing or malformed accent', () => {
+    expect(onAccent(undefined)).toBe(WHITE);
+    expect(onAccent('')).toBe(WHITE);
+    expect(onAccent('not a colour')).toBe(WHITE);
+  });
+
+  it('agrees with the native rule, which uses the same threshold', () => {
+    // WidgetTheme.readableOn returns 0xFF000000 / 0xFFFFFFFF for these inputs;
+    // pinned here so a change on one side fails on this side too.
+    const nativeSaysBlack = ['#ffffff', '#f59e0b', '#22c55e', '#00ff00'];
+    const nativeSaysWhite = ['#000000', '#5a00d9', '#1a1b1e', '#0000ff'];
+    nativeSaysBlack.forEach((h) => expect(onAccent(h)).toBe(INK));
+    nativeSaysWhite.forEach((h) => expect(onAccent(h)).toBe(WHITE));
   });
 });

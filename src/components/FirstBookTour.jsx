@@ -444,7 +444,7 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
               </button>
             )}
             <button onClick={next} disabled={!isDone}
-              style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: accentHex, color: "#fff", cursor: isDone ? "pointer" : "default", opacity: isDone ? 1 : 0.4, fontSize: 12.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}>
+              style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: accentHex, color: 'var(--on-accent, #fff)', cursor: isDone ? "pointer" : "default", opacity: isDone ? 1 : 0.4, fontSize: 12.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}>
               {step.cta || (stepIndex === list.length - 1 ? "Finish" : "Continue")} <DSIcons.ChevronRight size={13} color="currentColor" />
             </button>
           </div>

@@ -439,7 +439,7 @@ export default function HomeScreen({
               background: accentHex,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <DSIcons.FilePlus size={22} color="#fff" />
+              <DSIcons.FilePlus size={22} color="var(--on-accent, #fff)" />
             </span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: accentHex, textTransform: 'uppercase', letterSpacing: '0.6px' }}>

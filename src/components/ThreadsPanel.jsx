@@ -287,7 +287,7 @@ function NewThreadForm({ data, onChangeData, onCreated, accentHex }) {
         <span style={{ fontSize: 10.5, color: 'var(--text-5)', alignSelf: 'center' }}>{color ? '' : `default: type colour`}</span>
       </div>
       <button onClick={create} disabled={!name.trim()}
-        style={{ padding: '10px 0', borderRadius: 10, border: 'none', background: name.trim() ? accentHex : 'var(--surface-md)', color: name.trim() ? '#fff' : 'var(--text-5)', fontSize: 13, fontWeight: 700, cursor: name.trim() ? 'pointer' : 'default' }}>
+        style={{ padding: '10px 0', borderRadius: 10, border: 'none', background: name.trim() ? accentHex : 'var(--surface-md)', color: name.trim() ? 'var(--on-accent, #fff)' : 'var(--text-5)', fontSize: 13, fontWeight: 700, cursor: name.trim() ? 'pointer' : 'default' }}>
         Create thread
       </button>
     </div>
@@ -355,7 +355,7 @@ function TypeManager({ data, onChangeData, accentHex }) {
         <input value={fieldsText} onChange={e => setFieldsText(e.target.value)} placeholder="Custom fields, comma-separated (e.g. Character, Stakes)"
           style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--text-1)', fontSize: 12.5, outline: 'none' }} />
         <button onClick={create} disabled={!name.trim()}
-          style={{ padding: '9px 0', borderRadius: 10, border: 'none', background: name.trim() ? accentHex : 'var(--surface-md)', color: name.trim() ? '#fff' : 'var(--text-5)', fontSize: 12.5, fontWeight: 700, cursor: name.trim() ? 'pointer' : 'default' }}>
+          style={{ padding: '9px 0', borderRadius: 10, border: 'none', background: name.trim() ? accentHex : 'var(--surface-md)', color: name.trim() ? 'var(--on-accent, #fff)' : 'var(--text-5)', fontSize: 12.5, fontWeight: 700, cursor: name.trim() ? 'pointer' : 'default' }}>
           Add type
         </button>
       </div>
@@ -446,7 +446,7 @@ function ThreadList({ session, data, onOpenThread, onChangeData, onStripAnchors,
       {/* Footer actions */}
       <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 8 }}>
         <button onClick={onNew} data-tour="thread-new"
-          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 0', borderRadius: 9, border: 'none', background: accentHex, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 0', borderRadius: 9, border: 'none', background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
           <DSIcons.Plus size={13} color="currentColor" /> New thread
         </button>
         <button onClick={onTypes} title="Manage thread types"

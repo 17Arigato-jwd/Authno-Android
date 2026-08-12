@@ -238,7 +238,7 @@ export default function BurgerMenu({
       />
       <button
         onClick={() => { if (renameVal.trim()) { onRename?.(renameVal.trim()); setRenaming(false); onClose?.(); } }}
-        style={{ padding: "0 14px", borderRadius: 8, border: "none", background: accentHex, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+        style={{ padding: "0 14px", borderRadius: 8, border: "none", background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
       >
         Rename
       </button>
