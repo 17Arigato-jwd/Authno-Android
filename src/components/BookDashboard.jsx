@@ -654,8 +654,15 @@ export default function BookDashboard({
 
             {/* Streak badge (N16) — shows the CURRENT streak when one is live
                 (flame + accent gradient), otherwise falls back to the longest
-                ever run as a greyed "Best Streak". */}
-            {streakDays > 0 && (
+                ever run as a greyed "Best Streak".
+
+                Gated on streakEnabled like the flame pill above it. It was
+                not, so switching a book's streak off hid the pill and left
+                "Streak 5 Days" sitting under the title — the setting visibly
+                failing to do the one thing it says. The log is still there
+                and still correct; it is simply not shown while the writer has
+                asked not to be counted. */}
+            {streakEnabled && streakDays > 0 && (
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 background: streakActive

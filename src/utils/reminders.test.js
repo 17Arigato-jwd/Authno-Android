@@ -134,11 +134,24 @@ describe('off Android', () => {
 });
 
 describe('reporting progress', () => {
+  /**
+   * ReminderReceiver names the goal in the notification body, reading it from
+   * what was last reported. Omitting it here — which the first version of this
+   * module did — makes every reminder read "Your goal is a few words today",
+   * the fallback ReminderText uses for a goal it does not have.
+   */
+  test('the goal reaches the native side', async () => {
+    const calls = [];
+    const m = mockPlugin({ reportProgress: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.reportProgress(false, 0, 1500));
+    expect(calls[0].goalWords).toBe(1500);
+  });
+
   test('sends a normalised payload with a date stamp', async () => {
     const calls = [];
     const m = mockPlugin({ reportProgress: (p) => { calls.push(p); return Promise.resolve(); } });
-    expect(await within(m.reportProgress(true, 4))).toBe(true);
-    expect(calls[0]).toMatchObject({ metToday: true, streakDays: 4 });
+    expect(await within(m.reportProgress(true, 4, 300))).toBe(true);
+    expect(calls[0]).toMatchObject({ metToday: true, streakDays: 4, goalWords: 300 });
     expect(calls[0].dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
@@ -149,10 +162,11 @@ describe('reporting progress', () => {
   test('a nonsense streak count is normalised, not forwarded', async () => {
     const calls = [];
     const m = mockPlugin({ reportProgress: (p) => { calls.push(p); return Promise.resolve(); } });
-    await within(m.reportProgress(false, NaN));
-    await within(m.reportProgress(false, -3));
-    await within(m.reportProgress(false, undefined));
+    await within(m.reportProgress(false, NaN, NaN));
+    await within(m.reportProgress(false, -3, -300));
+    await within(m.reportProgress(false, undefined, undefined));
     expect(calls.map((c) => c.streakDays)).toEqual([0, 0, 0]);
+    expect(calls.map((c) => c.goalWords)).toEqual([0, 0, 0]);
     expect(calls.every((c) => c.metToday === false)).toBe(true);
   });
 });

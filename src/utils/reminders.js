@@ -112,14 +112,16 @@ export async function syncReminder(sessions, settings) {
  *
  * @param {boolean} metToday   goal reached in at least one counting book
  * @param {number}  streakDays the longest live streak, for the wording
+ * @param {number}  goalWords  the goal to name in the notification body
  */
-export async function reportProgress(metToday, streakDays) {
+export async function reportProgress(metToday, streakDays, goalWords) {
   const box = await getPlugin();
   if (!box) return false;
   try {
     await box.plugin.reportProgress({
       metToday: !!metToday,
       streakDays: Number.isFinite(streakDays) ? Math.max(0, Math.round(streakDays)) : 0,
+      goalWords: Number.isFinite(goalWords) ? Math.max(0, Math.round(goalWords)) : 0,
       // Date-stamped so a receiver waking up tomorrow can tell that what it
       // is holding is yesterday's answer and treat the day as unmet.
       dayKey: todayKey(),

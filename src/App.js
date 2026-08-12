@@ -1094,16 +1094,25 @@ function AppInner({ navigateRef }) {
     progressTimer.current = setTimeout(() => {
       const counting = booksWithStreaks(sessions, settings);
       const todayKey = getTodayKey();
+      const fallbackGoal = settings.dailyWordGoal ?? DEFAULT_WORD_GOAL;
       let met = false;
       let best = 0;
+      // The goal to NAME in the notification. With several books counting
+      // there is no single right answer, so it follows the book with the
+      // longest live run — the one the writer is most likely to be thinking
+      // of when the reminder arrives.
+      let bestGoal = fallbackGoal;
       for (const b of counting) {
+        // A log entry is `{ words, goal }` now and was a bare number before;
+        // both shapes are still on disk. See normalizeLog in Streak.jsx.
         const entry = b.streak?.log?.[todayKey];
-        const goal = b.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL;
+        const goal = b.streak?.goalWords ?? fallbackGoal;
         const words = typeof entry === 'number' ? entry : (entry?.words ?? 0);
         if (words >= (entry?.goal ?? goal)) met = true;
-        best = Math.max(best, computeStreak(b.streak?.log ?? {}));
+        const days = computeStreak(b.streak?.log ?? {});
+        if (days >= best) { best = days; bestGoal = goal; }
       }
-      reportProgress(met, best);
+      reportProgress(met, best, bestGoal);
     }, 2000);
     return () => clearTimeout(progressTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2111,6 +2120,7 @@ function AppInner({ navigateRef }) {
             android={android}
             accentHex={customization.accentHex}
             book={sessions.find((s) => s.id === firstTour.bookId) ?? null}
+            streaksEnabled={streaksEnabledFor(sessions.find((s) => s.id === firstTour.bookId) ?? null, settings)}
             onNavigate={firstTourNavigate}
             onEnsureBook={ensureFirstBook}
             onSetGoal={coachSetGoal}
