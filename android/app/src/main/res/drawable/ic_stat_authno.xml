@@ -5,16 +5,25 @@
   Flat white on transparent, and it has to be. Android takes a notification's
   small icon, throws away every colour in it and keeps only the alpha channel,
   then tints the silhouette to match the system bar. Handing it the gradient
-  flame (ic_flame_gradient) would produce a solid blob: the gradient collapses
-  to opaque, the inner highlight is 0x47 alpha and would render as a faint
-  smudge, and the whole thing would read as a filled teardrop.
+  flame (ic_flame_gradient) would produce a blob: the gradient collapses to
+  opaque and the inner highlight, at 0x47 alpha, would render as a smudge.
 
-  So this is the same flame, drawn as a silhouette with the highlight cut OUT
-  of the body rather than painted over it — an evenOdd fill, which survives
-  being reduced to alpha because the hole is genuinely transparent.
+  A SINGLE closed path, deliberately.
 
-  24dp with the shape kept inside a ~22dp box: the system crops small icons
-  to a circle on some launchers and anything touching the edge loses a slice.
+  The first version of this cut the highlight out of the body with
+  android:fillType="evenOdd" — which is API 24, against a minSdk of 22. On
+  Android 5.1 and 6 the attribute is ignored, the subpath fills instead of
+  subtracting, and the careful cut-out becomes a solid lump. Every other way
+  of punching a hole (a clip, a second layer, a mask) has the same or worse
+  version floor inside a VectorDrawable that SystemUI has to inflate in its
+  own process.
+
+  So there is no hole. A plain flame silhouette is what most apps ship as a
+  status icon, it reads correctly at 24dp where detail is invisible anyway,
+  and it renders identically on every API this app supports.
+
+  Kept inside a ~22dp box within the 24dp canvas: some launchers crop small
+  icons to a circle, and anything touching the edge loses a slice.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -25,7 +34,6 @@
 
     <path
         android:fillColor="#FFFFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M12,2.25c-0.38,0 -0.7,0.21 -0.88,0.54C9.27,6.27 6,10.5 6,14.5a6,6 0,0 0,12 0c0,-4 -3.27,-8.23 -5.12,-11.71A1,1 0,0 0,12 2.25ZM12,8.4c-0.2,0 -0.38,0.11 -0.48,0.29C10.74,10.05 10,11.9 10,13.5a2,2 0,0 0,4 0c0,-1.6 -0.74,-3.45 -1.52,-4.81A0.54,0.54 0,0 0,12 8.4Z" />
+        android:pathData="M12,2.25c-0.38,0 -0.7,0.21 -0.88,0.54C9.27,6.27 6,10.5 6,14.5a6,6 0,0 0,12 0c0,-4 -3.27,-8.23 -5.12,-11.71A1,1 0,0 0,12 2.25Z" />
 
 </vector>

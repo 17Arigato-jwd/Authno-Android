@@ -236,11 +236,25 @@ jobs:
           find build -name '*.map' -exec cp {} sourcemaps/ \;
           echo "kept $(find sourcemaps -name '*.map' | wc -l) map(s) for debugging"
 
+      # Release runs only, and never fatal.
+      #
+      # Two separate problems, both of which this had. It uploaded on EVERY
+      # run — every PR push, fourteen days each — which is the largest single
+      # contributor to the artifact quota that has been failing this workflow;
+      # and nobody symbolicates a pull request, they symbolicate a crash from
+      # a build somebody installed. So it now runs when there IS such a build.
+      #
+      # continue-on-error because a debugging convenience must not be able to
+      # skip the Android build, both desktop builds and the release behind it.
+      # That is exactly what happened when the quota filled: the whole
+      # pipeline was taken down by a step whose output nothing consumes.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
         with:
           name: react-sourcemaps
           path: sourcemaps/
-          retention-days: 14
+          retention-days: 7
           if-no-files-found: warn
 
       - name: Strip the source maps from the shipped bundle
@@ -451,6 +465,12 @@ jobs:
           # (was misleadingly called "authno-android-debug").
           name: authno-android-apk
           path: android/app/build/outputs/apk/release/*.apk
+          # Was unset, so it inherited the repo default — up to 90 days, on
+          # every run. The release job downloads it within the same run and
+          # the published copy lives on the release itself, so a week is
+          # already generous: it exists so a human can grab a build from a
+          # CI run, not as storage.
+          retention-days: 7
           if-no-files-found: warn
 
       - name: Upload release AAB
@@ -459,6 +479,7 @@ jobs:
         with:
           name: authno-android-release
           path: android/app/build/outputs/bundle/release/*.aab
+          retention-days: 7
           if-no-files-found: warn
 
       - name: "📊 Progress: All Done"
@@ -575,6 +596,7 @@ jobs:
           path: |
             dist/extbk-sandbox-*-linux-mac.tar.gz
             dist/extbk-sandbox-*-windows.zip
+          retention-days: 7
           if-no-files-found: error
 
       - name: Summary
@@ -659,6 +681,7 @@ jobs:
           path: |
             dist-electron/*.exe
             dist-electron/*.msi
+          retention-days: 7
           if-no-files-found: warn
 
   # Tags and dispatched releases only — see the note on the Windows job.
@@ -694,6 +717,7 @@ jobs:
             dist-electron/*.deb
             dist-electron/*.rpm
             dist-electron/*.tar.gz
+          retention-days: 7
           if-no-files-found: warn
 
   # ── 4. GitHub Release

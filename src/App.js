@@ -1075,13 +1075,23 @@ function AppInner({ navigateRef }) {
   // ── The writing reminder ──────────────────────────────────────────────────
   // Two effects, because they answer different questions on different clocks.
   //
-  // This one owns the alarm: schedule it, move it, cancel it. It watches only
-  // the settings that change the answer, not `sessions` — a keystroke must not
-  // re-arm an alarm.
+  // This one owns the alarm: schedule it, move it, cancel it. It must not
+  // watch `sessions` — a keystroke would re-arm an alarm — but it cannot
+  // watch `sessions.length` either, which is what it did first: switching a
+  // book's own streak off leaves the array the same length, so the effect
+  // never re-ran and the alarm outlived the last book that was counting.
+  // Turning the last streak off left a phone still buzzing nightly.
+  //
+  // The set of counting books is exactly what the answer depends on, so that
+  // is what it watches. Toggling any streak switch changes it; typing does not.
+  const countingBookKey = useMemo(
+    () => booksWithStreaks(sessions, settings).map((s) => s.id).join(','),
+    [sessions, settings],
+  );
   useEffect(() => {
     syncReminder(sessions, settings);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.streakEnabled, settings.streakReminder, sessions.length]);
+  }, [settings.streakReminder, countingBookKey]);
 
   // And this one keeps the stored progress current, so a reminder firing with
   // the app closed knows whether today's goal was already met. Debounced on

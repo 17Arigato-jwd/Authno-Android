@@ -180,3 +180,46 @@ describe('reminder time text', () => {
     expect(parseReminderTime('8:30')).toEqual({ hour: 8, minute: 30 });
   });
 });
+
+/**
+ * The reminder effect in App.js cannot watch `sessions` — a keystroke must not
+ * re-arm an alarm — so it watches the set of counting books instead. It first
+ * watched `sessions.length`, which does not move when a book's own streak
+ * switch flips, so the alarm outlived the last book that was counting and the
+ * phone kept buzzing nightly.
+ *
+ * That key is `booksWithStreaks(...).map(id).join(',')`. These pin the property
+ * it has to have: it moves when the answer moves, and holds still otherwise.
+ */
+describe('the counting-books key an effect can depend on', () => {
+  const key = (sessions, settings) => booksWithStreaks(sessions, settings).map((s) => s.id).join(',');
+
+  const two = [book({ id: 'a' }), book({ id: 'b' })];
+
+  test('moves when a book opts out, though the list is the same length', () => {
+    const after = [book({ id: 'a' }), book({ id: 'b', streak: { streakEnabled: false } })];
+    expect(after).toHaveLength(two.length);
+    expect(key(after, {})).not.toBe(key(two, {}));
+  });
+
+  test('moves when the global switch flips', () => {
+    expect(key(two, { streakEnabled: false })).not.toBe(key(two, {}));
+  });
+
+  test('holds still when only the words change', () => {
+    const typed = [
+      book({ id: 'a', chapters: [{ chap_idx: 1, content: 'more words here' }] }),
+      book({ id: 'b' }),
+    ];
+    expect(key(typed, {})).toBe(key(two, {}));
+  });
+
+  test('holds still when a streak log grows', () => {
+    const logged = [book({ id: 'a', streak: { log: { '2026-08-12': { words: 500, goal: 300 } } } }), book({ id: 'b' })];
+    expect(key(logged, {})).toBe(key(two, {}));
+  });
+
+  test('empties when the last counting book opts out', () => {
+    expect(key([book({ id: 'a', streak: { streakEnabled: false } })], {})).toBe('');
+  });
+});
