@@ -84,6 +84,7 @@ const SETTINGS_INDEX = [
   ['appearance', 'Material You theme'],
   ['editor', 'Spell check'], ['editor', 'Manuscript width'], ['editor', 'Editor text size'],
   ['editor', 'Line spacing'], ['editor', 'Auto-save delay'], ['editor', 'Default chapter sort'],
+  ['appearance', 'Download fonts from the web'],
   ['writing', 'Daily word goal'], ['writing', 'Writing streaks'],
   ['writing', 'Count writing streaks'], ['writing', 'Daily reminder'],
   ['shortcuts', 'Keyboard shortcuts'],
@@ -577,6 +578,12 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
 
       {/* Reduce animations — also auto-on when the OS "reduce motion" setting is
           enabled (see MotionProvider). */}
+      <SettingRow icon={DSIcons.Globe} title="Download fonts from the web" description="Off by default — AuthNo uses your device's own fonts and makes no network request. Turn on to fetch the font styles from Google." accentHex={accentHex}>
+        <Toggle on={settings.webFonts ?? false} onChange={(v) => onChange({ webFonts: v })} accentHex={accentHex} ariaLabel="Download fonts from the web" />
+      </SettingRow>
+
+      <div style={{ height: 16 }} />
+
       <SettingRow icon={DSIcons.Lightning} title="Reduce animations" description="Minimise transitions and motion effects across the app" accentHex={accentHex}>
         <Toggle on={settings.reduceMotion ?? false} onChange={(v) => onChange({ reduceMotion: v })} accentHex={accentHex} />
       </SettingRow>
@@ -1552,6 +1559,10 @@ export const DEFAULT_SETTINGS = {
   editorFontSize: 16,          // manuscript base font size
   editorLineHeight: 1.7,       // manuscript line spacing
   chapterSort: 'story',        // BookStudio default chapter ordering
+  // Off by default: fetching one means a request to Google carrying an IP
+  // and a User-Agent on every launch, which the offline promise does not
+  // cover. Device fonts are used until this is switched on.
+  webFonts: false,
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome, onSignOut }) {

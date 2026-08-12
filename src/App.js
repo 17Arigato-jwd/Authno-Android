@@ -16,7 +16,7 @@ import { DEFAULT_WORD_GOAL } from "./components/constants";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
 import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent, applyFonts } from "./theme";
 import { FontCustomizer } from "./components/FontCustomizer";
-import { DEFAULT_FONTS } from "./utils/fontManager";
+import { DEFAULT_FONTS, setWebFontsEnabled } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ChapterInfoModal from "./components/ChapterInfoModal";
 import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
@@ -797,7 +797,22 @@ function AppInner({ navigateRef }) {
   // Apply the user's chosen fonts (body / editor / headings + uploaded fonts).
   // Like applyAccent, this writes a CSS-var override that outranks the theme's
   // default fonts and is re-asserted after every theme switch.
-  useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts]);
+  // Ahead of applyFonts and the theme's own font injection, and synchronous:
+  // both read this flag, and a render between the two would fire exactly the
+  // request the setting exists to stop.
+  setWebFontsEnabled(settings.webFonts ?? false);
+  useEffect(() => {
+    setWebFontsEnabled(settings.webFonts ?? false);
+    // All three injectors run at module scope, before any setting has been
+    // read, so they no-op on a cold start. Re-running them here is what makes
+    // the setting take effect — and each is idempotent, so turning it on
+    // loads the fonts without a reload.
+    if (settings.webFonts) {
+      injectDesignSystemFonts();
+      injectThemeFonts(themeById(settings.themeId ?? 'dark-default'));
+    }
+  }, [settings.webFonts, settings.themeId]);
+  useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts, settings.webFonts]);
 
   // ── Theme / global-font crossfade (beta.1) ────────────────────────────────
   // Switching used to hard-cut every colour and glyph at once. A short-lived
