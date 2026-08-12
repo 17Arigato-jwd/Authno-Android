@@ -22,9 +22,21 @@ const MIRROR_KEY = 'offlineWriterSessions';
 
 const plain = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** Words across every chapter (plus any legacy top-level body). */
+/**
+ * Words across every chapter, or the legacy top-level body — never both.
+ *
+ * `session.content` is a MIRROR of the first chapter, not an extra chapter, so
+ * adding it to the chapter totals counted the opening chapter twice. On a
+ * one-chapter book that doubled the number outright, and this screen is shown
+ * to somebody locked out and anxious about whether their work is still there:
+ * a count that does not match their book is the last thing it should offer.
+ *
+ * Same rule Streak's countBookWords follows — chapters when there are any,
+ * the flat body only when there are none.
+ */
 export function bookWordCount(session) {
-  const parts = [session?.content, ...(session?.chapters || []).map((c) => c?.content)];
+  const chapters = session?.chapters || [];
+  const parts = chapters.length ? chapters.map((c) => c?.content) : [session?.content];
   return parts.reduce((n, part) => {
     const text = plain(part);
     return n + (text ? text.split(' ').length : 0);

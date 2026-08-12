@@ -31,6 +31,11 @@ import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/Er
 import MembershipCard from './MembershipCard';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
+import {
+  streaksEnabledGlobally, bookStreakPreference, withBookStreakPreference,
+  reminderConfig, formatReminderTime, parseReminderTime,
+} from '../utils/streakSettings';
+import { requestNotificationPermission, checkNotificationPermission } from '../utils/reminders';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -80,6 +85,7 @@ const SETTINGS_INDEX = [
   ['editor', 'Spell check'], ['editor', 'Manuscript width'], ['editor', 'Editor text size'],
   ['editor', 'Line spacing'], ['editor', 'Auto-save delay'], ['editor', 'Default chapter sort'],
   ['writing', 'Daily word goal'], ['writing', 'Writing streaks'],
+  ['writing', 'Count writing streaks'], ['writing', 'Daily reminder'],
   ['shortcuts', 'Keyboard shortcuts'],
   ['data', 'Clear all sessions'], ['data', 'Storage & recovery'],
   ['developer', 'Error log'], ['developer', 'Copy diagnostics'], ['developer', 'Replay welcome slides'],
@@ -281,7 +287,7 @@ function AppIconPicker({ accentHex }) {
                 <motion.span
                   initial={motionOK ? { scale: 0 } : false} animate={{ scale: 1 }} transition={SPRING}
                   style={{ position: 'absolute', top: 8, right: 8, width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <DSIcons.Check size={11} color="#fff" />
+                  <DSIcons.Check size={11} color="var(--on-accent, #fff)" />
                 </motion.span>
               )}
               {locked && !active && (
@@ -379,7 +385,7 @@ function BackgroundEffectPicker({ value = 'none', onChange, accentHex, onOpenCus
               </div>
               {active && (
                 <div style={{ width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <DSIcons.Check size={10} color="#fff" />
+                  <DSIcons.Check size={10} color="var(--on-accent, #fff)" />
                 </div>
               )}
             </button>
@@ -626,7 +632,7 @@ function GeneralPanel(props) {
             </div>
             <button onClick={() => fileRef.current?.click()} aria-label="Change avatar"
               style={{ position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: '50%', background: accentHex, border: '2px solid var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <DSIcons.Camera size={10} color="#fff" />
+              <DSIcons.Camera size={10} color="var(--on-accent, #fff)" />
             </button>
             <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: 'none' }} />
           </div>
@@ -753,6 +759,7 @@ const SHORTCUTS = [
     ['Settings', 'Ctrl+,'],
     ['New book', 'Ctrl+N'],
     ['Open a book file', 'Ctrl+O'],
+    ['Notes', 'Ctrl+J'],
   ]],
   ['Book', [
     ['Save', 'Ctrl+S'],
@@ -802,10 +809,48 @@ function ShortcutsPanel({ accentHex }) {
 }
 
 // ── Developer options (v1.1.18-beta.1) ──────────────────────────────────────
+// Outcome → colour. Deliberate skips are muted rather than warning-coloured:
+// a book that was never saved to a file is not a fault to chase.
+const OUTCOME_COLOR = {
+  ok: 'var(--color-success, #3ba55d)',
+  damaged: 'var(--color-danger, #ed4245)',
+  unreadable: 'var(--color-danger, #ed4245)',
+  missing: 'var(--color-warning, #f59e0b)',
+  skipped: 'var(--text-5)',
+};
+
 function DeveloperPanel({ settings, accentHex, sessions = [], onSeeChanges, onStartTour, onReplayWelcome }) {
   const [showErrorLog, setShowErrorLog] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [scan, setScan] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanCopied, setScanCopied] = useState(false);
+
+  const runScan = async () => {
+    setScanning(true);
+    try {
+      const { safeScanForBooks } = await import('../utils/bookScan');
+      setScan(await safeScanForBooks(sessions));
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const copyScan = async () => {
+    if (!scan) return;
+    const { formatScanReport } = await import('../utils/bookScan');
+    const text = formatScanReport(scan);
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setScanCopied(true); setTimeout(() => setScanCopied(false), 1800);
+    } catch { /* clipboard blocked */ }
+  };
 
   const copyDiagnostics = async () => {
     const { avatarDataUrl, ...safeSettings } = settings || {};
@@ -856,8 +901,60 @@ function DeveloperPanel({ settings, accentHex, sessions = [], onSeeChanges, onSt
       <Label>Diagnostics</Label>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
         {devBtn('View error log', () => setShowErrorLog(true), { icon: DSIcons.Bug })}
+        {devBtn(scanning ? 'Scanning…' : 'Scan for books', runScan, { icon: DSIcons.Search })}
         {devBtn(copied ? 'Copied ✓' : 'Copy diagnostics', copyDiagnostics, { icon: DSIcons.Copy })}
       </div>
+
+      {/* Scan results. Every file the scan touched, and what happened to it —
+          including the ones that worked, because "it found nothing" and "it
+          never looked" are different answers and used to be indistinguishable. */}
+      {scan && (
+        <div style={{ marginTop: 10, border: '1px solid var(--border-sm)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border-sm)' }}>
+            {/* "0 of 2 opened" reads as a failure when in truth nothing needed
+                opening — on desktop every entry is deliberately skipped. Count
+                only what was actually examined, so a clean scan looks clean. */}
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+              {(() => {
+                const checked = scan.summary.examined - scan.summary.skipped;
+                if (scan.summary.examined === 0) return 'Nothing found to examine';
+                if (checked === 0) return `Nothing needed opening (${scan.summary.skipped} skipped)`;
+                return `${scan.summary.ok} of ${checked} opened`;
+              })()}
+            </span>
+            {scan.summary.problems > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-danger)', background: 'rgba(237,66,69,0.12)', borderRadius: 6, padding: '2px 7px' }}>
+                {scan.summary.problems} problem{scan.summary.problems === 1 ? '' : 's'}
+              </span>
+            )}
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-5)' }}>{scan.durationMs} ms</span>
+            <button onClick={copyScan}
+              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-md)', color: 'var(--text-2)', cursor: 'pointer', fontSize: 11.5, fontWeight: 600 }}>
+              {scanCopied ? 'Copied ✓' : 'Copy report'}
+            </button>
+          </div>
+          <div style={{ maxHeight: 260, overflowY: 'auto', padding: '8px 12px' }}>
+            {scan.steps.map((st, i) => (
+              <div key={`s${i}`} style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', color: 'var(--text-4)' }}>
+                <span style={{ color: OUTCOME_COLOR[st.status] || 'var(--text-5)', fontWeight: 700, minWidth: 76 }}>{st.status}</span>
+                <span style={{ color: 'var(--text-2)' }}>{st.name}</span>
+                {st.detail && <span style={{ color: 'var(--text-5)' }}>— {st.detail}</span>}
+              </div>
+            ))}
+            {scan.files.length > 0 && <div style={{ height: 1, background: 'var(--border-sm)', margin: '7px 0' }} />}
+            {scan.files.map((f, i) => (
+              <div key={`f${i}`} style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0', alignItems: 'baseline' }}>
+                <span style={{ color: OUTCOME_COLOR[f.outcome] || 'var(--text-5)', fontWeight: 700, minWidth: 76 }}>{f.outcome}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: 'var(--text-1)', wordBreak: 'break-word' }}>{f.name}</span>
+                  {f.title && <span style={{ color: 'var(--text-4)' }}> — “{f.title}”, {f.chapters} chapter{f.chapters === 1 ? '' : 's'}</span>}
+                  {f.detail && <div style={{ color: 'var(--text-5)' }}>{f.stage}: {f.detail}</div>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <SettingsDivider />
       <Label>Tours & guides</Label>
@@ -1008,6 +1105,163 @@ function WritingGoalPanel({ settings, onChange, accentHex, sessions = [], onSess
       <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--text-5)' }}>
         Goals are saved inside each <code style={{ color: 'var(--text-4)' }}>.authbook</code> file and persist with your book.
       </div>
+
+      <SettingsDivider />
+
+      <StreakControls
+        settings={settings}
+        onChange={onChange}
+        accentHex={accentHex}
+        selectedBook={selectedBook}
+        onSessionChange={onSessionChange}
+      />
+    </div>
+  );
+}
+
+/**
+ * Streaks: on or off, globally or for one book, plus the daily reminder.
+ *
+ * Lives under Writing Goal rather than in its own section because the goal
+ * and the streak are the same idea seen twice — the streak is just the goal
+ * counted across days — and separating them would mean two screens to visit
+ * to turn one feature off.
+ */
+function StreakControls({ settings, onChange, accentHex, selectedBook, onSessionChange }) {
+  const globalOn = streaksEnabledGlobally(settings);
+  const bookPref = bookStreakPreference(selectedBook);
+  const reminder = reminderConfig(settings);
+  const [permission, setPermission] = useState(null);
+
+  // Only meaningful on Android, and only worth asking about once the reminder
+  // is on — checking at mount would report "denied" for every desktop user.
+  useEffect(() => {
+    if (!isAndroid() || !reminder.enabled) { setPermission(null); return; }
+    let alive = true;
+    checkNotificationPermission().then((p) => { if (alive) setPermission(p); });
+    return () => { alive = false; };
+  }, [reminder.enabled]);
+
+  const setReminder = (patch) => onChange({ streakReminder: { ...reminder, ...patch } });
+
+  const toggleReminder = async (on) => {
+    if (!on) { setReminder({ enabled: false }); return; }
+    // Ask at the moment it is switched on, not at launch. The system gives
+    // one prompt; spending it before anyone has met the feature wastes it.
+    const res = await requestNotificationPermission();
+    setPermission(res);
+    // Switched on either way. A refusal is the system's answer, not the
+    // writer's, and silently flipping their toggle back would read as the
+    // control being broken — the row below says what happened instead.
+    setReminder({ enabled: true });
+  };
+
+  return (
+    <div>
+      <RGroupLabel>Streaks</RGroupLabel>
+      <RCard>
+        <RRow
+          label="Count writing streaks"
+          description="Track the days you hit your goal. Off means no counting, and no streak widget."
+        >
+          <Toggle on={globalOn} onChange={(v) => onChange({ streakEnabled: v })} accentHex={accentHex} ariaLabel="Count writing streaks" />
+        </RRow>
+
+        {selectedBook && (
+          <>
+            <div style={{ height: 1, background: 'var(--border-sm)' }} />
+            <RRow
+              label={`Count for “${selectedBook.title || 'Untitled'}”`}
+              description={
+                !globalOn
+                  ? 'Streaks are off for every book while the switch above is off.'
+                  : bookPref === null
+                    ? 'Following the setting above.'
+                    : bookPref
+                      ? 'Always counted, even if you change your mind above.'
+                      : 'This book is not counted. Others still are.'
+              }
+            >
+              <Toggle
+                ariaLabel={`Count streaks for ${selectedBook.title || 'this book'}`}
+                on={bookPref === null ? globalOn : bookPref}
+                disabled={!globalOn}
+                onChange={(v) => onSessionChange?.(
+                  selectedBook.id,
+                  { streak: withBookStreakPreference(selectedBook, v) },
+                )}
+                accentHex={accentHex}
+              />
+            </RRow>
+            {bookPref !== null && globalOn && (
+              <div style={{ padding: '0 14px 12px', marginTop: -6 }}>
+                <button
+                  onClick={() => onSessionChange?.(
+                    selectedBook.id,
+                    { streak: withBookStreakPreference(selectedBook, null) },
+                  )}
+                  style={{ fontSize: 11, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                >Follow the global setting</button>
+              </div>
+            )}
+          </>
+        )}
+      </RCard>
+
+      <RGroupLabel>Reminder</RGroupLabel>
+      <RCard>
+        <RRow
+          label="Daily reminder"
+          description={
+            globalOn
+              ? 'A quiet nudge if you have not written yet.'
+              : 'Turn streaks on above to use a reminder.'
+          }
+        >
+          <Toggle
+            ariaLabel="Daily writing reminder"
+            on={reminder.enabled && globalOn}
+            disabled={!globalOn}
+            onChange={toggleReminder}
+            accentHex={accentHex}
+          />
+        </RRow>
+
+        {reminder.enabled && globalOn && (
+          <>
+            <div style={{ height: 1, background: 'var(--border-sm)' }} />
+            <RRow label="Time" description="On your device's clock.">
+              <input
+                type="time"
+                value={formatReminderTime(reminder)}
+                onChange={(e) => {
+                  const parsed = parseReminderTime(e.target.value);
+                  if (parsed) setReminder(parsed);
+                }}
+                style={{
+                  padding: '7px 10px', background: 'var(--input-bg)',
+                  border: '1px solid var(--border)', borderRadius: 8,
+                  color: 'var(--text-1)', fontSize: 13.5, outline: 'none',
+                  colorScheme: 'dark light',
+                }}
+              />
+            </RRow>
+            <div style={{ height: 1, background: 'var(--border-sm)' }} />
+            <RRow
+              label="Skip when the goal is met"
+              description="Stay quiet on days you have already written enough."
+            >
+              <Toggle on={reminder.skipWhenMet} onChange={(v) => setReminder({ skipWhenMet: v })} accentHex={accentHex} ariaLabel="Skip the reminder when the goal is met" />
+            </RRow>
+            {permission === 'denied' && (
+              <div style={{ padding: '10px 14px 14px', fontSize: 11.5, color: 'var(--text-4)', lineHeight: 1.5 }}>
+                Notifications are switched off for AuthNo in your system settings, so this
+                reminder cannot appear. Everything else about streaks still works.
+              </div>
+            )}
+          </>
+        )}
+      </RCard>
     </div>
   );
 }
@@ -1105,6 +1359,18 @@ function ErrorLogModal({ onClose, accentHex }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 14 }}>{e.icon}</span>
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-1)' }}>{e.category}</span>
+                {/* Repeats are counted rather than duplicated, so the count is
+                    the only thing showing that this is happening constantly. */}
+                {e.count > 1 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-md)', borderRadius: 6, padding: '1px 6px' }}>
+                    ×{e.count}
+                  </span>
+                )}
+                {e.severity === 'data' && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-danger)', background: 'rgba(237,66,69,0.12)', borderRadius: 6, padding: '1px 6px' }}>
+                    affects your work
+                  </span>
+                )}
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-5)' }}>{new Date(e.timestamp).toLocaleString()}</span>
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--text-2)', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)' }}>{e.message}</div>

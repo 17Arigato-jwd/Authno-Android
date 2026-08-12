@@ -642,7 +642,7 @@ function AuthFormPage({ extension, accentHex, onBack }) {
           style={{
             flex: 1, padding: '11px', borderRadius: '8px',
             background: saved ? '#22c55e' : accentHex,
-            color: '#fff', fontWeight: 700, fontSize: '14px',
+            color: 'var(--on-accent, #fff)', fontWeight: 700, fontSize: '14px',
             border: 'none', cursor: 'pointer', transition: 'background 0.2s',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
           }}
@@ -735,7 +735,7 @@ function ApiDataPage({ extension, page, session, accentHex }) {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <StatusBox icon="⚠️" title="Could not load data" subtitle={error} />
       <div style={{ padding: '0 24px 24px', display: 'flex', justifyContent: 'center' }}>
-        <button onClick={load} style={{ padding: '8px 20px', borderRadius: '8px', background: accentHex, color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
+        <button onClick={load} style={{ padding: '8px 20px', borderRadius: '8px', background: accentHex, color: 'var(--on-accent, #fff)', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
           Retry
         </button>
       </div>
@@ -833,7 +833,7 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
         style={{
           padding: '12px', borderRadius: '8px',
           background: status === 'loading' ? accentHex + '88' : accentHex,
-          color: '#fff', fontWeight: 700, fontSize: '14px',
+          color: 'var(--on-accent, #fff)', fontWeight: 700, fontSize: '14px',
           border: 'none', cursor: status === 'loading' ? 'wait' : 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
         }}

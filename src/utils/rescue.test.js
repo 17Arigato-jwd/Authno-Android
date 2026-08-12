@@ -95,6 +95,19 @@ describe('bookWordCount', () => {
   it('does not throw on a missing session', () => {
     expect(bookWordCount(undefined)).toBe(0);
   });
+
+  it('does not count the chapter-1 mirror twice', () => {
+    // A real session from App.js always carries `content` mirroring the first
+    // chapter. Adding it to the chapter totals doubled a one-chapter book.
+    expect(bookWordCount({
+      content: '<p>one two three</p>',
+      chapters: [chapter('One', '<p>one two three</p>', 1)],
+    })).toBe(3);
+  });
+
+  it('still counts a legacy body when there are no chapters at all', () => {
+    expect(bookWordCount({ content: '<p>just these words</p>' })).toBe(3);
+  });
 });
 
 describe('isStub', () => {

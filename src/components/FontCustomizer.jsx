@@ -42,7 +42,7 @@ function FontOption({ font, selected, onSelect, accentHex, previewStack }) {
       </span>
       {selected && (
         <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', background: accentHex, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-          <DSIcons.Check size={10} color="#fff" />
+          <DSIcons.Check size={10} color="var(--on-accent, #fff)" />
         </span>
       )}
     </button>

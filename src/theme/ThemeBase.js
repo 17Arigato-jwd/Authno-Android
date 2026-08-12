@@ -45,6 +45,70 @@ function mixWithBlack(hex, pct) {
 }
 
 /**
+ * flattenOver(color, backgroundHex) → solid #rrggbb
+ *
+ * The design system models a raised surface as a translucent overlay — see
+ * `surfaces.*` in each theme. In CSS that composites against whatever is
+ * underneath and needs no help. Off the page it does: a home-screen widget
+ * draws onto a wallpaper it cannot see, so it has to be handed the result
+ * rather than the recipe.
+ *
+ * Accepts `rgba(r,g,b,a)`, `rgb(r,g,b)` and plain hex (returned unchanged,
+ * since a solid has nothing to composite). Anything unrecognised returns the
+ * background, which is the safe direction: an invisible element beats one
+ * painted in a colour nobody chose.
+ */
+export function flattenOver(color, backgroundHex) {
+  if (typeof color !== 'string') return backgroundHex;
+  const s = color.trim();
+  if (s.startsWith('#')) return s;
+
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(s);
+  if (!m) return backgroundHex;
+
+  const a = m[4] === undefined ? 1 : Math.max(0, Math.min(1, parseFloat(m[4])));
+  const bg = hexToRgb(backgroundHex);
+  return rgbToHex(
+    bg.r + (parseFloat(m[1]) - bg.r) * a,
+    bg.g + (parseFloat(m[2]) - bg.g) * a,
+    bg.b + (parseFloat(m[3]) - bg.b) * a,
+  );
+}
+
+/**
+ * onAccent(hex) → the text colour that can be read on an accent fill.
+ *
+ * The accent is the writer's own choice and the picker is a full HSV wheel, so
+ * every hue and every lightness is reachable. A label hardcoded to white was
+ * already failing on two of the six shipped presets — Gold #f59e0b and Sage
+ * #22c55e sit near 2:1 against white — and disappears outright on anything
+ * paler.
+ *
+ * Keeps white until it drops below 3:1, then switches. That is deliberately
+ * not the threshold that maximises contrast: maximising would also flip Ember
+ * and Ocean, which clear 3:1 and have read as white buttons since the app
+ * shipped. Restyling half the buttons is a redesign; this is a bug fix, so it
+ * only moves the ones that are actually unreadable. Past that point black is
+ * the better choice by a wide margin anyway — 9:1 or more — so there is no
+ * case where the rule picks the worse of the two.
+ *
+ * Mirrored natively in WidgetTheme.readableOn so the widgets and the app agree.
+ */
+export function onAccent(hex) {
+  return relativeLuminance(hex) > 0.30 ? '#111113' : '#ffffff';
+}
+
+/** WCAG 2.x relative luminance, 0 (black) to 1 (white). */
+function relativeLuminance(hex) {
+  const { r, g, b } = hexToRgb(hex || '#000000');
+  const lin = (v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
  * buildAccentPalette(primaryHex)
  * Returns { primary, light, dark, base, alpha: { a08..a55 } }
  */
@@ -157,6 +221,7 @@ export function applyTheme(theme, selector = ':root') {
     --input-placeholder:    ${theme.inputs.placeholder};
 
     --accent:               ${acc.primary};
+    --on-accent:            ${onAccent(acc.primary)};
     --accent-light:         ${acc.light};
     --accent-dark:          ${acc.dark};
     --accent-base:          ${acc.base};
@@ -317,6 +382,7 @@ function _reapplyAccentOverride() {
   if (!el) { el = document.createElement('style'); el.id = ACCENT_STYLE_ID; document.head.appendChild(el); }
   el.textContent = `:root {
     --accent:        ${acc.primary};
+    --on-accent:     ${onAccent(acc.primary)};
     --accent-light:  ${acc.light};
     --accent-dark:   ${acc.dark};
     --accent-base:   ${acc.base};
@@ -464,11 +530,35 @@ export function injectThemeFonts(theme) {
  * buildWidgetTheme(theme) → plain object for widgetBridge.syncWidget()
  */
 export function buildWidgetTheme(theme) {
+  // Every surface token is a translucent overlay, and the native side refuses
+  // translucent colours on purpose — a widget sits on a wallpaper it cannot
+  // see, so it needs the composited result, not the recipe. Compositing here
+  // keeps the numbers in the theme files rather than duplicating them in Java.
+  const base = theme.backgrounds.modal;
+  const over = (token) => flattenOver(token, base);
+
   return {
-    bgColor:       theme.backgrounds.modal,
+    bgColor:       base,
     textPrimary:   theme.text.t1,
+    textSecondary: theme.text.t2,
     textDim:       theme.text.t4,
     textFaint:     theme.text.t5,
-    progressTrack: theme.surfaces.mid,
+    textHasData:   theme.text.t3,
+    // A raised row and the box inside it, for the widget's configuration
+    // screen — which is as much a widget surface as the card is, and was
+    // hardcoded to the Dark palette regardless of the theme.
+    surface:       over(theme.surfaces?.low),
+    surfaceRaised: over(theme.surfaces?.cover),
+    // coverBorder is the design system's "a line you can see against this
+    // surface", which is what a progress track is.
+    progressTrack: over(theme.surfaces?.coverBorder),
+    border:        over(theme.borders?.standard),
+    // Which way the surface overlays go. The design system models a raised
+    // surface as a translucent white over the background on dark themes and a
+    // translucent black on light ones (see surfaces.* in each theme), so one
+    // bit is all the widget needs to pick the right pressed-state overlay for
+    // any of the six themes — the overlay is relative to whatever is beneath.
+    isDark:        theme.meta?.isDark !== false,
+    themeId:       theme.meta?.id ?? 'unknown',
   };
 }

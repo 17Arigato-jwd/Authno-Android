@@ -365,7 +365,7 @@ export function MetadataPanel({ session, accentHex, onClose, onSave }) {
           <button onClick={handleSave} style={{
             flex: 2, padding: '13px', borderRadius: '12px', cursor: 'pointer',
             background: accentHex, border: 'none',
-            color: '#fff', fontSize: '14px', fontWeight: 700,
+            color: 'var(--on-accent, #fff)', fontSize: '14px', fontWeight: 700,
           }}>Save</button>
         </div>
       </motion.div>
@@ -464,7 +464,11 @@ export default function BookDashboard({
     let list = chapters;
     if (chapterSearch.trim()) {
       const q = chapterSearch.toLowerCase();
-      list = list.filter(c => c.title.toLowerCase().includes(q));
+      // A chapter with no title is rare but reachable — the encoder writes
+      // `title` straight through while the decoder defaults it, so a book that
+      // round-trips through a third-party tool can come back untitled. Typing
+      // in this box then took the whole chapter list down.
+      list = list.filter(c => (c.title || '').toLowerCase().includes(q));
     }
     return sortOrder === 'newest' ? [...list].reverse() : list;
   }, [chapters, chapterSearch, sortOrder]);
@@ -650,8 +654,15 @@ export default function BookDashboard({
 
             {/* Streak badge (N16) — shows the CURRENT streak when one is live
                 (flame + accent gradient), otherwise falls back to the longest
-                ever run as a greyed "Best Streak". */}
-            {streakDays > 0 && (
+                ever run as a greyed "Best Streak".
+
+                Gated on streakEnabled like the flame pill above it. It was
+                not, so switching a book's streak off hid the pill and left
+                "Streak 5 Days" sitting under the title — the setting visibly
+                failing to do the one thing it says. The log is still there
+                and still correct; it is simply not shown while the writer has
+                asked not to be counted. */}
+            {streakEnabled && streakDays > 0 && (
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 background: streakActive
@@ -734,7 +745,7 @@ export default function BookDashboard({
             {/* Export button */}
             <button data-tour="export-book" onClick={() => setShowExport(true)} style={{
               width: '100%', padding: '15px', borderRadius: '14px', border: 'none',
-              background: accentHex, color: '#fff', fontSize: '15px', fontWeight: 700,
+              background: accentHex, color: 'var(--on-accent, #fff)', fontSize: '15px', fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: '9px', letterSpacing: '0.1px', marginBottom: '12px',
               boxShadow: `0 4px 20px ${accentHex}44`,
@@ -977,7 +988,7 @@ export default function BookDashboard({
         <button onClick={scrollToTop} style={{
           position: 'fixed', bottom: '28px', right: '20px',
           width: '50px', height: '50px', borderRadius: '50%',
-          background: accentHex, border: 'none', color: '#fff',
+          background: accentHex, border: 'none', color: 'var(--on-accent, #fff)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', boxShadow: `0 4px 24px ${accentHex}66`,
           zIndex: 50, transition: 'transform 0.18s ease',

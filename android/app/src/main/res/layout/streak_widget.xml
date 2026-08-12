@@ -7,16 +7,34 @@
   src/DesignSystem/tokens.js.  Never write colour literals here —
   update ds_colors.xml (and tokens.js) instead.
 -->
-<LinearLayout
+<!--
+  The card background is a tintable ImageView rather than a drawable on the
+  root. RemoteViews cannot recolour a shape set with setBackgroundResource, so
+  the two static drawables this replaces could only ever be dark or light —
+  which is why Sepia, Paper, OLED and Material You all rendered as plain Dark.
+  An ImageView CAN be tinted at runtime, so one silhouette serves all six.
+-->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@drawable/widget_background"
-    android:padding="14dp"
     android:clickable="true"
     android:focusable="true">
+
+    <ImageView
+        android:id="@+id/widget_card_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_card_shape"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="14dp">
 
     <!-- ── Header row: book title + streak number ── -->
     <LinearLayout
@@ -117,8 +135,86 @@
         android:text="Start writing"
         android:textSize="12sp"
         android:textStyle="bold"
-        android:background="@drawable/widget_btn_bg"
+        android:background="@drawable/widget_btn_state_dark"
         android:textColor="@color/ds_text_secondary" />
+
+    <!--
+      ── Action row ──
+      Three compact buttons. Two of them do their work WITHOUT opening the app:
+      Next book and Refresh are broadcasts back to StreakWidgetProvider, which
+      re-renders in place.
+
+      Text-only on purpose. The one thing this layout already proves works
+      inside RemoteViews on the launcher's process is a vector in an ImageView
+      src; compound drawables and android:drawableTint are less certain and
+      drawableTint needs API 23 against a minSdk of 22. On a surface that
+      cannot be tested from here, matching the proven pattern beats a nicer
+      button that might render blank on somebody's launcher.
+
+      Colours are set at runtime by StreakWidgetProvider, same as the primary
+      button above.
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp"
+        android:baselineAligned="false">
+
+        <TextView
+            android:id="@+id/widget_new_chapter_btn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="5dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="+ Chapter"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:background="@drawable/widget_btn_state_dark"
+            android:textColor="@color/ds_text_secondary"
+            android:contentDescription="Add a chapter to this book" />
+
+        <TextView
+            android:id="@+id/widget_next_book_btn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="5dp"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="Next book"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:background="@drawable/widget_btn_state_dark"
+            android:textColor="@color/ds_text_secondary"
+            android:contentDescription="Show the next book on this widget" />
+
+        <TextView
+            android:id="@+id/widget_refresh_btn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:text="Refresh"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:background="@drawable/widget_btn_state_dark"
+            android:textColor="@color/ds_text_secondary"
+            android:contentDescription="Reload this widget from the app's saved data" />
+
+    </LinearLayout>
 
     <!-- ── Calendar bitmap ── -->
     <ImageView
@@ -129,4 +225,6 @@
         android:scaleType="fitXY"
         android:adjustViewBounds="true" />
 
-</LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>

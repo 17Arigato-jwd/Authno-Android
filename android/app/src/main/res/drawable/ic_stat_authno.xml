@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ic_stat_authno.xml — the status-bar icon for a writing reminder.
+
+  Flat white on transparent, and it has to be. Android takes a notification's
+  small icon, throws away every colour in it and keeps only the alpha channel,
+  then tints the silhouette to match the system bar. Handing it the gradient
+  flame (ic_flame_gradient) would produce a blob: the gradient collapses to
+  opaque and the inner highlight, at 0x47 alpha, would render as a smudge.
+
+  A SINGLE closed path, deliberately.
+
+  The first version of this cut the highlight out of the body with
+  android:fillType="evenOdd" — which is API 24, against a minSdk of 22. On
+  Android 5.1 and 6 the attribute is ignored, the subpath fills instead of
+  subtracting, and the careful cut-out becomes a solid lump. Every other way
+  of punching a hole (a clip, a second layer, a mask) has the same or worse
+  version floor inside a VectorDrawable that SystemUI has to inflate in its
+  own process.
+
+  So there is no hole. A plain flame silhouette is what most apps ship as a
+  status icon, it reads correctly at 24dp where detail is invisible anyway,
+  and it renders identically on every API this app supports.
+
+  Kept inside a ~22dp box within the 24dp canvas: some launchers crop small
+  icons to a circle, and anything touching the edge loses a slice.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.25c-0.38,0 -0.7,0.21 -0.88,0.54C9.27,6.27 6,10.5 6,14.5a6,6 0,0 0,12 0c0,-4 -3.27,-8.23 -5.12,-11.71A1,1 0,0 0,12 2.25Z" />
+
+</vector>

@@ -8,7 +8,9 @@ import BurgerMenu from "./components/BurgerMenu";
 import Sidebar from "./components/Sidebar";
 import { Settings, DEFAULT_SETTINGS } from "./components/Settings";
 import { CustomizationSlider, DEFAULT_CUSTOMIZATION } from "./components/CustomizationSlider";
-import { FlameButton } from "./components/Streak";
+import { FlameButton, computeStreak, getTodayKey } from "./components/Streak";
+import { booksWithStreaks, streaksEnabledFor, reminderConfig } from "./utils/streakSettings";
+import { syncReminder, reportProgress } from "./utils/reminders";
 import { isAndroid, isElectron } from "./utils/platform";
 import { DEFAULT_WORD_GOAL } from "./components/constants";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
@@ -27,7 +29,8 @@ import { setSoundsEnabled } from "./utils/sounds";
 import { previewOf, sanitizePastedHtml } from "./utils/editorFormat";
 import { recordEdit, recordOp, restorePatch, revertChangePatch, persistableHistory, wordCountOf } from "./utils/history";
 import HistoryPanel from "./components/HistoryPanel";
-import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook } from "./utils/storage";
+import NotesPanel from "./components/NotesPanel";
+import { saveBook, openBookFromBytes, initStoragePermissions, initBookIndex, checkFileIntegrity, saveAsBook, isContentless, readSessionFromFile } from "./utils/storage";
 import { fireHook, hookCount } from "./utils/sessionHooks";
 import { ErrorProvider, useError } from "./utils/ErrorContext";
 import { motion, AnimatePresence, useAnimationControls } from "framer-motion";
@@ -51,6 +54,12 @@ import {
 } from "./utils/firstBookTour";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
+import { bookFingerprint } from "./utils/bookFingerprint";
+import { makeGate } from "./utils/exclusive";
+import {
+  isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
+  hasUnhydratedChapters, canDeferLoad, isTextKnown, getLargeBookChoice, setLargeBookChoice,
+} from "./utils/largeBooks";
 import ExtensionPage from "./components/ExtensionPage";
 
 // ── Code-split surfaces (boot-time diet) ─────────────────────────────────────
@@ -68,6 +77,9 @@ const AccessGate = lazy(() => import("./components/AccessGate"));
 const FirstBookTour    = lazy(() => import("./components/FirstBookTour"));
 const ShareImportSheetLazy = lazy(() => import("./components/ShareImportSheet"));
 const FileIntegrityModalLazy = lazy(() => import("./components/FileIntegrityModal"));
+// Only ever mounts for a book past the size threshold, so it has no business
+// in the main bundle.
+const LargeBookDialogLazy = lazy(() => import("./components/LargeBookDialog"));
 
 // ── DesignSystem ─────────────────────────────────────────────────────────────
 // BackgroundRouter replaces the old <Background /> import.
@@ -674,6 +686,7 @@ function AppInner({ navigateRef }) {
   const [fontCustomizerOpen, setFontCustomizerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
+  const [notesOpen, setNotesOpen] = useState(false);               // quick-capture notes sheet
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
   const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
   const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
@@ -854,6 +867,7 @@ function AppInner({ navigateRef }) {
     if (!android) return;
     let listener;
     CapApp.addListener('backButton', () => {
+      if (notesOpen)      { setNotesOpen(false);       return; }
       if (menuOpen)       { setMenuOpen(false);        return; }
       if (historyOpen)    { setHistoryOpen(false);     return; }
       if (drawerOpen)     { setDrawerOpen(false);      return; }
@@ -865,7 +879,11 @@ function AppInner({ navigateRef }) {
       CapApp.minimizeApp();
     }).then(h => { listener = h; });
     return () => { listener?.remove(); };
-  }, [android, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view]);
+    // extPageState is in here because the handler reads its _prevView. Moving
+    // between two extension pages changes it WITHOUT changing `view`, so the
+    // listener kept the first page's _prevView and back sent you to whatever
+    // screen you had opened the previous extension from.
+  }, [android, notesOpen, menuOpen, historyOpen, drawerOpen, settingsOpen, customizerOpen, view, extPageState]);
 
   // ── Re-verify the stored licence on boot ─────────────────────────────────
   // The tier itself lives in localStorage, so it can be hand-edited. When this
@@ -968,8 +986,13 @@ function AppInner({ navigateRef }) {
     } else if (behavior === "blank") {
       // Reuse an existing pristine (empty, untitled) book instead of stacking a
       // fresh Untitled Book on every launch — the "blank keeps piling up" fix.
+      // isTextKnown first: a book whose text is not in memory — preview mode,
+      // a quota-degraded stub — reads as empty to the content checks below
+      // without being empty. Reusing one drops the writer into their real
+      // manuscript believing it is a fresh blank book.
       const isPristine = (s) =>
         s.type === "book" && (s.title === "Untitled Book" || !s.title) &&
+        isTextKnown(s) &&
         !(s.content && s.content.replace(/<[^>]*>/g, "").trim()) &&
         (s.chapters || []).every((c) => !(c.content && c.content.replace(/<[^>]*>/g, "").trim()));
       const existing = sessions.find(isPristine);
@@ -1006,7 +1029,14 @@ function AppInner({ navigateRef }) {
     } catch (e) {
       // Quota exceeded even after stripping covers — drop content bodies too.
       try {
-        const minimal = sessions.map(s => ({ id: s.id, title: s.title, filePath: s.filePath, type: s.type, updated: s.updated }));
+        // _mirrorStub marks these as deliberately incomplete. The next launch
+        // boots from this mirror, so without the flag there is nothing to
+        // distinguish "a book whose text we dropped to fit the quota" from
+        // "a book that is genuinely empty" — and the difference decides
+        // whether writing it back destroys a manuscript. utils/storage.js
+        // refuses to save either shape over an existing file regardless; this
+        // makes the state legible rather than inferred.
+        const minimal = sessions.map(s => ({ id: s.id, title: s.title, filePath: s.filePath, type: s.type, updated: s.updated, _mirrorStub: true }));
         localStorage.setItem("offlineWriterSessions", JSON.stringify(minimal));
       } catch { /* give up on the mirror; disk files remain the source of truth */ }
       console.warn('[AuthNo] session mirror trimmed — localStorage quota reached');
@@ -1021,10 +1051,18 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     clearTimeout(widgetSyncTimer.current);
     widgetSyncTimer.current = setTimeout(() => {
-      // isDark is read inside syncWidget; listing the theme here is what makes
-      // a theme switch actually reach the widget (it used to keep the old
-      // palette until the next keystroke — the "widget ignores theme" report).
-      syncWidget(sessions, customization.accentHex);
+      // The whole theme goes across, so the whole theme has to be watched.
+      // The dependency used to be theme?.meta?.isDark, from when the widget
+      // received one bit; with six themes that only notices a change that
+      // crosses light/dark. Dark → OLED and Sepia → Paper both leave the bit
+      // alone, so the widget kept the previous palette until the next
+      // keystroke — the same "widget ignores theme" report, one layer down.
+      // `theme` is state in ThemeProvider, so its identity is stable between
+      // actual theme changes and this does not fire on every render.
+      // settings goes across because the streak switches decide which books
+      // the widget may show at all — a book with its streak off has nothing
+      // to put on a streak card.
+      syncWidget(sessions, customization.accentHex, theme, settings);
       // Launcher shortcut label follows the last-written book.
       const last = getLastResume();
       const lastBook = sessions.find((s) => s.id === last?.bookId)
@@ -1032,7 +1070,63 @@ function AppInner({ navigateRef }) {
       updateAppShortcuts(lastBook);
     }, 1500);
     return () => clearTimeout(widgetSyncTimer.current);
-  }, [sessions, customization.accentHex, theme?.meta?.isDark]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessions, customization.accentHex, theme, settings.streakEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── The writing reminder ──────────────────────────────────────────────────
+  // Two effects, because they answer different questions on different clocks.
+  //
+  // This one owns the alarm: schedule it, move it, cancel it. It must not
+  // watch `sessions` — a keystroke would re-arm an alarm — but it cannot
+  // watch `sessions.length` either, which is what it did first: switching a
+  // book's own streak off leaves the array the same length, so the effect
+  // never re-ran and the alarm outlived the last book that was counting.
+  // Turning the last streak off left a phone still buzzing nightly.
+  //
+  // The set of counting books is exactly what the answer depends on, so that
+  // is what it watches. Toggling any streak switch changes it; typing does not.
+  const countingBookKey = useMemo(
+    () => booksWithStreaks(sessions, settings).map((s) => s.id).join(','),
+    [sessions, settings],
+  );
+  useEffect(() => {
+    syncReminder(sessions, settings);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.streakReminder, countingBookKey]);
+
+  // And this one keeps the stored progress current, so a reminder firing with
+  // the app closed knows whether today's goal was already met. Debounced on
+  // the same idea as the widget sync: it follows the words, which means it
+  // would otherwise run on every keystroke.
+  const progressTimer = useRef(null);
+  useEffect(() => {
+    if (!reminderConfig(settings).enabled) return undefined;
+    clearTimeout(progressTimer.current);
+    progressTimer.current = setTimeout(() => {
+      const counting = booksWithStreaks(sessions, settings);
+      const todayKey = getTodayKey();
+      const fallbackGoal = settings.dailyWordGoal ?? DEFAULT_WORD_GOAL;
+      let met = false;
+      let best = 0;
+      // The goal to NAME in the notification. With several books counting
+      // there is no single right answer, so it follows the book with the
+      // longest live run — the one the writer is most likely to be thinking
+      // of when the reminder arrives.
+      let bestGoal = fallbackGoal;
+      for (const b of counting) {
+        // A log entry is `{ words, goal }` now and was a bare number before;
+        // both shapes are still on disk. See normalizeLog in Streak.jsx.
+        const entry = b.streak?.log?.[todayKey];
+        const goal = b.streak?.goalWords ?? fallbackGoal;
+        const words = typeof entry === 'number' ? entry : (entry?.words ?? 0);
+        if (words >= (entry?.goal ?? goal)) met = true;
+        const days = computeStreak(b.streak?.log ?? {});
+        if (days >= best) { best = days; bestGoal = goal; }
+      }
+      reportProgress(met, best, bestGoal);
+    }, 2000);
+    return () => clearTimeout(progressTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, settings.streakEnabled, settings.streakReminder, settings.dailyWordGoal]);
   useWidgetDeepLink((bookId) => { handleSelect(bookId); });
   useEffect(() => { if (currentId) localStorage.setItem("offlineWriterCurrentId", currentId); }, [currentId]);
 
@@ -1165,24 +1259,75 @@ function AppInner({ navigateRef }) {
   // and fired every extension's onSave hook for every book — on each 2-second
   // debounce, even if only one keystroke happened in one chapter. That meant
   // constant SAF writes, wasted battery, and extensions spammed with change
-  // events. Track a per-session fingerprint and only touch what changed.
+  // events. Only touch what actually changed — see utils/bookFingerprint.js,
+  // which documents why each field it covers has to be in there.
   const savedFingerprints = useRef(new Map());
+  // One pass at a time.
+  //
+  // clearTimeout cancels a timer that has not fired; it cannot stop a callback
+  // already running, and this one awaits file I/O. So: the pass starts, begins
+  // writing a large book, the writer types again, the effect re-arms, and two
+  // seconds later a second pass starts while the first is still writing to the
+  // same URI.
+  //
+  // It is not a rare race either — it is guaranteed for any book that takes
+  // longer than the debounce to write, because the fingerprint is only recorded
+  // AFTER a successful save. Until then the book still looks unsaved, so the
+  // second pass re-saves it. Exactly the large books deferred loading exists
+  // for are the ones slow enough to trip it.
+  const autoSaveGate = useRef(null);
+  if (!autoSaveGate.current) autoSaveGate.current = makeGate();
   useEffect(() => {
     if (!android || sessions.length === 0) return;
     clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      for (const s of sessions) {
-        const fp = `${s.updated ?? ''}|${s.title ?? ''}|${(s.chapters || []).length}`;
+    autoSaveTimer.current = setTimeout(async function pass() {
+      // Turned-away passes are remembered, not dropped: the skipped tick may
+      // be the only one that would have saved the latest edit, and if the
+      // writer has stopped typing nothing will re-arm the effect.
+      if (!autoSaveGate.current.tryEnter()) return;
+      try {
+      // Read through the ref so a re-armed pass sees the current books rather
+      // than whatever this effect closed over when it was scheduled.
+      for (const s of (sessionsRef.current || sessions)) {
+        // Nothing to save, and saveBook would refuse it anyway — but handing a
+        // contentless book to every extension's onSave hook is its own bug, so
+        // it never gets that far. This is the shape the app boots in after the
+        // localStorage mirror degrades under quota; see utils/storage.js.
+        if (isContentless(s)) continue;
+        const fp = bookFingerprint(s);
         if (savedFingerprints.current.get(s.id) === fp) continue; // unchanged
         if (hookCount('onSave') > 0) await fireHook('onSave', { session: s, trigger: 'change' });
         if (!s.filePath?.startsWith('content://')) { savedFingerprints.current.set(s.id, fp); continue; }
         try {
-          const result = await saveBook(s);
+          // A book opened with deferred loading has to be completed before it
+          // can be written: the .authbook packs every chapter into one payload,
+          // so there is no way to save just the edited one. Read the file back,
+          // fill in the chapters still outstanding, and write the whole thing.
+          //
+          // hydrateAll only fills nulls, so an edit the writer just made to a
+          // loaded chapter survives the merge rather than being reverted to
+          // what is on disk.
+          let toSave = s;
+          if (hasUnhydratedChapters(s)) {
+            const fresh = await readSessionFromFile(s);
+            toSave = hydrateAll(s, fresh);
+            if (hasUnhydratedChapters(toSave)) {
+              // Still incomplete — the file is unreadable or has fewer chapters
+              // than the list. Writing now would drop whatever is missing, so
+              // don't, and don't mark it saved either: the retry is the point.
+              continue;
+            }
+            setSessions((prev) => prev.map((x) => (x.id === s.id ? hydrateAll(x, fresh) : x)));
+          }
+          const result = await saveBook(toSave);
           if (result?.staleUri) { setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: null } : x))); continue; }
           if (result?.filePath && result.filePath !== s.filePath) setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, filePath: result.filePath } : x)));
           savedFingerprints.current.set(s.id, fp);
           if (hookCount('onSave') > 0) { const saved = result?.filePath ? { ...s, filePath: result.filePath } : s; await fireHook('onSave', { session: saved, trigger: 'autosave' }); }
         } catch (err) { console.error('[AuthNo AutoSave]', err); }
+      }
+      } finally {
+        if (autoSaveGate.current.exit()) autoSaveTimer.current = setTimeout(pass, 2000);
       }
     }, 2000);
     return () => clearTimeout(autoSaveTimer.current);
@@ -1309,13 +1454,86 @@ function AppInner({ navigateRef }) {
     // button to a normal new book until the storyboard workflow ships.
     newBook();
   };
+  // ── Opening a very large book ────────────────────────────────────────────
+  // Books past the threshold get the choice offered by LargeBookDialog before
+  // they open. The answer can be remembered per book, because a writer who
+  // lives in one big manuscript should be asked once, not every session.
+  const [largeBookPrompt, setLargeBookPrompt] = useState(null); // the pending session
+  const openBookNow = useCallback(async (id, { preview = false } = {}) => {
+    if (preview) {
+      // Prove the file is readable BEFORE dropping the chapter bodies.
+      //
+      // canDeferLoad only knows there is a filePath, and not every filePath can
+      // be read back. A book opened from another app's share sheet carries a
+      // content:// URI granted for that launch only — createDocument and
+      // openDocument take persistable permission, an incoming intent cannot —
+      // so it looks identical to a saved book and stops resolving later.
+      //
+      // Dropping text we have not just proven we can re-read is the one way
+      // this feature loses work, so it does the read first and falls back to
+      // opening in full. Costs one file read on a path the writer has already
+      // agreed to wait for, and the result is not wasted: it is exactly what
+      // the chapters would have been rehydrated from.
+      const book = sessionsRef.current?.find((s) => s.id === id);
+      if (book && !book._preview) {
+        const probe = await readSessionFromFile(book);
+        if (!probe) {
+          toast('Could not read this book’s file, so it opened in full instead', { variant: 'warning', duration: 5000 });
+        } else {
+          setSessions((prev) => prev.map((s) => (s.id === id && !s._preview ? toPreviewSession(s) : s)));
+        }
+      }
+    }
+    setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
+    if (android) setDrawerOpen(false);
+  }, [android]);
+
   const handleSelect = (id, sessionObj) => {
     hapticSelect();
     if (sessionObj) setSessions((prev) => prev.some((s) => s.id === sessionObj.id) ? prev : [sessionObj, ...prev]);
-    setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard");
-    if (android) setDrawerOpen(false);
+    const target = sessionObj ?? sessions.find((s) => s.id === id);
+    // Already in preview mode, or small enough not to matter — straight in.
+    //
+    // canDeferLoad matters as much as the size: deferred loading fetches each
+    // chapter back from the book's own file, so a book that has never been
+    // saved anywhere has nothing to fetch from. Offering preview mode there
+    // would hand the writer a chapter list whose chapters cannot be opened.
+    // ...and only where a file can actually be read back. On the web build
+    // there is no filesystem to fetch a chapter from, so preview mode there
+    // would drop the bodies with no way to return them.
+    const canDefer = canDeferLoad(target) && (android || !!window.electron);
+    if (target && !target._preview && isLargeBook(target) && canDefer) {
+      const remembered = getLargeBookChoice(id);
+      if (!remembered) { setLargeBookPrompt(target); return; }
+      openBookNow(id, { preview: remembered === 'preview' });
+      return;
+    }
+    openBookNow(id);
   };
-  const handleEditChapter = useCallback((chapIdx) => { hapticSelect(); setCurrentChapterIdx(chapIdx); setView("editor"); }, []);
+
+  // Opening a chapter is where a deferred body actually gets fetched. The view
+  // switches first either way: waiting on a file read before showing anything
+  // would make a large book feel broken rather than merely large.
+  const handleEditChapter = useCallback((chapIdx) => {
+    hapticSelect();
+    setCurrentChapterIdx(chapIdx); setView("editor");
+    const book = sessionsRef.current?.find((s) => s.id === currentId);
+    const chap = (book?.chapters || []).find((c) => c.chap_idx === chapIdx);
+    if (!book || !isUnhydrated(chap)) return;
+    (async () => {
+      const fresh = await readSessionFromFile(book);
+      if (!fresh) {
+        // Back to the chapter list rather than leaving a blank editor open.
+        // An empty editor over an unloaded chapter invites typing into it, and
+        // while the save guard stops that reaching the file, the writer would
+        // be composing into something that is not really their chapter.
+        toast('That chapter could not be loaded from the file', { variant: 'danger', duration: 5000 });
+        setView('book-dashboard');
+        return;
+      }
+      setSessions((prev) => prev.map((s) => (s.id === book.id ? hydrateChapter(s, chapIdx, fresh) : s)));
+    })();
+  }, [currentId]);
 
   // ── Resume Writing: one call drops the user back into the editor at the
   // recorded book/chapter/caret. Used by the 'resume' startup mode, the home
@@ -1334,6 +1552,31 @@ function AppInner({ navigateRef }) {
     if (android) setDrawerOpen(false);
   }, [sessions, android]);
 
+  /**
+   * Add a chapter to a named book and open it.
+   *
+   * Parameterised by book rather than reading `currentId`, because the widget's
+   * New-chapter button names the book it is bound to and the app may not have
+   * that one open — setting currentId first and adding second would race the
+   * state update.
+   */
+  const newChapterIn = useCallback((bookId) => {
+    const id = bookId ?? currentId;
+    const cur = (sessionsRef.current || sessions).find(s => s.id === id);
+    if (!cur) return;
+    const now = new Date().toISOString();
+    const maxIdx   = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.chap_idx)) : 0;
+    const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.order))    : 0;
+    const newIdx   = maxIdx + 1;
+    const newChap  = { chap_idx: newIdx, title: `Chapter ${newIdx}`, order: maxOrder + 1, content: '', created: now, updated: now };
+    setSessions(prev => prev.map(s => s.id !== id ? s : {
+      ...s, chapters: [...(s.chapters || []), newChap], updated: now,
+      history: recordOp(s.history, { kind: 'add-chapter', chapIdx: newIdx, chapTitle: newChap.title, content: '' }),
+    }));
+    setCurrentId(id); setCurrentChapterIdx(newIdx); setView('editor');
+  }, [currentId, sessions]);
+  const handleNewChapter = useCallback(() => newChapterIn(currentId), [newChapterIn, currentId]);
+
   // Widget Start-writing button and launcher shortcuts land here (forwarded
   // by MainActivity as authno-launch-action).
   useEffect(() => {
@@ -1341,11 +1584,18 @@ function AppInner({ navigateRef }) {
       const { action, bookId } = e.detail || {};
       if (action === "resume") resumeWriting(bookId || undefined);
       else if (action === "new-book") newBook();
+      // The widget's New-chapter button names its linked book, which may not
+      // be the one currently open.
+      else if (action === "new-chapter") newChapterIn(bookId || undefined);
+      // Reserved for the notes widget's capture button — see
+      // docs/todo/notes-widget.md. Wired now so the app half is already
+      // there when the widget lands.
+      else if (action === "new-note") setNotesOpen(true);
     };
     window.addEventListener("authno-launch-action", onLaunch);
     return () => window.removeEventListener("authno-launch-action", onLaunch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resumeWriting]);
+  }, [resumeWriting, newChapterIn]);
 
   // Text shared from another app (ACTION_SEND) opens the import sheet.
   useEffect(() => {
@@ -1393,20 +1643,6 @@ function AppInner({ navigateRef }) {
     }
     toast("Added to your book", { variant: "success" });
   };
-  const handleNewChapter = useCallback(() => {
-    const cur = sessions.find(s => s.id === currentId);
-    if (!cur) return;
-    const now = new Date().toISOString();
-    const maxIdx   = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.chap_idx)) : 0;
-    const maxOrder = cur.chapters?.length ? Math.max(...cur.chapters.map(c => c.order))    : 0;
-    const newIdx   = maxIdx + 1;
-    const newChap  = { chap_idx: newIdx, title: `Chapter ${newIdx}`, order: maxOrder + 1, content: '', created: now, updated: now };
-    setSessions(prev => prev.map(s => s.id !== currentId ? s : {
-      ...s, chapters: [...(s.chapters || []), newChap], updated: now,
-      history: recordOp(s.history, { kind: 'add-chapter', chapIdx: newIdx, chapTitle: newChap.title, content: '' }),
-    }));
-    setCurrentChapterIdx(newIdx); setView('editor');
-  }, [currentId, sessions]);
   const handleUpdateSession = useCallback((updates) => {
     setSessions((prev) => prev.map((s) => s.id === currentId ? { ...s, ...updates, updated: new Date().toISOString() } : s));
   }, [currentId]);
@@ -1455,8 +1691,13 @@ function AppInner({ navigateRef }) {
       return { ...s, chapters, updated: new Date().toISOString(), history };
     }));
   }, [currentId]);
+  // Renaming counts as editing the book: it changes what is written to the
+  // file, so it has to move the book's "last edited" time the way the
+  // dashboard's rename (handleRenameChapterByIdx) already did. Without this,
+  // a renamed book kept its old timestamp and stayed where it was in the
+  // recently-edited ordering on the home screen.
   const handleEditTitle = (t) => setSessions((s) => s.map((x) => x.id === currentId
-    ? { ...x, title: t, history: recordOp(x.history, { kind: 'rename-book', chapTitle: t }) }
+    ? { ...x, title: t, updated: new Date().toISOString(), history: recordOp(x.history, { kind: 'rename-book', chapTitle: t }) }
     : x));
   // `target` is the { bookId, chapIdx } captured by the Editor at input time —
   // the debounced flush may arrive after navigation, and must still land in
@@ -1490,7 +1731,10 @@ function AppInner({ navigateRef }) {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== currentId) return s;
       const chapters = (s.chapters || []).map((ch) => ch.chap_idx === currentChapterIdx ? { ...ch, title: t } : ch);
-      return { ...s, chapters, history: recordOp(s.history, { kind: 'rename-chapter', chapIdx: currentChapterIdx, chapTitle: t }) };
+      // Same stamp the dashboard's rename does. Renaming a chapter from the
+      // editor and going straight back — with no typing afterwards to bump
+      // `updated` — used to leave the book looking untouched.
+      return { ...s, chapters, updated: new Date().toISOString(), history: recordOp(s.history, { kind: 'rename-chapter', chapIdx: currentChapterIdx, chapTitle: t }) };
     }));
   }, [currentId, currentChapterIdx]);
   // Rename any chapter by index (dashboard inline rename — no need to open the
@@ -1567,7 +1811,10 @@ function AppInner({ navigateRef }) {
     }
   }, [sessions, currentId, showError]);
 
-  const filtered = sessions.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
+  // Untitled books are reachable through import and through the extension API,
+  // and this runs during render — an undefined title here took out the whole
+  // app, not just the list.
+  const filtered = sessions.filter((s) => (s.title || '').toLowerCase().includes(search.toLowerCase()));
   const current  = sessions.find((s) => s.id === currentId) || null;
 
   const editorCurrent = React.useMemo(() => {
@@ -1720,8 +1967,9 @@ function AppInner({ navigateRef }) {
   // ── App-wide shortcuts (beta.1, "Standard set" per the author's pick) ─────
   // Ctrl+, Settings · Ctrl+N New book · Ctrl+O Open · Ctrl+Shift+N New chapter
   // Ctrl+Alt+I Chapter info · Ctrl+Shift+T Threads · Ctrl+Shift+R Read aloud
-  // Ctrl+Shift+E Export. (Ctrl+K/S/Shift+Z live in their own handlers; Ctrl+I
-  // stays italic and Ctrl+E stays centre-align inside the editor.)
+  // Ctrl+Shift+E Export · Ctrl+J Notes. (Ctrl+K/S/Shift+Z live in their own
+  // handlers; Ctrl+I stays italic and Ctrl+E stays centre-align inside the
+  // editor.)
   useEffect(() => {
     const down = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -1745,6 +1993,9 @@ function AppInner({ navigateRef }) {
         else startReadAloud(currentId, view === "editor" ? currentChapterIdx : null);
       }
       else if (k === "e" && e.shiftKey) { e.preventDefault(); if (currentId) setExportPanelOpen(true); }
+      // Notes open from anywhere, book or no book — an idea does not wait for
+      // the right screen to be in front of you.
+      else if (k === "j" && !e.shiftKey && !e.altKey) { e.preventDefault(); setNotesOpen(true); }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
@@ -1879,12 +2130,36 @@ function AppInner({ navigateRef }) {
             android={android}
             accentHex={customization.accentHex}
             book={sessions.find((s) => s.id === firstTour.bookId) ?? null}
+            streaksEnabled={streaksEnabledFor(sessions.find((s) => s.id === firstTour.bookId) ?? null, settings)}
             onNavigate={firstTourNavigate}
             onEnsureBook={ensureFirstBook}
             onSetGoal={coachSetGoal}
             onInjectEdit={coachInjectEdit}
             onCleanup={coachCleanupDemo}
             onFinish={() => { setFirstTour(getTourState()); setView("home"); }}
+          />
+        </Suspense>
+      )}
+
+      {largeBookPrompt && (
+        <Suspense fallback={null}>
+          <LargeBookDialogLazy
+            open
+            book={largeBookPrompt}
+            accentHex={customization.accentHex}
+            onPreview={({ remember }) => {
+              if (remember) setLargeBookChoice(largeBookPrompt.id, 'preview');
+              const id = largeBookPrompt.id;
+              setLargeBookPrompt(null);
+              openBookNow(id, { preview: true });
+            }}
+            onOpenAnyway={({ remember }) => {
+              if (remember) setLargeBookChoice(largeBookPrompt.id, 'full');
+              const id = largeBookPrompt.id;
+              setLargeBookPrompt(null);
+              openBookNow(id);
+            }}
+            onCancel={() => setLargeBookPrompt(null)}
           />
         </Suspense>
       )}
@@ -1961,7 +2236,7 @@ function AppInner({ navigateRef }) {
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           current={current} goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
-          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={streaksEnabledFor(current, settings)}
           onRefresh={async () => {
             try { const { listSavedBooks } = await import('./utils/storage'); const books = await listSavedBooks(); if (books.length) setSessions(prev => { const ids = new Set(prev.map(s => s.id)); return [...prev, ...books.filter(b => !ids.has(b.id))]; }); }
             catch (e) { showError('refresh', e); }
@@ -2013,7 +2288,7 @@ function AppInner({ navigateRef }) {
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
-          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={streaksEnabledFor(current, settings)}
         />
         ) : (
         <BookStudio
@@ -2028,7 +2303,7 @@ function AppInner({ navigateRef }) {
           defaultSort={settings.chapterSort ?? "story"}
           onToggleMenu={handleToggleMenu} burgerBtnRef={burgerBtnRef}
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
-          onStreakUpdate={handleStreakUpdate} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          onStreakUpdate={handleStreakUpdate} streakEnabled={streaksEnabledFor(current, settings)}
         />
         )
       ) : (
@@ -2046,7 +2321,7 @@ function AppInner({ navigateRef }) {
           goalWords={current?.streak?.goalWords ?? settings.dailyWordGoal ?? DEFAULT_WORD_GOAL}
           onStreakUpdate={handleStreakUpdate}
           onToggleSidebar={() => setDrawerOpen((v) => !v)}
-          burgerBtnRef={burgerBtnRef} streakEnabled={current?.streak?.streakEnabled ?? settings.streakEnabled ?? true}
+          burgerBtnRef={burgerBtnRef} streakEnabled={streaksEnabledFor(current, settings)}
           resumePoint={resumePointState} onResumeConsumed={() => setResumePointState(null)}
           syncNonce={editorSyncNonce} onOpenHistory={() => setHistoryOpen(true)}
           spellcheckOn={settings.spellcheck ?? true} editorWidth={settings.editorWidth ?? "full"}
@@ -2089,6 +2364,13 @@ function AppInner({ navigateRef }) {
         />
       )}
 
+      {/* Quick-capture notes — deliberately reachable from every screen,
+          because the point is catching an idea before it goes. */}
+      <NotesPanel
+        isOpen={notesOpen} onClose={() => setNotesOpen(false)}
+        accentHex={customization.accentHex}
+      />
+
       {/* Change history — Docs-style version panel (desktop side panel / mobile sheet) */}
       <HistoryPanel
         open={historyOpen} onClose={() => setHistoryOpen(false)}
@@ -2101,6 +2383,7 @@ function AppInner({ navigateRef }) {
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
+        onOpenNotes={() => { setMenuOpen(false); setNotesOpen(true); }}
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
         context={view === "home" ? "home" : "book"}

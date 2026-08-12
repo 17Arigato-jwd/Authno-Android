@@ -3,6 +3,72 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.19-beta.1
+
+_Streaks become optional, the widgets get buttons that work, and there is
+somewhere to put an idea before it goes._
+
+### Streaks are optional now
+
+- **Turn streaks off** — all of them, or one book while the rest keep counting.
+  Settings → Writing Goal. Off means the days stop being counted, the flame and
+  the day badge go, and the streak widget says so rather than showing a number
+  that has stopped moving. Nothing already recorded is deleted; turn them back
+  on and your history is where you left it.
+- **A daily reminder, if you want one.** Off unless you switch it on, at a time
+  you pick, and by default it stays quiet on days you have already hit your
+  goal. Turning streaks off turns the reminder off with them.
+
+### Widgets
+
+- **The streak widget has buttons.** Start writing, add a chapter, show the next
+  book, refresh. Next book and Refresh do their work on the home screen —
+  they do not open the app to do it.
+- **A second widget: the resume card.** The book and chapter you were last
+  writing in, how many words, how long ago. Only the button opens it: brushing
+  the widget while swiping between home screens no longer launches AuthNo.
+- **Widgets follow your theme.** Sepia, Paper, OLED and Material You all
+  rendered as plain Dark before; they render as themselves now, and follow along
+  when you switch.
+- **Fixed: the widgets had stopped updating.** They were not receiving anything
+  from the app, so a widget showed whatever it had when it was placed.
+
+### Notes
+
+- **Somewhere to put an idea.** Notes are for the thought that arrives when you
+  have not got time to pick a book, find the chapter and place a cursor: no
+  title to invent, no folder to choose. In the menu, or Ctrl+J from anywhere.
+
+### Very large books
+
+- **A book over 5 MB asks before it opens**, and offers to open in preview mode
+  instead: every chapter listed straight away, each one loaded when you open it.
+  The choice is remembered per book.
+
+### Fixes
+
+- **Renaming a chapter in the editor now saves it.** The same rename from the
+  book dashboard always worked, which is why this went unnoticed. Changing a
+  synopsis, reordering chapters and editing a writing goal were affected the
+  same way.
+- **A book could be written back empty.** Under memory pressure AuthNo could
+  come back believing your books had no text in them and save that over the
+  real thing. It now refuses to write a book it cannot see the words for.
+- **"Start blank" could open your real manuscript** instead of a blank book.
+- **Reordering chapters could overwrite one chapter with another's text.**
+- **Exports no longer emit blank chapters** for a book that is still loading.
+- **Buttons on your accent colour are readable again.** On the paler accents —
+  Gold and Sage especially — the label was white on light and effectively
+  invisible.
+- **Every switch in Settings can be reached from the keyboard**, and screen
+  readers now announce whether one is on or off.
+- **Fixed: a book or chapter with no title crashed the screen it appeared on.**
+- **Fixed: the Android back button went to the wrong screen** when moving
+  between two extension pages.
+- **Settings → Developer can scan for books** and report what it found, what it
+  could not open, and what it had to repair — useful when a book has gone
+  missing. Error reports are more specific and no longer crowd each other out.
+
 ## 1.1.19-beta.0
 
 _Signing in gets a second door, and the destructive buttons learn to ask._

@@ -166,7 +166,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
             onClick={() => { hapticSelect(); setRevealed(true); }}
             style={{
               width: '100%', padding: '15px 0', borderRadius: 14, border: 'none',
-              background: accentHex, color: '#fff', fontSize: 15.5, fontWeight: 800,
+              background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 15.5, fontWeight: 800,
               cursor: 'pointer', boxShadow: `0 8px 22px ${accentHex}55`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             }}>
@@ -184,7 +184,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
             onClick={() => { hapticSelect(); openCheckout(); }}
             style={{
               width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
-              background: accentHex, color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer',
+              background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 15, fontWeight: 800, cursor: 'pointer',
               boxShadow: `0 6px 18px ${accentHex}55`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>

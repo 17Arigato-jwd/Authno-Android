@@ -308,7 +308,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
             <button
               data-ext-action="true"
               onClick={(e) => { e.stopPropagation(); openBilling(); }}
-              style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: accentHex, color: '#fff', cursor: 'pointer' }}
+              style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: 'none', background: accentHex, color: 'var(--on-accent, #fff)', cursor: 'pointer' }}
             >
               Upgrade
             </button>

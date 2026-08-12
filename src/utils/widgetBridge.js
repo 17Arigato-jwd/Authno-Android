@@ -28,20 +28,99 @@
  */
 
 import { useEffect } from 'react';
+import { booksWithStreaks, streaksEnabledGlobally, streaksEnabledFor } from './streakSettings';
 
 // ── Capacitor plugin bridge ───────────────────────────────────────────────────
 
 let _pluginCache = null;
 
+/**
+ * The plugin, in a box.
+ *
+ * The box is not decoration. Capacitor's plugin object is a Proxy whose `get`
+ * trap answers EVERY property with a callable — including `then`. That makes it
+ * a thenable, so returning it from an `async` function hands it to the
+ * runtime's promise-resolution machinery, which calls `proxy.then(resolve,
+ * reject)` expecting a promise. Capacitor treats that as a call to a plugin
+ * method named "then", finds no such method, and throws — inside a promise
+ * nobody owns. `resolve` and `reject` are never invoked.
+ *
+ * The result is not an error the caller can see. `await getPlugin()` simply
+ * never settles: the awaiting function stops, forever, one line before it does
+ * its work, and the only outward sign is an unhandled rejection reading
+ * `"WidgetData" plugin is not implemented on web`. On device the message reads
+ * `"WidgetData.then()" is not implemented on android` and the hang is
+ * identical, so the widgets stopped receiving data on every platform at once.
+ *
+ * Wrapping keeps the proxy out of the resolution path. Do not "simplify" this
+ * back to returning the plugin directly.
+ *
+ * @returns {Promise<null | { plugin: object }>}
+ */
 async function getPlugin() {
-  if (_pluginCache) return _pluginCache;
+  if (_pluginCache) return { plugin: _pluginCache };
   try {
     const { registerPlugin } = await import('@capacitor/core');
     _pluginCache = registerPlugin('WidgetData');
-    return _pluginCache;
+    return { plugin: _pluginCache };
   } catch {
     return null;
   }
+}
+
+// ── Resume card ───────────────────────────────────────────────────────────────
+
+/**
+ * What the resume widget shows: the book and chapter you were last writing in.
+ *
+ * Pure, and exported, because the widget itself cannot be tested from here —
+ * this is the part where the interesting mistakes live (a deleted book, a
+ * deleted chapter, a book whose text is not loaded) and the part that can be
+ * pinned down without a device.
+ *
+ * @returns {null | { bookId, bookTitle, chapIdx, chapTitle, words, ts }}
+ */
+export function buildResumePayload(sessions, last) {
+  if (!last?.bookId) return null;
+  const book = (sessions || []).find((s) => s?.id === last.bookId);
+  // The recorded book may have been deleted since. Showing a card for a book
+  // that no longer exists gives a button that cannot work.
+  if (!book) return null;
+
+  // Sorted by `order`, matching everywhere else that means "the first chapter".
+  // Array position is not that chapter after a reorder — the lesson from
+  // sessionToBook, where taking the wrong one cost a chapter of prose.
+  const chapters = [...(book.chapters || [])]
+    .sort((a, b) => (a?.order ?? a?.chap_idx ?? 0) - (b?.order ?? b?.chap_idx ?? 0));
+
+  // The recorded chapter can be gone while the book survives. Falling back to
+  // the first chapter keeps the card useful; the alternative is hiding the
+  // whole thing because one chapter was deleted.
+  const chap = chapters.find((c) => c?.chap_idx === last.chapIdx) ?? chapters[0] ?? null;
+
+  return {
+    bookId:    book.id,
+    bookTitle: book.title || 'Untitled Book',
+    chapIdx:   chap?.chap_idx ?? null,
+    chapTitle: chap?.title || 'Untitled chapter',
+    words:     chapterWordCount(chap),
+    ts:        last.ts ?? null,
+  };
+}
+
+/**
+ * Words in one chapter, preferring the count the app maintains per edit.
+ *
+ * The cached count is also the only answer available for a chapter whose text
+ * has not been read from the file yet (deferred loading leaves `content: null`
+ * but keeps `word_count`), so counting from the text alone would report zero
+ * on exactly the large books that most need the card.
+ */
+function chapterWordCount(chap) {
+  if (!chap) return 0;
+  if (typeof chap.word_count === 'number') return chap.word_count;
+  const text = String(chap.content ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return text ? text.split(' ').length : 0;
 }
 
 // ── syncWidget ────────────────────────────────────────────────────────────────
@@ -53,30 +132,72 @@ async function getPlugin() {
  *
  * @param {Array}  sessions   Full sessions array from App state
  * @param {string} accentHex  e.g. "#5a00d9"
+ * @param {object} theme      the active theme object (see buildWidgetTheme)
+ * @param {object} settings   writerSettings — read for the streak switches
  */
-export async function syncWidget(sessions, accentHex) {
-  // N15: tell the native widget whether the app theme is dark so its text and
-  // surfaces flip with the theme instead of staying dark-only.
-  let themeIsDark = true;
-  try { themeIsDark = !document.documentElement.classList.contains('light-mode'); } catch { /* default dark */ }
+export async function syncWidget(sessions, accentHex, theme, settings) {
+  // The widget used to get one bit — "is the app dark?" — inferred from a DOM
+  // class, which is why Sepia, Paper and OLED all rendered as plain Dark. It
+  // now gets the actual theme's colours, so all six render as themselves.
+  //
+  // The DOM sniff stays as the fallback for callers that have no theme to hand.
+  let widgetTheme = null;
   try {
-    const plugin = await getPlugin();
-    if (!plugin) return; // Not on Android, or Capacitor unavailable
+    if (theme) {
+      const { buildWidgetTheme } = await import('../theme/ThemeBase');
+      widgetTheme = buildWidgetTheme(theme);
+    }
+  } catch { /* fall through to the inferred bit below */ }
+
+  let themeIsDark = widgetTheme ? widgetTheme.isDark : true;
+  if (!widgetTheme) {
+    try { themeIsDark = !document.documentElement.classList.contains('light-mode'); } catch { /* default dark */ }
+  }
+  try {
+    const box = await getPlugin();
+    if (!box) return; // Not on Android, or Capacitor unavailable
 
     // Strip large fields (content, preview) — the widget only needs
     // id, title, and the streak object.
-    const slim = sessions
-      .filter(s => s.type !== 'storyboard')
+    //
+    // Books with streaks switched off are dropped rather than sent with a
+    // flag. The streak widget IS a streak, so a book that is not counting has
+    // nothing to show there; leaving it in the list would keep it selectable
+    // in the widget's config screen and cycleable with the Next-book button,
+    // both of which would land on a card showing a frozen number.
+    const slim = booksWithStreaks(sessions, settings)
       .map(s => ({
         id:     s.id,
         title:  s.title || 'Untitled Book',
         streak: s.streak ?? {},
       }));
 
-    await plugin.syncBooks({
+    // The resume card needs where you stopped, which lives in localStorage
+    // rather than in the sessions array. Imported lazily so this module stays
+    // usable off-device, where resumeState has nothing to read.
+    let resumeJson = '';
+    try {
+      const { getLastResume } = await import('./resumeState');
+      const payload = buildResumePayload(sessions, getLastResume());
+      if (payload) resumeJson = JSON.stringify(payload);
+    } catch { /* no resume recorded yet — the card shows its empty state */ }
+
+    // Ids of books that exist but are not counting. Without this the widget
+    // cannot tell "the book you linked was deleted" from "you switched its
+    // streak off" — they look identical once the book is out of booksJson —
+    // and it would report a live book as missing.
+    const offIds = (sessions || [])
+      .filter((s) => s && s.type !== 'storyboard' && !streaksEnabledFor(s, settings))
+      .map((s) => s.id);
+
+    await box.plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
       isDark: themeIsDark,
+      resumeJson,
+      themeJson: widgetTheme ? JSON.stringify(widgetTheme) : '',
+      streaksEnabled: streaksEnabledGlobally(settings),
+      streaksOffJson: JSON.stringify(offIds),
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort

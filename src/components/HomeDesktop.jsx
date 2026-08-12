@@ -104,7 +104,7 @@ export default function HomeDesktop({
         padding: '8px 14px', borderRadius: 9, cursor: 'pointer', fontSize: 13, fontWeight: 600,
         background: primary ? accentHex : 'var(--surface)',
         border: primary ? 'none' : '1px solid var(--border)',
-        color: primary ? '#fff' : 'var(--text-2)',
+        color: primary ? 'var(--on-accent, #fff)' : 'var(--text-2)',
       }}
     >
       {icon}{label}
@@ -171,7 +171,7 @@ export default function HomeDesktop({
             }}
           >
             <span style={{ width: 46, height: 46, borderRadius: 12, background: accentHex, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 8px 22px ${accentHex}44` }}>
-              {resumeInfo && !showFirstBookBanner ? <DSIcons.Flame size={22} color="#fff" /> : <DSIcons.FilePlus size={22} color="#fff" />}
+              {resumeInfo && !showFirstBookBanner ? <DSIcons.Flame size={22} color="var(--on-accent, #fff)" /> : <DSIcons.FilePlus size={22} color="var(--on-accent, #fff)" />}
             </span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, letterSpacing: '0.08em', color: accentHex, textTransform: 'uppercase', marginBottom: 4 }}>
@@ -201,7 +201,7 @@ export default function HomeDesktop({
 
         {/* Action row */}
         <div data-tour="new-book" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {actionBtn(<DSIcons.FilePlus size={14} color="#fff" />, 'New book', onNewBook, true)}
+          {actionBtn(<DSIcons.FilePlus size={14} color="var(--on-accent, #fff)" />, 'New book', onNewBook, true)}
           {actionBtn(<DSIcons.FolderOpen size={14} />, 'Open…', openExisting)}
           <span data-tour="import-book" style={{ display: 'inline-flex' }}>
             {actionBtn(<DSIcons.Download size={14} />, 'Import a book', () => importInputRef.current?.click())}

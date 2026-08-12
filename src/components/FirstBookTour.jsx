@@ -53,9 +53,9 @@ const wordsInBook = (book) => (book?.chapters || []).reduce((n, c) => n + chapte
 // book its identity (details, chapter name) → set your pace (goal) → WRITE →
 // dress it (cover) → protect it (save) → organise it (threads) → rewind it
 // (history) → share it (export).
-function buildSteps(android) {
+function buildSteps(android, streaksEnabled = true) {
   const hasAuthor = (a) => (typeof a === "string" ? a.trim() : (a && typeof a.name === "string" && a.name.trim()));
-  return [
+  const steps = [
     {
       key: "intro", view: "home", target: null, optional: true,
       title: "Let's make your first book",
@@ -157,6 +157,25 @@ function buildSteps(android) {
       cta: "Finish",
     },
   ];
+
+  if (streaksEnabled) return steps;
+
+  // With streaks switched off there is no flame to light, no pill to point
+  // at and no goal being counted. The step would spotlight nothing (its
+  // targets never appear) and promise something the writer has turned off,
+  // which is a worse first impression than one fewer step.
+  //
+  // The writing step stays — it is the point of the walkthrough and the only
+  // compulsory one here — but it loses the half about the flame.
+  return steps
+    .filter((st) => st.key !== "streak")
+    .map((st) => (st.key !== "write" ? st : {
+      ...st,
+      setDemoGoal: false,
+      title: `Write ${DEMO_GOAL} words`,
+      body: "Here's your page. Type a few lines to see how it feels. No rush: close the app, come back tomorrow, and pick up right here.",
+      hint: `Write about ${DEMO_GOAL} words to continue.`,
+    }));
 }
 
 // The Threads step optionally lists the built-in types + the custom-type note.
@@ -183,7 +202,7 @@ function ThreadTypesInfo({ accentHex }) {
   );
 }
 
-export default function FirstBookTour({ active, android, accentHex, book, onNavigate, onEnsureBook, onSetGoal, onInjectEdit, onCleanup, onFinish }) {
+export default function FirstBookTour({ active, android, accentHex, book, streaksEnabled = true, onNavigate, onEnsureBook, onSetGoal, onInjectEdit, onCleanup, onFinish }) {
   const [stepIndex, setStepIndex] = useState(() => getTourState().step || 0);
   // Remembers the book's real streak goal so we can restore it after temporarily
   // dropping it to DEMO_GOAL for the "watch the flame light" step.
@@ -195,8 +214,9 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
   const [cardH, setCardH] = useState(300);
   const cardRef = useRef(null);
   const steps = useRef(null);
-  if (steps.current === null || steps.current.android !== android) {
-    steps.current = { android, list: buildSteps(android) };
+  if (steps.current === null || steps.current.android !== android
+      || steps.current.streaksEnabled !== streaksEnabled) {
+    steps.current = { android, streaksEnabled, list: buildSteps(android, streaksEnabled) };
   }
   const list = steps.current.list;
   const step = list[Math.min(stepIndex, list.length - 1)];
@@ -444,7 +464,7 @@ export default function FirstBookTour({ active, android, accentHex, book, onNavi
               </button>
             )}
             <button onClick={next} disabled={!isDone}
-              style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: accentHex, color: "#fff", cursor: isDone ? "pointer" : "default", opacity: isDone ? 1 : 0.4, fontSize: 12.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}>
+              style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: accentHex, color: 'var(--on-accent, #fff)', cursor: isDone ? "pointer" : "default", opacity: isDone ? 1 : 0.4, fontSize: 12.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}>
               {step.cta || (stepIndex === list.length - 1 ? "Finish" : "Continue")} <DSIcons.ChevronRight size={13} color="currentColor" />
             </button>
           </div>

@@ -89,7 +89,8 @@ public final class DSTokens {
 
     /**
      * Widget card background: surface_2 at 90 % opacity.
-     * Matches the #E6 alpha used in widget_background.xml.
+     * The card is painted from the active theme at runtime; this is the
+     * opaque fallback for a widget placed before the app has ever synced.
      */
     public static final int WIDGET_BG = Color.argb(
             0xE6,

@@ -77,8 +77,11 @@ export function threadColor(data, thread) {
 
 // ── Mutations (all return a NEW data object) ──────────────────────────────────
 
-export function addType(data, { name, icon = 'Extension', color = '#a855f7', fields = [] }) {
-  const type = { id: tid('ty'), name: name.trim() || 'Custom', icon, color, fields };
+// `name = ''` rather than undefined: both of these already fall back when the
+// name is blank, so throwing when it is absent was an inconsistency, not a
+// deliberate contract.
+export function addType(data, { name = '', icon = 'Extension', color = '#a855f7', fields = [] }) {
+  const type = { id: tid('ty'), name: String(name).trim() || 'Custom', icon, color, fields };
   return { data: { ...data, types: [...data.types, type] }, type };
 }
 
@@ -87,8 +90,8 @@ export function removeType(data, typeId) {
   return { ...data, types: data.types.filter(t => t.id !== typeId) };
 }
 
-export function addThread(data, { typeId, name, color = null, meta = {} }) {
-  const thread = { id: tid('th'), typeId, name: name.trim() || 'Untitled thread', color, meta, entries: [] };
+export function addThread(data, { typeId, name = '', color = null, meta = {} }) {
+  const thread = { id: tid('th'), typeId, name: String(name).trim() || 'Untitled thread', color, meta, entries: [] };
   return { data: { ...data, threads: [...data.threads, thread] }, thread };
 }
 

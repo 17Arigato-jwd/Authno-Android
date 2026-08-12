@@ -64,7 +64,7 @@ export default function ReadAloudBar({ session, accentHex = '#5a00d9', onClose }
           aria-label={state.playing ? 'Pause' : 'Play'}
           style={{
             width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
-            background: accentHex, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: accentHex, color: 'var(--on-accent, #fff)', display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: `0 4px 14px ${accentHex}66`,
           }}
         >

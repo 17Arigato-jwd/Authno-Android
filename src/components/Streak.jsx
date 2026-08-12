@@ -356,7 +356,7 @@ function GoalEditor({ goalWords, accentHex, onSetGoal }) {
           border: `1px solid ${accentHex}`, color: 'var(--text-1)', fontSize: 13, outline: 'none' }}
       />
       <button onClick={save}
-        style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: accentHex, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+        style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
         Save
       </button>
     </div>
@@ -444,7 +444,7 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
       >
         <Flame size={22} color={todayMet ? accentHex : 'var(--text-1)'} className={shaking ? 'flame-shaking' : ''} style={{ transition: 'color 0.3s', display: 'block' }} />
         {currentStreak > 0 && (
-          <div style={{ position: 'absolute', top: -7, right: -7, background: accentHex, color: '#fff', fontSize: 9, fontWeight: 800, lineHeight: 1, borderRadius: 999, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '2px solid var(--app-bg)' }}>
+          <div style={{ position: 'absolute', top: -7, right: -7, background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 9, fontWeight: 800, lineHeight: 1, borderRadius: 999, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: '2px solid var(--app-bg)' }}>
             {currentStreak > 99 ? '99+' : currentStreak}
           </div>
         )}

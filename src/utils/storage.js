@@ -15,6 +15,7 @@
 
 import { isElectron, isAndroid } from './platform';
 import { logError } from './ErrorLogger';
+import { hasUnhydratedChapters, hydrateAll } from './largeBooks';
 import {
   packSession, unpackSession, bookToSession, sessionToBook,
   detectFormat, fromLegacySession, base64ToBytes, bytesToBase64,
@@ -123,11 +124,40 @@ async function readAppDir() {
             path: `${SAVE_SUBDIR}/${f.name}`, directory: dir,
           });
           books.push(await decodeBytes(base64ToBytes(data), `${SAVE_SUBDIR}/${f.name}`));
-        } catch { /* skip corrupt */ }
+        } catch (e) {
+          // Skipping a damaged file is right — one bad book must not stop the
+          // other forty loading. Skipping it SILENTLY was not: a book that
+          // failed to appear looked exactly like a book that was never there,
+          // and there was nothing to send us.
+          //
+          // Safe to log per file now that repeats are counted rather than
+          // appended; forty failures are one entry with a count, not forty
+          // entries that flush everything else out of the history.
+          logError('bookScan:readFile', e, { file: f.name, folder: String(dir) });
+        }
       }
-    } catch { /* directory not available */ }
+    } catch (e) {
+      // A missing folder is normal — it is created on first save — so that is
+      // not worth an entry. Anything else means we were stopped from looking,
+      // which is the thing most likely to be behind "my books are all gone".
+      if (!isMissingDirError(e)) logError('bookScan:readFolder', e, { folder: String(dir) });
+    }
   }
   return books;
+}
+
+/**
+ * Distinguish "there is no folder yet" from "we were not allowed to look".
+ *
+ * The app folder does not exist until the first save, so treating its absence
+ * as a fault would put an entry in the log on every launch of a fresh install
+ * and train people to ignore it. Being blocked from reading it is the opposite:
+ * it is the most likely thing behind "all my books are gone".
+ */
+export function isMissingDirError(e) {
+  const m = (e?.message || String(e || '')).toLowerCase();
+  return m.includes('does not exist') || m.includes('not exist')
+    || m.includes('no such file') || m.includes('enoent');
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -139,8 +169,17 @@ export async function checkStoragePermission() {
     const plugin = registerPlugin('AuthnoFilePicker');
     const { granted } = await plugin.checkFullStoragePermission();
     return granted ? 'granted' : 'denied';
-  } catch {
-    return 'granted';
+  } catch (e) {
+    // Reporting 'granted' when the check itself failed is the same answer with
+    // the opposite meaning: the app proceeds as though it has access, and the
+    // scan then says "permission: granted" while listing nothing — which sends
+    // whoever reads it looking anywhere but the actual cause.
+    //
+    // 'unknown' keeps the permissive behaviour for callers that only gate on
+    // 'denied' (an older build with no plugin must still work) while letting a
+    // diagnostic say it could not tell.
+    logError('bookScan:permission', e);
+    return 'unknown';
   }
 }
 
@@ -184,6 +223,45 @@ export function folderFromPath(filePath) {
   return parts[parts.length - 2] || 'Internal Storage';
 }
 
+/**
+ * Re-read a book from its own file and return the full session.
+ *
+ * This is what makes deferred loading possible: a book opened in preview mode
+ * keeps its chapter list but not the bodies, and comes back here for one when
+ * the reader opens a chapter.
+ *
+ * It reads the WHOLE file rather than a single chapter, because the .authbook
+ * format packs every chapter into one Reed-Solomon-protected payload — there is
+ * no seekable per-chapter region to read. Fetching "just chapter 9" would mean
+ * unpacking all of it anyway, so the caller unpacks once and keeps the result.
+ *
+ * Returns null rather than throwing when the file cannot be read. Callers use
+ * that to leave the chapter unloaded and say so, which is recoverable; an
+ * exception here would surface as a crash mid-read instead.
+ */
+export async function readSessionFromFile(session) {
+  const path = session?.filePath;
+  if (!path) return null;
+  try {
+    if (isElectron()) {
+      const res = await window.electron?.readBookBytes?.({ filePath: path });
+      if (!res?.base64) return null;
+      return await decodeBytes(base64ToBytes(res.base64), path);
+    }
+    if (isAndroid() && path.startsWith('content://')) {
+      const { registerPlugin } = await import('@capacitor/core');
+      const plugin = registerPlugin('AuthnoFilePicker');
+      const res = await plugin.readBytesFromUri({ uri: path });
+      if (!res?.base64) return null;
+      return await decodeBytes(base64ToBytes(res.base64), path);
+    }
+    return null;
+  } catch (e) {
+    logError('readSessionFromFile', e, { sessionTitle: session?.title });
+    return null;
+  }
+}
+
 export async function initBookIndex() {}              // no-op — App.js calls on startup
 export function listKnownBooks() { return []; }       // no-op — HomeScreen handles []
 export async function pruneBookIndex() { return []; } // no-op — HomeScreen handles []
@@ -204,9 +282,46 @@ export function isUserPlaced(session) {
   return !!session?.filePath?.startsWith('content://');
 }
 
+/**
+ * True when a session carries no writable text at all — no chapters, and no
+ * legacy flat `content`.
+ *
+ * No book reaches the editor in this shape: creating one always seeds chapter
+ * 1, and opening a file always unpacks chapters. There is exactly one way to
+ * get here, and it is not a user action.
+ *
+ * App.js mirrors the session array into localStorage. That mirror has a ~5 MB
+ * quota, and a writer with a few hundred thousand words will exceed it. When
+ * the write throws, App.js degrades the mirror to `{id,title,filePath,type,
+ * updated}` stubs so *something* survives — deliberately, and documented.
+ *
+ * The trap is what happens next. On the following launch the mirror is the
+ * only source of sessions (initBookIndex is a no-op; nothing re-reads the
+ * .authbook files), so the app boots holding stubs. Those stubs still carry
+ * `filePath`, so two seconds later the autosave loop hands each one to
+ * saveBook, sessionToBook turns a chapter-less session into a single EMPTY
+ * chapter, and every manuscript is overwritten with nothing.
+ *
+ * Refusing the write is what makes that survivable: the file on disk is the
+ * real copy, and a save that would shrink a book to nothing is never what the
+ * writer meant. Being unable to save is a bad afternoon; this was the book.
+ */
+export function isContentless(session) {
+  if (!session) return true;
+  if (session.chapters?.length) return false;
+  return !(session.content ?? '').trim();
+}
+
 export async function autoSaveBook(session) {
   if (!isAndroid() || !session?.id) return { success: false, skipped: true };
   if (isUserPlaced(session)) return { success: false, skipped: true };
+  // Never let an empty in-memory copy overwrite a good autosave — see
+  // isContentless. The app-folder copy is the recovery copy for books the
+  // writer has not placed themselves, so it is the last thing to clobber.
+  if (isContentless(session)) {
+    logError('autoSaveBook', new Error('refused to autosave a book with no chapters or content'), { sessionTitle: session?.title });
+    return { success: false, skippedEmpty: true };
+  }
   try {
     const bytes = await encodeSession(session);
     const loc = await writeToAppDir(autosaveName(session), bytes);
@@ -256,6 +371,30 @@ export async function deleteBookFiles(session) {
 // ─── Core file I/O ────────────────────────────────────────────────────────────
 
 export async function saveBook(session) {
+  // Overwriting an existing file with a contentless session destroys it, and
+  // the only way to be holding one is a degraded mirror — see isContentless.
+  // Guarded here rather than at the call sites so every path that saves is
+  // covered, including ones added later.
+  //
+  // Only refuses when there is something to destroy: a contentless session
+  // with no filePath has nothing to overwrite, and blocking it would stop a
+  // genuinely new empty book from ever getting a file.
+  if (session?.filePath && isContentless(session)) {
+    logError('saveBook', new Error('refused to overwrite a saved book with a copy that has no chapters or content'), { sessionTitle: session?.title });
+    return { success: false, skippedEmpty: true };
+  }
+
+  // A book opened with deferred loading holds `content: null` for every chapter
+  // the reader has not opened yet. Encoding that writes those chapters out
+  // EMPTY — the same destruction as above, only chapter by chapter, and harder
+  // to notice because the book still looks structurally intact afterwards.
+  //
+  // Callers load the rest before saving; this is the backstop for any that
+  // forget, and for paths added later that never knew deferred loading exists.
+  if (session?.filePath && hasUnhydratedChapters(session)) {
+    logError('saveBook', new Error('refused to save a book whose chapters are not all loaded'), { sessionTitle: session?.title });
+    return { success: false, needsHydration: true };
+  }
   try {
     if (isElectron()) {
       const b64 = bytesToBase64(await encodeSession(session));
@@ -403,13 +542,21 @@ export async function checkFileIntegrity(sessions) {
       if (!s.filePath?.startsWith('content://')) continue;
       try {
         const result = await plugin.checkUri({ uri: s.filePath });
-        if (!result?.accessible) broken.push(s);
-      } catch {
-        broken.push(s);
+        // `_unreachable` travels with the session so the UI can say WHY, rather
+        // than listing a book as broken and leaving the writer to guess.
+        if (!result?.accessible) broken.push({ ...s, _unreachable: 'the saved location no longer resolves' });
+      } catch (e) {
+        const why = e?.message || String(e);
+        broken.push({ ...s, _unreachable: why });
+        logError('bookScan:checkLocation', e, { sessionTitle: s.title, filePath: s.filePath });
       }
     }
     return broken;
-  } catch {
+  } catch (e) {
+    // Returning [] here reports "every book is fine" when the truth is that we
+    // could not check any of them. Same answer, opposite meaning, and it used
+    // to leave nothing behind.
+    logError('bookScan:checkLocation', e, { sessions: sessions.length });
     return [];
   }
 }
@@ -517,7 +664,35 @@ function _safeName(session) {
 /**
  * Export all chapters as a plain text file.
  */
+
+/**
+ * Return a session with every chapter loaded, fetching the file if needed.
+ *
+ * Export is the one operation where a partially-loaded book fails silently in
+ * the worst possible way: the text helpers below are all null-safe, so an
+ * unloaded chapter does not throw — it renders as nothing. The writer gets a
+ * PDF of their novel with chapters that are simply blank, and nothing says so.
+ *
+ * Applied inside each export rather than at the four call sites in App.js,
+ * because rescue.js and the extension runtime export too, and the escape hatch
+ * is the last place that should grow its own copy of this rule.
+ *
+ * Throws rather than exporting what it has. Callers already wrap exports in
+ * try/catch and surface the error, and a refused export is recoverable in a
+ * way that a silently truncated manuscript is not.
+ */
+async function withAllChapters(session) {
+  if (!hasUnhydratedChapters(session)) return session;
+  const fresh = await readSessionFromFile(session);
+  const full = hydrateAll(session, fresh);
+  if (hasUnhydratedChapters(full)) {
+    throw new Error('Could not load the whole book to export it — some chapters are still unread from the file.');
+  }
+  return full;
+}
+
 export async function exportAsTxt(session, options = {}) {
+  session = await withAllChapters(session);
   const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const lines = [];
   lines.push(session.title || 'Untitled');
@@ -546,6 +721,7 @@ export async function exportAsTxt(session, options = {}) {
  * Page 3+: chapters.
  */
 export async function exportAsHtml(session, options = {}) {
+  session = await withAllChapters(session);
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const title     = session.title    || 'Untitled';
   const language  = session.language || 'en';
@@ -674,6 +850,7 @@ function toXhtml(html) {
  * "Coming soon" placeholder.
  */
 export async function exportAsPdf(session, options = {}) {
+  session = await withAllChapters(session);
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
   const chapters = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
 
@@ -770,6 +947,7 @@ export async function exportAsPdf(session, options = {}) {
 }
 
 export async function exportAsEpub(session, options = {}) {
+  session = await withAllChapters(session);
   const chapters  = [...(session.chapters || [])].sort((a, b) => a.order - b.order);
   const bookId    = session.id || String(Date.now());
 

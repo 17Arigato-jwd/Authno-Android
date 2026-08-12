@@ -198,7 +198,11 @@ export async function packSession(sessionOrBook, settings = {}, rsLevel = DEFAUL
     format_version: FORMAT_VERSION,
     chapters: (book.chapters || []).map(c => ({
       chap_idx:   c.chap_idx,
-      title:      c.title,
+      // Defaulted on the way out as well as the way in. The reader already
+      // does `ch.title || 'Untitled'`; without the same on the writer, a
+      // chapter that arrived untitled was written back untitled and stayed
+      // that way, and every consumer that assumed a string had to guess.
+      title:      c.title || 'Untitled',
       order:      c.order,
       word_count: _wordCount(c.content || ''),
       created:    c.created || now,
@@ -528,9 +532,35 @@ export function sessionToBook(session) {
   const _persistable = persistableHistory(session.history);
   if (session.chapters?.length) {
     // Already has chapter structure — sync chapter 1 content from session.content
-    const chapters = session.chapters.map((c, i) =>
-      i === 0 ? { ...c, content: session.content ?? c.content } : c
-    );
+    // `session.content` is a mirror of ONE chapter's text, and this is where it
+    // gets written back. It has to land in the chapter it was taken from.
+    //
+    // App.js maintains it against the first chapter BY ORDER (handleEditContent
+    // sorts by `order` to decide `isFirst`, and history's _mirrorFirst does the
+    // same). This used to write it into ARRAY INDEX 0, which is a different
+    // chapter the moment the two disagree — and handleMoveChapter makes them
+    // disagree, because reordering swaps the `order` fields and leaves the
+    // array positions untouched.
+    //
+    // So: move a chapter up, type in it, save — and the mirror of the chapter
+    // you were writing in was written over the text of whichever chapter
+    // happened to sit first in the array. Silent, and it cost the whole chapter.
+    const firstByOrder = [...session.chapters]
+      .sort((a, b) => (a.order ?? a.chap_idx ?? 0) - (b.order ?? b.chap_idx ?? 0))[0];
+
+    // Chapter titles are defaulted here, the same way the book title is below
+    // and the way the reader already defaults them. Leaving one undefined let
+    // it reach code that assumed a string — searching the chapter list on such
+    // a book took the list down.
+    const chapters = session.chapters.map((c) => {
+      const titled = c.title ? c : { ...c, title: 'Untitled' };
+      if (c !== firstByOrder) return titled;
+      // `null` means "not read from the file yet" (deferred loading). Filling
+      // it from the mirror would turn it into a real empty string and hide the
+      // gap from the guards that refuse to save a partially loaded book.
+      if (c.content === null) return titled;
+      return { ...titled, content: session.content ?? c.content };
+    });
     return {
       meta: {
         formatVersion: FORMAT_VERSION,

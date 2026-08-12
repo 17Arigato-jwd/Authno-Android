@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  resume_widget.xml
+  The Resume card — where you stopped, and a button back to it.
+
+  Two structural decisions worth stating:
+
+  1. The background is an ImageView, not a drawable on the root. RemoteViews
+     cannot recolour a shape set with setBackgroundResource, so a themed card
+     would otherwise need one static drawable per theme — which is exactly why
+     the old widgets rendered Sepia, Paper and OLED as plain Dark. An ImageView
+     CAN be tinted at runtime, so one silhouette serves all six themes.
+
+  2. Only the button opens the book. The card is information; the button is the
+     action. A whole-surface tap target on a home screen is too easy to hit
+     while scrolling, swiping between pages, or picking the widget up to move
+     it — and the cost of a mistake here is the whole app opening.
+
+  Colours reference @color/ds_* (ds_colors.xml, mirroring tokens.js) as the
+  first paint; the provider replaces them with the active theme's values.
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/resume_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Tintable card. fitXY because a <shape> scales cleanly; the corner
+         radius is drawn, not stretched from a bitmap. -->
+    <ImageView
+        android:id="@+id/resume_card_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_card_shape"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- ── Context line: which book ── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/resume_icon"
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:src="@drawable/ic_book_gradient"
+                android:layout_marginEnd="6dp"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:id="@+id/resume_book"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="AuthNo"
+                android:textColor="@color/ds_text_subtle"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- ── The headline: the chapter you were in ──
+             Chapter names are titles and get long, so two lines. -->
+        <TextView
+            android:id="@+id/resume_chapter"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="3dp"
+            android:text="Nothing open yet"
+            android:textColor="@color/ds_text_secondary"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end" />
+
+        <!-- ── Word count and when, as one sentence ── -->
+        <TextView
+            android:id="@+id/resume_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Open AuthNo to get started"
+            android:textColor="@color/ds_text_subtle"
+            android:textSize="10sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginBottom="7dp" />
+
+        <!-- ── The only thing that opens anything ──
+             Background is a state selector: resting and pressed, crossfading
+             on the design system's durations. Set at runtime per theme. -->
+        <TextView
+            android:id="@+id/resume_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:text="Continue writing"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="@drawable/widget_btn_state_dark"
+            android:textColor="@color/ds_text_secondary" />
+
+    </LinearLayout>
+
+</FrameLayout>

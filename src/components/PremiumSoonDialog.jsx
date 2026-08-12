@@ -68,7 +68,7 @@ export default function PremiumSoonDialog({ accentHex = '#5a00d9', onClose }) {
           onClick={onClose}
           style={{
             width: '100%', padding: '13px 0', borderRadius: 13, border: 'none',
-            background: accentHex, color: '#fff', fontSize: 14.5, fontWeight: 800,
+            background: accentHex, color: 'var(--on-accent, #fff)', fontSize: 14.5, fontWeight: 800,
             cursor: 'pointer', boxShadow: `0 6px 18px ${accentHex}55`,
           }}
         >

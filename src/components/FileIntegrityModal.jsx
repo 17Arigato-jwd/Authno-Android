@@ -83,13 +83,24 @@ export default function FileIntegrityModal({ brokenSessions, accentHex, onRemove
                 <DSIcons.BookOpen size={14} color="currentColor" />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.title || 'Untitled Book'}</span>
               </div>
+              {/* The specific reason, when the check produced one. "It may have
+                  been moved or deleted" is a guess; a permission error is a
+                  fact, and the two call for different actions. */}
+              {session._unreachable && (
+                <div style={{
+                  fontSize: '11.5px', color: 'var(--text-5)', marginTop: '-4px', marginBottom: '10px',
+                  wordBreak: 'break-word',
+                }}>
+                  {session._unreachable}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   onClick={() => handleSaveAs(session)}
                   disabled={savingId === session.id}
                   style={{
                     flex: 1, padding: '8px', borderRadius: '10px', border: 'none',
-                    background: accentHex, color: '#fff',
+                    background: accentHex, color: 'var(--on-accent, #fff)',
                     fontSize: '12px', fontWeight: 700, cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                     opacity: savingId === session.id ? 0.6 : 1,
