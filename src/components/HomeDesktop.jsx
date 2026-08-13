@@ -18,6 +18,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { countWordsIn } from '../utils/wordCount';
 import { DSIcons, toast } from '../DesignSystem';
 import { useError } from '../utils/ErrorContext';
 import { htmlToText } from '../utils/editorFormat';
@@ -30,7 +31,7 @@ import Logo from '../logo.svg';
 
 function words(html) {
   const t = htmlToText(html || '').trim();
-  return t ? t.split(/\s+/).filter(Boolean).length : 0;
+  return countWordsIn(t);
 }
 
 const card = {

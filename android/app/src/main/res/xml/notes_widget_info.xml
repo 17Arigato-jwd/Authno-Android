@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  notes_widget_info.xml
+  Metadata for the Notes widget.
+
+  Sized as a 4×2. It needs the width for readable rows and the height for four
+  of them under a button; a 2×1 like the resume card would leave room for the
+  button and one row, which is a launcher shortcut with extra steps.
+
+  Resizes both ways, unlike the resume card: there IS more content to reveal
+  here — shrink it and the rows go, stretch it and the titles stop truncating.
+  The provider draws the same four rows at every size, so a taller instance
+  gets breathing room rather than more notes.
+
+  No android:configure. Notes are not per-book, so there is nothing to choose
+  when the widget is placed; dropping it should cost one drag.
+-->
+<appwidget-provider
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:minWidth="250dp"
+    android:minHeight="140dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="110dp"
+
+    android:updatePeriodMillis="1800000"
+
+    android:initialLayout="@layout/notes_widget"
+
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+
+    android:previewImage="@mipmap/ic_launcher"
+
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="280dp"
+    android:previewLayout="@layout/notes_widget"
+
+    android:description="@string/notes_widget_description" />

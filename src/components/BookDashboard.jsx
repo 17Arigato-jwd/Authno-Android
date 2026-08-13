@@ -31,52 +31,11 @@ import { V, staggerContainer, MOBILE } from '../utils/motion';
 import { isSpeechSupported } from '../utils/readAloud';
 import { useBookDashboardExtensions, useExtensions } from '../utils/ExtensionContext';
 import { DSIcons, CloseButton } from '../DesignSystem';
-
-// ─── MIME normaliser ──────────────────────────────────────────────────────────
-// Some Android gallery/file-picker implementations return an empty file.type for
-// JPEG images (and occasionally other formats). Fall back to extension detection
-// so the data-URL src is never "data:;base64,…" which renders as a black box.
-function normaliseMime(file) {
-  if (file.type) return file.type;
-  const ext = (file.name || '').split('.').pop().toLowerCase();
-  const MAP = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg',
-    png: 'image/png',  gif: 'image/gif',
-    webp: 'image/webp', bmp: 'image/bmp',
-    heic: 'image/heic', heif: 'image/heif',
-    avif: 'image/avif',
-  };
-  return MAP[ext] || 'image/jpeg';
-}
+import { countWords as wordCount } from '../utils/wordCount';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function timeAgo(dateStr) {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (isNaN(date)) return '';
-  const secs = Math.floor((Date.now() - date) / 1000);
-  if (secs < 60)      return 'just now';
-  if (secs < 3600)    return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400)   return `${Math.floor(secs / 3600)}h ago`;
-  if (secs < 172800)  return 'yesterday';
-  if (secs < 604800)  return `${Math.floor(secs / 86400)} days ago`;
-  if (secs < 1209600) return 'last week';
-  if (secs < 2592000) return `${Math.floor(secs / 604800)} weeks ago`;
-  return date.toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric',
-    year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
-  });
-}
-
-function stripHtml(html) {
-  return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-export function wordCount(html) {
-  const t = stripHtml(html);
-  return t ? t.split(' ').length : 0;
-}
+export { wordCount };
 
 /**
  * Word count for a chapter, preferring the cached `word_count` (maintained on

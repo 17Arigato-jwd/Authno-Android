@@ -29,6 +29,7 @@
 
 import { useEffect } from 'react';
 import { booksWithStreaks, streaksEnabledGlobally, streaksEnabledFor } from './streakSettings';
+import { countWords } from './wordCount';
 
 // ── Capacitor plugin bridge ───────────────────────────────────────────────────
 
@@ -119,8 +120,7 @@ export function buildResumePayload(sessions, last) {
 function chapterWordCount(chap) {
   if (!chap) return 0;
   if (typeof chap.word_count === 'number') return chap.word_count;
-  const text = String(chap.content ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  return text ? text.split(' ').length : 0;
+  return countWords(chap.content);
 }
 
 // ── syncWidget ────────────────────────────────────────────────────────────────
@@ -190,6 +190,21 @@ export async function syncWidget(sessions, accentHex, theme, settings) {
       .filter((s) => s && s.type !== 'storyboard' && !streaksEnabledFor(s, settings))
       .map((s) => s.id);
 
+    // The notes widget's rows. Imported lazily for the same reason resumeState
+    // is: the store reads localStorage, which this module must not require in
+    // order to be usable off-device.
+    //
+    // The count is sent alongside the rows rather than inferred from them.
+    // buildNotesPayload trims to what a widget can show, so counting the array
+    // on the native side would tell a writer with thirty notes they have four.
+    let notesJson = '[]';
+    let notesTotal = 0;
+    try {
+      const { buildNotesPayload, noteCount } = await import('./notes');
+      notesJson = JSON.stringify(buildNotesPayload(4));
+      notesTotal = noteCount();
+    } catch { /* no notes store on this platform — the widget shows its empty state */ }
+
     await box.plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
@@ -198,6 +213,8 @@ export async function syncWidget(sessions, accentHex, theme, settings) {
       themeJson: widgetTheme ? JSON.stringify(widgetTheme) : '',
       streaksEnabled: streaksEnabledGlobally(settings),
       streaksOffJson: JSON.stringify(offIds),
+      notesJson,
+      notesTotal,
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort

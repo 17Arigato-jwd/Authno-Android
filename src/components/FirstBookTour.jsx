@@ -234,7 +234,7 @@ export default function FirstBookTour({ active, android, accentHex, book, streak
 
   // Snapshot captured when a step becomes active (for "changed from entry" gates).
   const entryRef = useRef({ entryChapterTitle: "" });
-  const [tick, setTick] = useState(0); // forces gate re-eval on session/signal change
+  const [, setTick] = useState(0); // forces gate re-eval on session/signal change
 
   // Persist step; capture entry snapshot; reset per-step signals sensibly.
   useEffect(() => {
@@ -361,6 +361,14 @@ export default function FirstBookTour({ active, android, accentHex, book, streak
 
   // Measure the real card so placement uses true height (threads step adds the
   // type list, hints add rows) — guarded against sub-pixel loops.
+  //
+  // Deliberately no dependency array. The card's height changes for reasons no
+  // dependency list can name: a step swap, a font finishing loading, a resize,
+  // a hint row appearing. The rule's suggestion of [cardH] would be worse than
+  // no fix — after a step change that happens to keep the same height the
+  // effect would never run again, and the next step would be placed against a
+  // stale measurement. The `> 4` guard is what stops the update chain.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = cardRef.current;
     if (!el) return;

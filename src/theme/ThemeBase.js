@@ -18,8 +18,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces } from '../utils/fontManager';
+import { createContext, useContext, useState, useCallback } from 'react';
+import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces, webFontsEnabled } from '../utils/fontManager';
 import { isAndroid } from '../utils/platform';
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -520,6 +520,10 @@ export function getBackgroundFxProps(theme) {
 export function injectThemeFonts(theme) {
   const url = theme?.typography?.googleFontsUrl;
   if (!url) return;
+  // Same gate as loadGoogleFont — this was the second, quieter way the app
+  // reached fonts.googleapis.com, and it fired for the default theme, so it
+  // ran for everyone who never touched a font setting.
+  if (!webFontsEnabled()) return;
   const id = `authno-font-${btoa(url).slice(0, 16)}`;
   if (document.getElementById(id)) return;
   const link = Object.assign(document.createElement('link'), { id, rel: 'stylesheet', href: url });

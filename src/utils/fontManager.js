@@ -89,8 +89,36 @@ export function resolveFontStack(fontId, customFonts = []) {
 // ── Google Fonts lazy loader (deduped) ────────────────────────────────────────
 const _loadedGoogle = new Set();
 
+/**
+ * Off by default, and that is the point.
+ *
+ * Loading a web font means a request to fonts.googleapis.com carrying an IP
+ * address and a User-Agent, on every launch, before the writer has done
+ * anything. The app's own welcome screen says "Works offline — everything
+ * lives on your device", and the request went out regardless: it is the one
+ * thing the app did that the promise did not cover. Off a network it also
+ * simply failed, which is the case the app is built for.
+ *
+ * Nothing breaks when this is off. Every entry in FONT_LIBRARY ends its stack
+ * with SYSTEM_SANS or SYSTEM_SERIF, so a font that is not fetched falls back
+ * to the device's own — different, still the right shape, and instant.
+ *
+ * Uploaded fonts are unaffected: those are @font-face from a data URL and
+ * never leave the device.
+ */
+let _webFontsEnabled = false;
+
+export function setWebFontsEnabled(on) {
+  _webFontsEnabled = !!on;
+}
+
+export function webFontsEnabled() {
+  return _webFontsEnabled;
+}
+
 export function loadGoogleFont(fontId) {
   if (typeof document === 'undefined') return;
+  if (!_webFontsEnabled) return;
   const lib = findFont(fontId);
   if (!lib || !lib.google || _loadedGoogle.has(lib.google)) return;
   _loadedGoogle.add(lib.google);

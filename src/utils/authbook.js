@@ -15,6 +15,7 @@
  */
 
 import { deflate, inflate } from 'pako';
+import { countWords } from './wordCount';
 import { getDeviceId, getPlatform } from './deviceId';
 import { persistableHistory } from './history';
 import {
@@ -620,13 +621,10 @@ export function bytesToBase64(bytes) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-function _wordCount(html) {
-  // Must match utils/history.js wordCountOf — the manifest's stored count now
-  // seeds the app's word_count cache on load (beta.2), so a divergent rule
-  // here would make totals jump after the first edit.
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
-  return text ? text.split(' ').length : 0;
-}
+// The manifest's stored count seeds the app's word_count cache on load, so a
+// divergent rule here makes totals jump after the first edit. It no longer
+// CAN diverge: this is the same function history.js and Streak.jsx use.
+const _wordCount = countWords;
 
 function _preview(html) {
   // Decode entities too (F1): the regex-only strip leaked raw "&nbsp;" into

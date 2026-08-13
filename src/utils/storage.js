@@ -37,10 +37,56 @@ function loadSettings() {
   catch { return {}; }
 }
 
+// Characters no filesystem this app writes to will accept, plus control
+// codes. Everything else — including every letter that is not English — is
+// kept: see fileBase.
+// eslint-disable-next-line no-control-regex
+const FS_FORBIDDEN = /[<>:"/\\|?*\u0000-\u001F]/g;
+// Windows refuses these as filenames whatever the extension, and Wine/SMB
+// shares inherit the rule, so a book called "Con" would fail to save on a
+// share without ever explaining why.
+const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/**
+ * The filename stem for a book, without extension.
+ *
+ * This used to be `.replace(/[^a-z0-9\-_ ]/gi, '_')`, which is ASCII-only —
+ * so every Japanese, Cyrillic, Greek, Arabic or Hebrew title collapsed to a
+ * row of underscores. Two such books produced the *same* filename, and the
+ * second export silently overwrote the first. For an app whose whole job is
+ * keeping manuscripts, deleting one because its title was not in English is
+ * the worst kind of bug: invisible, and only to the people it happens to.
+ *
+ * So the rule is inverted. Rather than listing the characters allowed, strip
+ * the handful that are genuinely unsafe and keep the rest. Path traversal is
+ * still impossible because `/` and `\` are in that handful, and `.` runs are
+ * trimmed from both ends.
+ *
+ * NFC first, so a title typed with combining marks and the same title typed
+ * pre-composed do not become two different files.
+ */
+function fileBase(session) {
+  let base = String(session?.title ?? '')
+    .normalize('NFC')
+    .replace(FS_FORBIDDEN, ' ')
+    .replace(/\s+/g, ' ')
+    // A leading dot hides the file on Android and Linux — a whitespace-only
+    // title used to export as ".authbook", which is invisible in every file
+    // browser the writer might go looking in. Trailing dots and spaces are
+    // dropped by Windows itself, silently changing the name.
+    .replace(/^[.\s]+/, '')
+    .replace(/[.\s]+$/, '');
+
+  // Trim after slicing too: cutting mid-title can leave a new trailing dot.
+  base = base.slice(0, 60).replace(/[.\s]+$/, '');
+
+  if (!base || WIN_RESERVED.test(base)) base = 'Untitled';
+  return base;
+}
+
+/** Full filename for a book, extension included. */
 function safeName(session) {
-  const base = (session.title || 'Untitled')
-    .replace(/[^a-z0-9\-_ ]/gi, '_').slice(0, 60).trim();
-  return `${base}.authbook`;
+  return `${fileBase(session)}.authbook`;
 }
 
 async function encodeSession(session) {
@@ -444,7 +490,7 @@ export async function saveBook(session) {
     // saving anything — a silent fake success. Trigger a real browser download
     // of the .authbook bytes instead so the user actually has their file.
     const webBytes = await encodeSession(session);
-    await _triggerDownload(`${safeName(session)}.authbook`, webBytes, 'application/octet-stream');
+    await _triggerDownload(safeName(session), webBytes, 'application/octet-stream');
     return { success: true, downloaded: true };
   } catch (e) {
     logError('saveBook', e, { sessionTitle: session?.title, filePath: session?.filePath });
@@ -475,7 +521,7 @@ export async function saveAsBook(session) {
 
     // Plain web: real download instead of the old silent fake success.
     const webBytes = await encodeSession(session);
-    await _triggerDownload(`${safeName(session)}.authbook`, webBytes, 'application/octet-stream');
+    await _triggerDownload(safeName(session), webBytes, 'application/octet-stream');
     return { success: true, downloaded: true };
   } catch (e) {
     logError('saveAsBook', e, { sessionTitle: session?.title });
@@ -657,9 +703,11 @@ async function _triggerDownload(filename, content, mimeType) {
   }
 }
 
-function _safeName(session) {
-  return (session.title || 'Untitled').replace(/[^a-z0-9\-_ ]/gi, '_').slice(0, 60).trim();
-}
+// The export paths (txt/html/pdf/epub) append their own extension, so they
+// want the stem. Was a second, subtly different copy of the same sanitiser —
+// one of the two places the ASCII-only rule had to be fixed, which is exactly
+// why there is now only one.
+const _safeName = fileBase;
 
 /**
  * Export all chapters as a plain text file.

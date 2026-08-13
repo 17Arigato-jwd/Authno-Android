@@ -9,10 +9,25 @@
 import {
   APP_VERSION, APP_NAME, APP_AUTHOR, APP_SUPPORT_EMAIL, APP_WEBSITE, APP_BUILD_DATE,
 } from '../version';
+import { webFontsEnabled } from '../utils/fontManager';
 
 // ── Font loader ───────────────────────────────────────────────────────────────
 
+/**
+ * The third of three paths that reached fonts.googleapis.com, and the one
+ * that actually fired for everybody: App.js calls it at module scope, so it
+ * ran before React mounted, before any setting was read, on every launch.
+ *
+ * Gated on the same flag as the other two. Off by default — see
+ * setWebFontsEnabled in utils/fontManager.js for why. TYPOGRAPHY.pixel and
+ * TYPOGRAPHY.mono both end their stacks in system families, so the interface
+ * renders in the device's own fonts instead of not rendering.
+ *
+ * Called again once the setting is read, hence the id check below: it is
+ * idempotent, so switching the setting on loads the fonts without a reload.
+ */
 export function injectDesignSystemFonts() {
+  if (!webFontsEnabled()) return;
   if (document.getElementById('ds-fonts')) return;
   const link = document.createElement('link');
   link.id = 'ds-fonts';

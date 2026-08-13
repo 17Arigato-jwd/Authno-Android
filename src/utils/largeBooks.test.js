@@ -1,6 +1,7 @@
 import {
   estimateBookBytes, isLargeBook, shouldWarn, formatSize, snippetOf,
   isUnhydrated, hasUnhydratedChapters, toPreviewSession, hydrateChapter, hydrateAll, canDeferLoad, isTextKnown,
+  isMirrorStub, rehydrateStub,
   LARGE_BOOK_BYTES, WARN_BOOK_BYTES,
 } from './largeBooks';
 
@@ -238,5 +239,119 @@ describe('isTextKnown', () => {
   test('nothing is not known', () => {
     expect(isTextKnown(null)).toBe(false);
     expect(isTextKnown(undefined)).toBe(false);
+  });
+});
+
+// ── Booting from a degraded mirror ───────────────────────────────────────────
+
+// What App.js writes when the mirror write throws on quota.
+const stub = (over = {}) => ({
+  id: 'b1', title: 'Novel', filePath: 'content://x/1',
+  type: 'book', updated: '2026-02-01T00:00:00.000Z', _mirrorStub: true, ...over,
+});
+
+// What readSessionFromFile hands back: the whole book, decoded from disk.
+const onDisk = (over = {}) => ({
+  id: 'file-side-id', title: 'Novel', filePath: 'content://x/1', type: 'book',
+  updated: '2026-01-01T00:00:00.000Z',
+  authors: ['A. Writer'], genre: 'Fiction', language: 'en',
+  chapters: [chap(1, '<p>one</p>'), chap(2, '<p>two</p>')],
+  ...over,
+});
+
+describe('isMirrorStub', () => {
+  test('the flag is enough', () => {
+    expect(isMirrorStub(stub())).toBe(true);
+  });
+
+  test('a file with no chapters is one even without the flag', () => {
+    const { _mirrorStub, ...legacy } = stub();
+    expect(isMirrorStub(legacy)).toBe(true);
+  });
+
+  test('a real book is not', () => {
+    expect(isMirrorStub({ ...book([chap(1, '<p>a</p>')]), filePath: 'content://x/1' })).toBe(false);
+  });
+
+  test('a preview book is not — it knows its chapter list', () => {
+    const preview = toPreviewSession({ ...book([chap(1, '<p>a</p>')]), filePath: 'content://x/1' });
+    expect(isMirrorStub(preview)).toBe(false);
+  });
+
+  test('a new unsaved book with no chapters is not — there is no file it lost', () => {
+    expect(isMirrorStub({ id: 'new', title: 'Untitled Book', chapters: [] })).toBe(false);
+  });
+
+  test('nothing is not', () => {
+    expect(isMirrorStub(null)).toBe(false);
+    expect(isMirrorStub(undefined)).toBe(false);
+  });
+});
+
+describe('rehydrateStub', () => {
+  test('produces a preview-mode book with the real chapter list', () => {
+    const out = rehydrateStub(stub(), onDisk());
+    expect(out._preview).toBe(true);
+    expect(out.chapters).toHaveLength(2);
+    expect(out.chapters.map((c) => c.chap_idx)).toEqual([1, 2]);
+    expect(hasUnhydratedChapters(out)).toBe(true);
+  });
+
+  test('the stub flag is gone', () => {
+    const out = rehydrateStub(stub(), onDisk());
+    expect(isMirrorStub(out)).toBe(false);
+    expect('_mirrorStub' in out).toBe(false);
+  });
+
+  test('bodies are dropped but counts and snippets survive', () => {
+    const out = rehydrateStub(stub(), onDisk());
+    out.chapters.forEach((c) => {
+      expect(c.content).toBeNull();
+      expect(typeof c.word_count).toBe('number');
+      expect(typeof c.preview).toBe('string');
+    });
+    expect(out.chapters[0].word_count).toBe(1);
+  });
+
+  test('keeps the in-app id, not the one in the file', () => {
+    // resume state, widget deep links, the remembered large-book choice and
+    // currentId all point at the in-app id. Adopting the file's orphans them.
+    expect(rehydrateStub(stub(), onDisk()).id).toBe('b1');
+  });
+
+  test('the stub wins on fields it carries', () => {
+    const out = rehydrateStub(stub({ title: 'Renamed Since' }), onDisk({ title: 'Novel' }));
+    expect(out.title).toBe('Renamed Since');
+    expect(out.updated).toBe('2026-02-01T00:00:00.000Z');
+  });
+
+  test('the file fills in what the stub dropped', () => {
+    const out = rehydrateStub(stub(), onDisk());
+    expect(out.authors).toEqual(['A. Writer']);
+    expect(out.genre).toBe('Fiction');
+  });
+
+  test('an unreadable file leaves the stub exactly as it was', () => {
+    const s = stub();
+    expect(rehydrateStub(s, null)).toBe(s);
+    expect(rehydrateStub(s, undefined)).toBe(s);
+  });
+
+  test('a chapterless read leaves the stub alone rather than clearing the flag', () => {
+    // Clearing it here would tell isTextKnown and isContentless the book is
+    // genuinely empty, which is the claim the save guards exist to disbelieve.
+    const s = stub();
+    const out = rehydrateStub(s, onDisk({ chapters: [] }));
+    expect(out).toBe(s);
+    expect(isMirrorStub(out)).toBe(true);
+    expect(isTextKnown(out)).toBe(false);
+  });
+
+  test('the result still reads as text-unknown, so nothing treats it as empty', () => {
+    expect(isTextKnown(rehydrateStub(stub(), onDisk()))).toBe(false);
+  });
+
+  test('nothing in, nothing out', () => {
+    expect(rehydrateStub(null, onDisk())).toBeNull();
   });
 });

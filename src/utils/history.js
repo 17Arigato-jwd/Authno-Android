@@ -22,6 +22,8 @@
  * .authbook (authbook.js strips `baseline` and provisional entries on save).
  */
 
+import { countWords as wordCountOf } from './wordCount';
+
 export const SESSION_HISTORY_LIMIT = 50;
 export const BOOK_HISTORY_LIMIT = 10;
 
@@ -38,10 +40,10 @@ const CONTENT_CHAR_BUDGET = 1_000_000;
 let _seq = 0;
 function _id(now) { return `h${now.toString(36)}${(_seq++ & 0xfff).toString(36)}`; }
 
-export function wordCountOf(html) {
-  const text = String(html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
-  return text ? text.split(' ').length : 0;
-}
+// Re-exported rather than reimplemented. This and the manifest counter and
+// the streak counter all had their own copy of the same split, which is what
+// let the CJK bug live in seven places at once.
+export { wordCountOf };
 
 function _entrySize(e) {
   return (e.content?.length || 0) + (e.baseline?.length || 0)

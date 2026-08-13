@@ -289,6 +289,21 @@
                 android:resource="@xml/resume_widget_info" />
         </receiver>
 
+        <!-- ── Notes widget ──
+             No configure activity: notes are not per-book, so there is
+             nothing to choose when it is placed. -->
+        <receiver
+            android:name=".NotesWidgetProvider"
+            android:label="@string/notes_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/notes_widget_info" />
+        </receiver>
+
         <!-- ── Widget config ── -->
         <activity
             android:name=".StreakWidgetConfigActivity"

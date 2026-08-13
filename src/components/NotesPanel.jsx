@@ -22,14 +22,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DSIcons, CloseButton } from '../DesignSystem';
 import { useMotionEnabled, T } from '../utils/motion';
 import {
-  listNotes, createNote, updateNote, deleteNote,
+  listNotes, getNote, createNote, updateNote, deleteNote,
   togglePinned, discardIfEmpty, noteTitle, notePreview,
 } from '../utils/notes';
 
 /** Same debounce idea as the editor: save as you type, without a save button. */
 const SAVE_DEBOUNCE_MS = 600;
 
-export default function NotesPanel({ isOpen, onClose, accentHex = '#5a00d9' }) {
+/**
+ * `launch` is how the home-screen widget arrives: `{ action: 'new' }` from the
+ * capture button, `{ action: 'note', id }` from a row. It opens the note rather
+ * than the list, because by the time a writer has tapped the widget the idea is
+ * already in their head, and a list to tap through is the friction the widget
+ * exists to remove.
+ */
+export default function NotesPanel({ isOpen, onClose, accentHex = '#5a00d9', launch = null }) {
   const motionOK = useMotionEnabled();
   const [notes, setNotes] = useState([]);
   const [openId, setOpenId] = useState(null);
@@ -39,11 +46,36 @@ export default function NotesPanel({ isOpen, onClose, accentHex = '#5a00d9' }) {
 
   const refresh = useCallback(() => setNotes(listNotes()), []);
 
+  // Reads the store rather than the `notes` state, because the two callers who
+  // need it — a widget row, and the effect below — both run before a refresh
+  // has landed in state.
+  const openNoteById = useCallback((id) => {
+    const n = getNote(id);
+    if (!n) return false;
+    setOpenId(id);
+    setDraft(n.body);
+    // After the sheet has painted, or the caret lands nowhere.
+    requestAnimationFrame(() => areaRef.current?.focus());
+    return true;
+  }, []);
+
+  const startNew = useCallback(() => {
+    const n = createNote('');
+    setOpenId(n.id);
+    setDraft('');
+    setNotes(listNotes());
+    requestAnimationFrame(() => areaRef.current?.focus());
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     refresh();
+    if (launch?.action === 'new') { startNew(); return; }
+    // A note that has since been deleted falls through to the list rather
+    // than opening an empty editor over nothing.
+    if (launch?.action === 'note' && launch.id && openNoteById(launch.id)) return;
     setOpenId(null);
-  }, [isOpen, refresh]);
+  }, [isOpen, launch, refresh, startNew, openNoteById]);
 
   // Flush the pending edit before the sheet goes away. Without this, closing
   // within the debounce window loses whatever was typed last — the exact
@@ -60,22 +92,7 @@ export default function NotesPanel({ isOpen, onClose, accentHex = '#5a00d9' }) {
     return () => clearTimeout(saveTimer.current);
   }, [draft, openId]);
 
-  const openNote = (id) => {
-    const n = notes.find((x) => x.id === id);
-    if (!n) return;
-    setOpenId(id);
-    setDraft(n.body);
-    // After the sheet has painted, or the caret lands nowhere.
-    requestAnimationFrame(() => areaRef.current?.focus());
-  };
-
-  const startNew = () => {
-    const n = createNote('');
-    setOpenId(n.id);
-    setDraft('');
-    refresh();
-    requestAnimationFrame(() => areaRef.current?.focus());
-  };
+  const openNote = (id) => { openNoteById(id); };
 
   /** Back to the list, dropping the note if nothing was typed into it. */
   const closeNote = useCallback(() => {

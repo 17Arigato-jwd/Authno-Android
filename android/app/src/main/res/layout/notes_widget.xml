@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  notes_widget.xml
+  Quick capture on the home screen: a button to start writing one, and the last
+  few you wrote.
+
+  Structure follows resume_widget.xml, for the same two reasons:
+
+  1. The background is an ImageView, not a drawable on the root. RemoteViews
+     cannot recolour a shape set with setBackgroundResource, so a themed card
+     would otherwise need one static drawable per theme — which is exactly why
+     the old widgets rendered Sepia, Paper and OLED as plain Dark. An ImageView
+     CAN be tinted at runtime, so one silhouette serves all six themes.
+
+  2. Taps are on named targets only — the capture button and each row — never
+     on the card. A whole-surface tap target on a home screen gets hit while
+     scrolling, swiping between pages, or picking the widget up to move it.
+
+  The rows are declared here rather than built at runtime because RemoteViews
+  has no inflater: a provider can only address views that already exist in the
+  layout. Four is what fits a 4×2 without the text shrinking to unreadable, and
+  the header says how many there really are.
+
+  Nothing here is an emoji.
+
+  Colours reference @color/ds_* (ds_colors.xml, mirroring tokens.js) as the
+  first paint; the provider replaces them with the active theme's values.
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/notes_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/notes_card_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_card_shape"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- ── Header: what this is, and how much of it there is ── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/notes_heading"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Notes"
+                android:textColor="@color/ds_text_subtle"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/notes_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="No notes yet"
+                android:textColor="@color/ds_text_subtle"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- ── The action ──
+             First, not last. The widget exists for the note you have not
+             written yet; the rows below are for finding one again. -->
+        <TextView
+            android:id="@+id/notes_new_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:layout_marginTop="7dp"
+            android:text="New note"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="@drawable/widget_btn_state_dark"
+            android:textColor="@color/ds_text_secondary" />
+
+        <!-- ── Shown only when there is nothing to list ── -->
+        <TextView
+            android:id="@+id/notes_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="Ideas you jot down land here"
+            android:textColor="@color/ds_text_subtle"
+            android:textSize="11sp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <!-- ── The rows ──
+             Every one starts gone; the provider reveals as many as it has
+             notes for. Each is its own tap target with its own request code —
+             PendingIntents are keyed by (requestCode, Intent) and extras are
+             NOT part of that key, so rows sharing a code all open whichever
+             note was registered last. -->
+        <LinearLayout
+            android:id="@+id/notes_list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginTop="7dp">
+
+            <LinearLayout
+                android:id="@+id/note_row_0"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/note_title_0"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_secondary"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+                <TextView
+                    android:id="@+id/note_sub_0"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_subtle"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/note_row_1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/note_title_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_secondary"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+                <TextView
+                    android:id="@+id/note_sub_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_subtle"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/note_row_2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/note_title_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_secondary"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+                <TextView
+                    android:id="@+id/note_sub_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_subtle"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/note_row_3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/note_title_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_secondary"
+                    android:textSize="12sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+                <TextView
+                    android:id="@+id/note_sub_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/ds_text_subtle"
+                    android:textSize="10sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <!-- "+26 more". Opens the list rather than a note, because there
+                 is no one note this refers to. -->
+            <TextView
+                android:id="@+id/notes_more"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/ds_text_subtle"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

@@ -24,7 +24,7 @@
  *   validateExtbk(bytes: Uint8Array)               → { ok, errors }
  */
 
-import { rsEncodeChunked, rsVerifyChunked, rsDecodeChunked } from './rs.js';
+import { rsEncodeChunked, rsDecodeChunked } from './rs.js';
 
 // ─── Lazy pako import ─────────────────────────────────────────────────────────
 

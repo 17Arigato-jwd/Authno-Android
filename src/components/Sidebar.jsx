@@ -23,8 +23,6 @@ import {
   MinimalButton,
   GradientButton,
   Tabs,
-  Divider,
-  COLORS,
   TYPOGRAPHY,
   DSIcons,
   toast,

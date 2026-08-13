@@ -23,6 +23,7 @@ import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
 import { emitInstall, newInstallId } from './installEvents';
 import { isAndroid }    from './platform';
+import { DEV_STORE_KEY } from './extensionLoader';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 const ASSETS_PLUGIN  = 'ExtbkAssets';
@@ -233,16 +234,63 @@ export async function seedPreinstalledExtensions() {
 
 // ─── Removal ──────────────────────────────────────────────────────────────────
 
+/**
+ * Remove an extension from everywhere it can be found.
+ *
+ * Both places, because discovery reads both: the installed directory, and the
+ * hand-written `__authno_dev_extensions` list. Removing from only one was a
+ * uninstall that appeared to fail and then didn't take — the rmdir threw
+ * because there was no such directory, the card showed "Could not remove", and
+ * the extension was still in the list afterwards because the dev store still
+ * held it.
+ *
+ * A missing directory is not an error here. Uninstall is idempotent by nature:
+ * the caller asked for the extension to be gone, and if it was already gone
+ * from one of the two stores, that half of the job is done. Only a failure
+ * that leaves it actually present should reach the writer.
+ */
 export async function uninstallExtension(extId) {
   if (!/^[\w.-]+$/.test(extId) || extId.includes('..'))
     throw new Error(`Invalid extension id: ${extId}`);
-  const { Filesystem, Directory } = await fs();
-  await Filesystem.rmdir({
-    path: `${EXTENSIONS_DIR}/${extId}`,
-    directory: Directory.Data,
-    recursive: true,
-  });
-  console.log(`[extbkInstaller] Uninstalled: ${extId}`);
+
+  let removed = false;
+
+  try {
+    const { Filesystem, Directory } = await fs();
+    await Filesystem.rmdir({
+      path: `${EXTENSIONS_DIR}/${extId}`,
+      directory: Directory.Data,
+      recursive: true,
+    });
+    removed = true;
+  } catch (e) {
+    // Kept rather than swallowed: if the dev store does not hold it either,
+    // this is the reason the uninstall did nothing, and the writer should see
+    // it instead of a card that silently stays put.
+    if (!removeFromDevStore(extId)) throw e;
+    removed = true;
+  }
+
+  if (removeFromDevStore(extId)) removed = true;
+
+  if (removed) console.log(`[extbkInstaller] Uninstalled: ${extId}`);
+  return removed;
+}
+
+/** Drop an id from the hand-written dev list. True when it was there. */
+function removeFromDevStore(extId) {
+  try {
+    const raw = localStorage.getItem(DEV_STORE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return false;
+    const kept = parsed.filter((m) => m?.id !== extId);
+    if (kept.length === parsed.length) return false;
+    localStorage.setItem(DEV_STORE_KEY, JSON.stringify(kept));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Inspection ───────────────────────────────────────────────────────────────

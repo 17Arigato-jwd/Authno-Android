@@ -16,7 +16,7 @@ import { DEFAULT_WORD_GOAL } from "./components/constants";
 import { syncWidget, useWidgetDeepLink } from "./utils/widgetBridge";
 import { ThemeProvider, injectThemeFonts, themeById, useTheme, applyAccent, applyFonts } from "./theme";
 import { FontCustomizer } from "./components/FontCustomizer";
-import { DEFAULT_FONTS } from "./utils/fontManager";
+import { DEFAULT_FONTS, setWebFontsEnabled } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ChapterInfoModal from "./components/ChapterInfoModal";
 import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
@@ -44,7 +44,7 @@ import BookStudio from "./components/BookStudio";
 import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
-import { subscribeBilling, openBilling } from "./utils/billingBus";
+import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
 import { startTrialMock } from "./utils/entitlements";
@@ -59,6 +59,7 @@ import { makeGate } from "./utils/exclusive";
 import {
   isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
   hasUnhydratedChapters, canDeferLoad, isTextKnown, getLargeBookChoice, setLargeBookChoice,
+  isMirrorStub, rehydrateStub,
 } from "./utils/largeBooks";
 import ExtensionPage from "./components/ExtensionPage";
 
@@ -212,6 +213,18 @@ function Editor({
   }, [current]);
 
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
+  // Loads a chapter's text into the editor when you switch to it. The deps are
+  // the identity of what is being edited — the book and the chapter — and NOT
+  // its content, even though the effect reads it.
+  //
+  // Adding `current.content` (which is what exhaustive-deps asks for) would put
+  // this effect on the typing path. Writes to the editor are debounced, so
+  // between keystroke and flush the state holds text that is one beat behind
+  // the DOM. The effect would see that difference, decide the DOM is wrong, and
+  // assign the older string over what was just typed — losing the newest
+  // characters, the caret and the native undo stack (4B). The guard below does
+  // not save it: the whole point of the guard is that it writes when the two
+  // differ, and here they differ in the DOM's favour.
   useEffect(() => {
     // Only overwrite the DOM when the incoming content actually differs from
     // what's already rendered. Blindly assigning innerHTML on every dependency
@@ -220,6 +233,7 @@ function Editor({
       const next = current.content || "";
       if (editorRef.current.innerHTML !== next) editorRef.current.innerHTML = next;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, current?._editingChap]);
 
   const execCommand = (cmd, val = null) => {
@@ -687,6 +701,10 @@ function AppInner({ navigateRef }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
   const [notesOpen, setNotesOpen] = useState(false);               // quick-capture notes sheet
+  // How the sheet was opened. null from the burger menu or Ctrl+J — land on the
+  // list. Set by the notes widget, which knows which note (or that it wants a
+  // fresh one) and should not make the writer tap through a list to reach it.
+  const [notesLaunch, setNotesLaunch] = useState(null);
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
   const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
   const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
@@ -797,7 +815,22 @@ function AppInner({ navigateRef }) {
   // Apply the user's chosen fonts (body / editor / headings + uploaded fonts).
   // Like applyAccent, this writes a CSS-var override that outranks the theme's
   // default fonts and is re-asserted after every theme switch.
-  useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts]);
+  // Ahead of applyFonts and the theme's own font injection, and synchronous:
+  // both read this flag, and a render between the two would fire exactly the
+  // request the setting exists to stop.
+  setWebFontsEnabled(settings.webFonts ?? false);
+  useEffect(() => {
+    setWebFontsEnabled(settings.webFonts ?? false);
+    // All three injectors run at module scope, before any setting has been
+    // read, so they no-op on a cold start. Re-running them here is what makes
+    // the setting take effect — and each is idempotent, so turning it on
+    // loads the fonts without a reload.
+    if (settings.webFonts) {
+      injectDesignSystemFonts();
+      injectThemeFonts(themeById(settings.themeId ?? 'dark-default'));
+    }
+  }, [settings.webFonts, settings.themeId]);
+  useEffect(() => { applyFonts(customization.fonts ?? DEFAULT_FONTS); }, [customization.fonts, settings.webFonts]);
 
   // ── Theme / global-font crossfade (beta.1) ────────────────────────────────
   // Switching used to hard-cut every colour and glyph at once. A short-lived
@@ -867,7 +900,7 @@ function AppInner({ navigateRef }) {
     if (!android) return;
     let listener;
     CapApp.addListener('backButton', () => {
-      if (notesOpen)      { setNotesOpen(false);       return; }
+      if (notesOpen)      { setNotesOpen(false); setNotesLaunch(null); return; }
       if (menuOpen)       { setMenuOpen(false);        return; }
       if (historyOpen)    { setHistoryOpen(false);     return; }
       if (drawerOpen)     { setDrawerOpen(false);      return; }
@@ -1011,6 +1044,95 @@ function AppInner({ navigateRef }) {
       setView("home");
     }
   }, [bootReady, sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Rehydrating a degraded boot ──────────────────────────────────────────
+  // When the localStorage mirror hit its quota last session it was degraded to
+  // stubs, and stubs are all this launch had to boot from: the shelf lists
+  // every book and every one of them opens with no chapters. Nothing is lost —
+  // the .authbook files are whole and the save guards refuse to write a stub
+  // back over one — but it looks precisely like loss, and a writer has no way
+  // to tell the difference from the outside.
+  //
+  // Each stub carries the path to its own file, so the chapter list is one read
+  // away. Reading it turns the stub into a preview-mode book, which is a shape
+  // the app already renders, opens, hydrates chapter-by-chapter and refuses to
+  // clobber. No second mechanism, and no new screen: the shelf simply stops
+  // being wrong.
+  //
+  // Deliberately background and sequential rather than awaited at boot. Books
+  // appear immediately from the stubs and fill in behind that, because holding
+  // a blank screen behind a spinner while a shelf of large manuscripts is
+  // Reed-Solomon-verified one at a time is a worse launch than the bug.
+  //
+  // Runs once, but takes `sessions` as a dependency rather than reading
+  // sessionsRef: the ref is synced by an effect declared further down, so on
+  // the commit where bootReady flips it still holds the empty array this
+  // render started with, and the pass would find no stubs and never look
+  // again. Re-runs after the first are turned away by the ref below.
+  const stubsRehydrated = useRef(false);
+  const stubPassCancelled = useRef(false);
+  // Unmount only. Putting this in the pass's own effect would abort an
+  // in-flight rehydration every time a keystroke changed `sessions`.
+  useEffect(() => () => { stubPassCancelled.current = true; }, []);
+  useEffect(() => {
+    if (!bootReady || stubsRehydrated.current) return;
+    // Preview mode fetches bodies back from the file, so this is only
+    // meaningful where a file can actually be read. On the web build
+    // readSessionFromFile returns null for everything and the pass would be a
+    // loop of failures.
+    if (!android && !window.electron) return;
+    const stubs = (sessions || []).filter((s) => isMirrorStub(s) && s.filePath);
+    if (stubs.length === 0) return;
+    stubsRehydrated.current = true;
+
+    (async () => {
+      for (const stub of stubs) {
+        if (stubPassCancelled.current) return;
+        // Re-check against live state: the writer may have opened this book
+        // themselves while the pass was working through the shelf, in which
+        // case it is already loaded and reading the file again would be a
+        // waste at best and a stale overwrite at worst. By now every effect
+        // from the boot commit has run, so the ref is current.
+        const live = (sessionsRef.current || []).find((s) => s.id === stub.id);
+        if (!live || !isMirrorStub(live)) continue;
+
+        const fresh = await readSessionFromFile(live);
+        if (stubPassCancelled.current) return;
+        // A stub whose file will not read stays a stub. It is the honest
+        // answer, it keeps every save guard armed, and on Android the same
+        // launch already runs checkFileIntegrity, which reports unreadable
+        // files through a surface that exists for exactly this.
+        if (!fresh) continue;
+
+        setSessions((prev) => prev.map((s) => (
+          s.id === live.id && isMirrorStub(s) ? rehydrateStub(s, fresh) : s
+        )));
+
+        // Tell autosave this book is already on disk, because it is — the
+        // chapter list it now holds was read out of the file a line ago.
+        //
+        // Without this the pass below sees a book it has no fingerprint for,
+        // decides it is unsaved, and does the one thing this whole effect
+        // exists to avoid: reads every file again, hydrates every chapter into
+        // memory, and writes every manuscript back. That is not just wasted
+        // work at launch — a fully hydrated shelf is what overflowed the
+        // mirror in the first place, so it would degrade to stubs again on the
+        // next write and rehydrate again on the next launch, forever.
+        //
+        // Fingerprinted from `live` rather than from whatever the mapper
+        // produced. If the two have drifted — a rename in the moment between
+        // the read starting and finishing — the fingerprints will not match,
+        // autosave will save the book, and the rename reaches the file. The
+        // race resolves towards writing, which is the safe direction.
+        savedFingerprints.current.set(live.id, bookFingerprint(rehydrateStub(live, fresh)));
+
+        // A breather between books. Unpacking is synchronous and RS-verified,
+        // so back-to-back reads on a large shelf would hold the main thread
+        // through the whole launch.
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    })();
+  }, [bootReady, android, sessions]);
 
   // Persist sessions. Cover images live in the .authbook files on disk; keeping
   // their base64 in the localStorage mirror (N8) bloated it and could exceed the
@@ -1460,6 +1582,27 @@ function AppInner({ navigateRef }) {
   // lives in one big manuscript should be asked once, not every session.
   const [largeBookPrompt, setLargeBookPrompt] = useState(null); // the pending session
   const openBookNow = useCallback(async (id, { preview = false } = {}) => {
+    // A book the writer reaches before the background rehydration pass does.
+    // Same read, same conversion — just pulled forward, because opening the one
+    // book you want should not wait its turn behind the rest of the shelf.
+    const stub = sessionsRef.current?.find((s) => s.id === id);
+    if (stub && isMirrorStub(stub) && stub.filePath) {
+      const fresh = await readSessionFromFile(stub);
+      if (fresh) {
+        setSessions((prev) => prev.map((s) => (
+          s.id === id && isMirrorStub(s) ? rehydrateStub(s, fresh) : s
+        )));
+        // Same reason as the boot pass: what it holds came out of the file, so
+        // autosave has nothing to write and should not read it all back to
+        // find that out.
+        savedFingerprints.current.set(id, bookFingerprint(rehydrateStub(stub, fresh)));
+      }
+      // On failure it stays a stub and opens showing no chapters, which is what
+      // it did before any of this. Saying so is checkFileIntegrity's job — it
+      // runs at launch, owns the copy for an unreadable file, and duplicating
+      // it here would mean two different messages for one broken path.
+    }
+
     if (preview) {
       // Prove the file is readable BEFORE dropping the chapter bodies.
       //
@@ -1581,16 +1724,20 @@ function AppInner({ navigateRef }) {
   // by MainActivity as authno-launch-action).
   useEffect(() => {
     const onLaunch = (e) => {
-      const { action, bookId } = e.detail || {};
+      const { action, bookId, noteId } = e.detail || {};
       if (action === "resume") resumeWriting(bookId || undefined);
       else if (action === "new-book") newBook();
       // The widget's New-chapter button names its linked book, which may not
       // be the one currently open.
       else if (action === "new-chapter") newChapterIn(bookId || undefined);
-      // Reserved for the notes widget's capture button — see
-      // docs/todo/notes-widget.md. Wired now so the app half is already
-      // there when the widget lands.
-      else if (action === "new-note") setNotesOpen(true);
+      // The notes widget. Its capture button opens straight into a fresh note
+      // with the keyboard up, and a row opens the note it names — landing on
+      // the list and making the writer tap again is the friction the widget
+      // exists to remove. "notes" is the one that does mean the list: it comes
+      // from the "+n more" line, which refers to no single note.
+      else if (action === "new-note") { setNotesLaunch({ action: 'new' }); setNotesOpen(true); }
+      else if (action === "open-note" && noteId) { setNotesLaunch({ action: 'note', id: noteId }); setNotesOpen(true); }
+      else if (action === "notes" || action === "open-note") { setNotesLaunch(null); setNotesOpen(true); }
     };
     window.addEventListener("authno-launch-action", onLaunch);
     return () => window.removeEventListener("authno-launch-action", onLaunch);
@@ -1995,7 +2142,7 @@ function AppInner({ navigateRef }) {
       else if (k === "e" && e.shiftKey) { e.preventDefault(); if (currentId) setExportPanelOpen(true); }
       // Notes open from anywhere, book or no book — an idea does not wait for
       // the right screen to be in front of you.
-      else if (k === "j" && !e.shiftKey && !e.altKey) { e.preventDefault(); setNotesOpen(true); }
+      else if (k === "j" && !e.shiftKey && !e.altKey) { e.preventDefault(); setNotesLaunch(null); setNotesOpen(true); }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
@@ -2367,7 +2514,9 @@ function AppInner({ navigateRef }) {
       {/* Quick-capture notes — deliberately reachable from every screen,
           because the point is catching an idea before it goes. */}
       <NotesPanel
-        isOpen={notesOpen} onClose={() => setNotesOpen(false)}
+        isOpen={notesOpen}
+        onClose={() => { setNotesOpen(false); setNotesLaunch(null); }}
+        launch={notesLaunch}
         accentHex={customization.accentHex}
       />
 
@@ -2383,7 +2532,7 @@ function AppInner({ navigateRef }) {
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
-        onOpenNotes={() => { setMenuOpen(false); setNotesOpen(true); }}
+        onOpenNotes={() => { setMenuOpen(false); setNotesLaunch(null); setNotesOpen(true); }}
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
         context={view === "home" ? "home" : "book"}

@@ -44,6 +44,11 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     // live book as deleted, which is a worse answer than the truth.
     static final String KEY_STREAKS_ENABLED  = "authno_streaks_enabled";
     static final String KEY_STREAKS_OFF_JSON = "authno_streaks_off";
+    // Quick-capture notes, for NotesWidgetProvider. The array is only the few
+    // rows a widget can show; the total is stored separately so the header can
+    // say how many there really are rather than how many fit.
+    static final String KEY_NOTES_JSON       = "authno_notes";
+    static final String KEY_NOTES_TOTAL      = "authno_notes_total";
 
     // Actions handled by this receiver itself. Both are sent as EXPLICIT
     // intents (new Intent(ctx, StreakWidgetProvider.class)), so they need no

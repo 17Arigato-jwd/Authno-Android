@@ -139,22 +139,6 @@ function DualSlider({ min, max, step = 1, valueMin, valueMax, onChangeMin, onCha
 
 // ─── Panels ───────────────────────────────────────────────────────────────────
 
-function AccentPanel({ customization, onChange, accentHex }) {
-  return (
-    <div>
-      <SectionTitle>Accent Color</SectionTitle>
-      <SectionSubtitle>Pick your accent colour — adjust hue, saturation, and brightness.</SectionSubtitle>
-
-      <ColorPicker
-        inline
-        canvasSize={320}
-        value={customization.accentHex ?? accentHex}
-        onChange={hex => onChange({ accentHex: hex })}
-      />
-    </div>
-  );
-}
-
 function BackgroundPanel({ customization, onChange, accentHex }) {
   const opacity = customization.backgroundOpacity ?? 1;
 

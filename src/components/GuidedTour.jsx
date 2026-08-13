@@ -190,6 +190,11 @@ export default function GuidedTour({ active, android, accentHex, onNavigate, onD
 
   // Measure the real card so placement uses true height (content varies per
   // step) — guarded so it never loops on sub-pixel jitter.
+  //
+  // Deliberately no dependency array; see the matching comment in
+  // FirstBookTour. [cardH] would skip the re-measure whenever a new step
+  // happens to open at the same height as the last one.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = cardRef.current;
     if (!el) return;

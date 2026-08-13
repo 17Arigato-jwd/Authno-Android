@@ -29,6 +29,7 @@ import { FloatingBlobs, ONB_THEME_CSS } from "../Onboarding";
 import GuidedTour from "../GuidedTour";
 import { createDemoBook } from "../../data/demoBook";
 import { getProfile, setProfile } from "../../utils/profile";
+import { validatePenName, cleanPenName } from "../../utils/penName";
 import { startTrialMock } from "../../utils/entitlements";
 
 const TOTAL = 5;
@@ -113,6 +114,8 @@ export function OnboardingFunnel({
   const [wordGoal, setWordGoal] = useState("300");
   const [name, setName] = useState(getProfile().name || "");
   const [username, setUsername] = useState(getProfile().username || "");
+  // Optional field, so a blank one is valid; anything typed has to hold up.
+  const penName = validatePenName(username);
 
   // Demo book: add exactly once on mount, remove on unmount. Refs so App's
   // inline callbacks (fresh identity every render) can't re-run the effect.
@@ -128,7 +131,7 @@ export function OnboardingFunnel({
   const saveProgress = () => {
     setProfile({
       name: name.trim(),
-      username: username.trim().replace(/^@+/, ""),
+      username: cleanPenName(username),
       writingGoal: { type: goalType, audience: experience, wordCount: wordGoal },
     });
   };
@@ -296,7 +299,7 @@ export function OnboardingFunnel({
       key: "name",
       chip: { icon: DSIcons.User, label: "Almost there" },
       cta: "Create profile",
-      canContinue: !!name.trim(),
+      canContinue: !!name.trim() && penName.ok,
       render: () => (
         <>
           <h2 style={titleStyle}>What should we call you?</h2>
@@ -317,8 +320,15 @@ export function OnboardingFunnel({
               <input
                 value={username} onChange={(e) => setUsername(e.target.value)}
                 placeholder="@janewrites" style={inputStyle}
-                onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) next(); }}
+                aria-invalid={!penName.ok}
+                onKeyDown={(e) => { if (e.key === "Enter" && name.trim() && penName.ok) next(); }}
               />
+              {/* Said here rather than swallowed on save. The field took
+                  anything at all before — including "admin" and "authno" —
+                  and stored it without a word. */}
+              {!penName.ok && (
+                <div style={{ marginTop: 6, fontSize: 12, color: "#ff8080" }}>{penName.message}</div>
+              )}
             </div>
             {/* Recap of the About-you picks */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

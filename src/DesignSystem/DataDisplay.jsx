@@ -4,7 +4,7 @@
  * Exports: ListItem, EmptyState, AboutSection
  */
 
-import { COLORS, TYPOGRAPHY, RADIUS, SPACING, SHADOWS } from './tokens';
+import { COLORS, TYPOGRAPHY, RADIUS } from './tokens';
 import { APP_META, ATTRIBUTION } from './Fonts';
 import { SettingGroup } from './SettingCard';
 

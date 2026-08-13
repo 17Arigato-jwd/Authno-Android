@@ -6,9 +6,12 @@
  */
 
 import { webcrypto } from 'crypto';
-if (!global.crypto?.subtle) global.crypto = webcrypto;
-
 import { unpackKeyFile, keyFileErrorText, keyFileSecretKind } from './keyfile';
+
+// jsdom ships no WebCrypto. Safe to install after the imports: keyfile.js only
+// reaches for crypto.subtle inside its functions, never at module scope, so the
+// global is in place long before any test calls one.
+if (!global.crypto?.subtle) global.crypto = webcrypto;
 
 // v1 — sealed for username 'lunar' with the EMAIL 'a@b.co'. Predates
 // passwords. It must keep opening: members who redeemed before the change

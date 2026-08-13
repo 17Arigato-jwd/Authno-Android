@@ -83,6 +83,7 @@ describe('scheduling', () => {
       streakReminder: { enabled: true },
     }));
     expect(out).toBe('cancelled');
+    expect(cancelled).toBe(1);
   });
 });
 
