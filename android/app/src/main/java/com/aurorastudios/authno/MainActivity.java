@@ -155,10 +155,10 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
-    // ── Launch actions (widget Start-writing button, launcher shortcuts) ─────
-    // The intent carries authnoAction=resume|new-book (+ optional authnoBookId).
-    // Forwarded to JS as one event; App.js routes it into the Resume Writing
-    // path or straight into a fresh book.
+    // ── Launch actions (widget buttons, launcher shortcuts) ──────────────────
+    // The intent carries authnoAction=resume|new-book|new-chapter|new-note|
+    // open-note|notes, plus authnoBookId or authnoNoteId where the action names
+    // one. Forwarded to JS as a single event; App.js routes it.
 
     private void handleLaunchAction(Intent intent) {
         if (intent == null) return;
@@ -166,11 +166,17 @@ public class MainActivity extends BridgeActivity {
         if (action == null || action.isEmpty()) return;
         intent.removeExtra("authnoAction"); // consume — don't re-fire on config changes
         String bookId = intent.getStringExtra("authnoBookId");
+        String noteId = intent.getStringExtra("authnoNoteId");
+        // Consumed for the same reason: a rotation re-delivers the same intent,
+        // and reopening a note the writer had navigated away from is the kind
+        // of thing that reads as the app fighting you.
+        intent.removeExtra("authnoNoteId");
 
         String js =
             "window.dispatchEvent(new CustomEvent('authno-launch-action', {" +
             "  detail: { action: " + JSONObject.quote(action) + "," +
-            "            bookId: " + (bookId != null ? JSONObject.quote(bookId) : "null") + " }" +
+            "            bookId: " + (bookId != null ? JSONObject.quote(bookId) : "null") + "," +
+            "            noteId: " + (noteId != null ? JSONObject.quote(noteId) : "null") + " }" +
             "}));";
         getBridge().getWebView().evaluateJavascript(js, null);
     }

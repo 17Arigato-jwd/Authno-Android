@@ -207,4 +207,24 @@ describe('the widget payload', () => {
   test('an empty store gives an empty list, not a row saying nothing', () => {
     expect(buildNotesPayload(4)).toEqual([]);
   });
+
+  /**
+   * A widget row with no text in it reads as a broken widget rather than as an
+   * empty note, so the payload must never send one. The native side repeats
+   * this check in NotesText.title() because the value crosses a JSON bridge
+   * and a SharedPreferences round-trip on the way there.
+   */
+  test('a note that is only whitespace still gives the row something to show', () => {
+    createNote('   \n\t  \n ');
+    const [row] = buildNotesPayload(1);
+    expect(row.title).toBe('Empty note');
+    expect(row.preview).toBe('');
+  });
+
+  test('a note with no second line sends an empty preview, not undefined', () => {
+    createNote('one line only');
+    const [row] = buildNotesPayload(1);
+    expect(row.preview).toBe('');
+    expect(row.title).toBe('one line only');
+  });
 });

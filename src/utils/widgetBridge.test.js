@@ -154,6 +154,31 @@ describe('syncWidget reaches the plugin', () => {
     expect(typeof p.themeJson).toBe('string');
   });
 
+  test('it sends the notes rows and the real total, not the row count', async () => {
+    // The two are different on purpose. buildNotesPayload trims to what a
+    // widget can show, so a native side that counted the array would tell a
+    // writer with six notes that they have four.
+    const { createNote } = require('./notes');
+    for (let i = 0; i < 6; i++) createNote(`note ${i}`);
+
+    const { syncWidget } = require('./widgetBridge');
+    await syncWidget(sessions, '#5a00d9', null);
+    const p = calls[0];
+    expect(JSON.parse(p.notesJson)).toHaveLength(4);
+    expect(p.notesTotal).toBe(6);
+    localStorage.clear();
+  });
+
+  test('an empty notes store still sends a payload the widget can parse', async () => {
+    localStorage.clear();
+    const { syncWidget } = require('./widgetBridge');
+    await syncWidget(sessions, '#5a00d9', null);
+    // Not undefined and not '': the provider does JSON.parse on this, and the
+    // widget's empty state is an empty array rather than an absent field.
+    expect(JSON.parse(calls[0].notesJson)).toEqual([]);
+    expect(calls[0].notesTotal).toBe(0);
+  });
+
   test('a plugin that is not there is not an error', async () => {
     jest.resetModules();
     jest.doMock('@capacitor/core', () => { throw new Error('no capacitor here'); }, { virtual: true });

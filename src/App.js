@@ -701,6 +701,10 @@ function AppInner({ navigateRef }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);           // change-history panel (v1.1.18)
   const [notesOpen, setNotesOpen] = useState(false);               // quick-capture notes sheet
+  // How the sheet was opened. null from the burger menu or Ctrl+J — land on the
+  // list. Set by the notes widget, which knows which note (or that it wants a
+  // fresh one) and should not make the writer tap through a list to reach it.
+  const [notesLaunch, setNotesLaunch] = useState(null);
   const [editorSyncNonce, setEditorSyncNonce] = useState(0);       // forces editor DOM re-sync after a restore
   const [readAloudPickerOpen, setReadAloudPickerOpen] = useState(false); // home "Read aloud" book+chapter picker (beta.1)
   const [exportPanelOpen, setExportPanelOpen] = useState(false);   // Ctrl+Shift+E export sheet (beta.1)
@@ -896,7 +900,7 @@ function AppInner({ navigateRef }) {
     if (!android) return;
     let listener;
     CapApp.addListener('backButton', () => {
-      if (notesOpen)      { setNotesOpen(false);       return; }
+      if (notesOpen)      { setNotesOpen(false); setNotesLaunch(null); return; }
       if (menuOpen)       { setMenuOpen(false);        return; }
       if (historyOpen)    { setHistoryOpen(false);     return; }
       if (drawerOpen)     { setDrawerOpen(false);      return; }
@@ -1720,16 +1724,20 @@ function AppInner({ navigateRef }) {
   // by MainActivity as authno-launch-action).
   useEffect(() => {
     const onLaunch = (e) => {
-      const { action, bookId } = e.detail || {};
+      const { action, bookId, noteId } = e.detail || {};
       if (action === "resume") resumeWriting(bookId || undefined);
       else if (action === "new-book") newBook();
       // The widget's New-chapter button names its linked book, which may not
       // be the one currently open.
       else if (action === "new-chapter") newChapterIn(bookId || undefined);
-      // Reserved for the notes widget's capture button — see
-      // docs/todo/notes-widget.md. Wired now so the app half is already
-      // there when the widget lands.
-      else if (action === "new-note") setNotesOpen(true);
+      // The notes widget. Its capture button opens straight into a fresh note
+      // with the keyboard up, and a row opens the note it names — landing on
+      // the list and making the writer tap again is the friction the widget
+      // exists to remove. "notes" is the one that does mean the list: it comes
+      // from the "+n more" line, which refers to no single note.
+      else if (action === "new-note") { setNotesLaunch({ action: 'new' }); setNotesOpen(true); }
+      else if (action === "open-note" && noteId) { setNotesLaunch({ action: 'note', id: noteId }); setNotesOpen(true); }
+      else if (action === "notes" || action === "open-note") { setNotesLaunch(null); setNotesOpen(true); }
     };
     window.addEventListener("authno-launch-action", onLaunch);
     return () => window.removeEventListener("authno-launch-action", onLaunch);
@@ -2134,7 +2142,7 @@ function AppInner({ navigateRef }) {
       else if (k === "e" && e.shiftKey) { e.preventDefault(); if (currentId) setExportPanelOpen(true); }
       // Notes open from anywhere, book or no book — an idea does not wait for
       // the right screen to be in front of you.
-      else if (k === "j" && !e.shiftKey && !e.altKey) { e.preventDefault(); setNotesOpen(true); }
+      else if (k === "j" && !e.shiftKey && !e.altKey) { e.preventDefault(); setNotesLaunch(null); setNotesOpen(true); }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
@@ -2506,7 +2514,9 @@ function AppInner({ navigateRef }) {
       {/* Quick-capture notes — deliberately reachable from every screen,
           because the point is catching an idea before it goes. */}
       <NotesPanel
-        isOpen={notesOpen} onClose={() => setNotesOpen(false)}
+        isOpen={notesOpen}
+        onClose={() => { setNotesOpen(false); setNotesLaunch(null); }}
+        launch={notesLaunch}
         accentHex={customization.accentHex}
       />
 
@@ -2522,7 +2532,7 @@ function AppInner({ navigateRef }) {
         open={menuOpen} onClose={() => setMenuOpen(false)} current={current}
         setSessions={setSessions}
         onOpenSettings={() => { setMenuOpen(false); setSettingsOpen(true); }}
-        onOpenNotes={() => { setMenuOpen(false); setNotesOpen(true); }}
+        onOpenNotes={() => { setMenuOpen(false); setNotesLaunch(null); setNotesOpen(true); }}
         onOpen={(id) => { setCurrentId(id); setCurrentChapterIdx(null); setView("book-dashboard"); if (android) setDrawerOpen(false); }}
         accentHex={customization.accentHex} anchorRef={burgerBtnRef}
         context={view === "home" ? "home" : "book"}

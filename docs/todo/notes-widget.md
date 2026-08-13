@@ -1,89 +1,96 @@
-# TODO — Notes widget
+# Notes widget
 
-**Status:** app-side base built and shipped; the widget itself is not started.
+**Status:** built, and never run on hardware. Option 1 of the three below is
+what shipped; 2 and 3 remain open.
 
 A home-screen widget for the thing the notes feature is actually for: an idea
 arrives, and you want it written down before it goes — without unlocking into
 the app, finding a book, and placing a cursor.
 
-## What already exists
-
-Built alongside this note, so the widget has something to sit on rather than
-arriving with its whole stack at once:
+## What is there
 
 | Piece | Where | State |
 | --- | --- | --- |
-| The store | `src/utils/notes.js` | done, 28 tests |
+| The store | `src/utils/notes.js` | done, 30 tests |
 | The widget's row payload | `notes.js` › `buildNotesPayload()` | done, pure, tested |
 | In-app capture and editing | `src/components/NotesPanel.jsx` | done |
 | Ways in | Burger menu → Notes, `Ctrl+J` | done |
-| Deep-link action | `authnoAction: "new-note"` → opens capture | done, unused |
+| The widget | `NotesWidgetProvider.java`, `notes_widget.xml`, `notes_widget_info.xml` | done, unrun |
+| Its words | `NotesText.java` | done, 13 tests on the JVM |
+| Data path | `syncWidget()` → `notesJson` + `notesTotal` → `WidgetDataPlugin` | done, 2 tests |
+| Deep links | `new-note`, `open-note`, `notes` → `authno-launch-action` → `App.js` | done |
 
-`buildNotesPayload()` is deliberately ahead of the widget. It is the part with
-the edge cases — a note with no text, a note that is only whitespace, a body
-long enough to blow a `RemoteViews` row — and it is the part that can be
-pinned down here, without a device. The widget will consume it as-is.
+### How it behaves
 
-`new-note` is wired through `MainActivity` → `authno-launch-action` → `App.js`
-already, so the capture button has a working target the day the widget exists.
+A 4×2 card: a heading with the note count, a **New note** button, and up to four
+rows from `buildNotesPayload(4)`. Pinned notes sort first, which the payload
+already does. Tapping the button opens the app straight into a fresh note with
+the caret in it; tapping a row opens that note; tapping "+n more" opens the
+list, because that line refers to no single note.
 
-## What the widget needs
+### The decisions inside it
 
-### Layout
+- **The count is sent separately from the rows.** `buildNotesPayload` trims to
+  what a widget can show, so a native side that counted the array would tell a
+  writer with thirty notes that they have four. `notesTotal` rides alongside.
 
-Follow `resume_widget.xml`, which already solves the two hard parts:
+- **Every row has its own request code.** `PendingIntent`s are keyed by
+  `(requestCode, Intent)` and **extras are not part of that key**, so four rows
+  sharing a code would all open whichever note was registered last. This
+  project has paid for that lesson once already — see the streak widget's
+  `widgetId * 10 + n`, which this follows.
 
-- a tintable `ImageView` card background, because `RemoteViews` cannot recolour
-  a shape set with `setBackgroundResource` — this is why the older widgets
-  rendered four of six themes as plain Dark;
-- `widget_btn_state_dark` / `_light` for the pressed state.
+- **A one-line note falls back to the time.** Quick capture produces one-line
+  notes by definition, so `NotesText.secondary()` shows when it was written
+  when there is no second line. Every row stays two lines tall and the list
+  does not jump around as notes are added.
 
-Rows: a **New note** button, then up to four note rows from
-`buildNotesPayload(4)`. Pinned notes sort first, which the payload already
-does.
+- **`NotesText` imports nothing from android**, so the parts that are ordinary
+  logic run on the JVM rather than being eyeballed on a launcher. Same reason
+  `ResumeText` exists, and it reuses `ResumeText.ago()` rather than growing a
+  second relative-time formatter.
 
-### The part that needs deciding
+- **The theme comes from `WidgetTheme`**, tinted onto an `ImageView` card
+  rather than set as a background drawable — `RemoteViews` cannot recolour a
+  shape set with `setBackgroundResource`, which is why the older widgets
+  rendered Sepia, Paper and OLED as plain Dark.
+
+- **Read-only.** The temptation here is different from the other widgets: a
+  notes widget looks like it ought to be able to write one. Two writers into
+  one store is the problem the session mirror already taught this project, and
+  it is not worth inheriting for a text field.
+
+- **Nothing on it is an emoji.**
+
+## Still open
 
 **A widget cannot take text input.** `RemoteViews` has no `EditText` — the
-permitted view set is fixed and does not include one. So "create and edit
-notes on the go" cannot be literal: something has to open.
+permitted view set is fixed and does not include one. So "create and edit notes
+on the go" is not literal: something has to open.
 
-Three options, in order of preference:
-
-1. **Capture button → app, straight into a new note.** One tap, keyboard up,
-   nothing to navigate. `authnoAction: "new-note"` already does this. Costs an
-   app launch, which is the thing the widget was meant to avoid, but it is the
-   only option that is certain to work on every launcher.
+1. ~~**Capture button → app, straight into a new note.**~~ Shipped. One tap,
+   keyboard up, nothing to navigate. Costs an app launch, which is the thing
+   the widget was meant to avoid, but it is the only option certain to work on
+   every launcher.
 2. **A transparent capture activity** — a small dialog-themed `Activity` with a
    single `EditText`, launched from the widget. Feels like typing "into" the
    widget; avoids loading the whole WebView. Needs a native note writer that
    agrees with `notes.js` on the localStorage/JSON shape, which is the real
-   work here and the reason it is not option 1.
-3. Voice capture via `RecognizerIntent`. Nice, and genuinely hands-free, but it
-   is a fourth path into the same store and should wait until one of the above
-   is proven.
+   work here and the reason it was not first. It also makes the widget a
+   *writer* into notes storage — two writers, one store — and that needs the
+   same care the session mirror gets.
+3. **Voice capture via `RecognizerIntent`.** Genuinely hands-free, but a fourth
+   path into the same store; it should wait until 2 is proven.
 
-Start with 1. It is a day's work and it makes the widget useful; 2 is the
-version worth building once the store has been exercised on a device.
+## Not verifiable from here
 
-### Data path
+No native code in this project has ever executed on hardware — there is no
+Android SDK in the build environment, so `NotesWidgetProvider` has never been
+compiled, let alone rendered. What *is* checked: `NotesText` compiles and its
+tests pass on the JVM, every `R.*` reference in the provider resolves to a
+declared id, drawable, colour or string, and the payload crossing the bridge is
+covered on the JS side.
 
-`WidgetDataPlugin.syncBooks` already carries `resumeJson` and `themeJson`;
-`notesJson` goes the same way rather than opening a second bridge. Note the
-asymmetry: books and the resume card are **read-only** on the widget side,
-whereas option 2 above would make the widget a *writer* into notes storage.
-That is a different problem — two writers, one store — and needs the same
-care the session mirror gets. Do not let it in by accident with option 1.
-
-## Before it ships
-
-- Rows must survive a note that is only whitespace (`buildNotesPayload`
-  already returns `"Empty note"` for the title — check it renders).
-- Tapping a row opens that note, not the list. Needs a per-row
-  `PendingIntent` with its own request code: `PendingIntent`s are keyed by
-  `(requestCode, Intent)` and **extras are not part of that key**, so four rows
-  sharing a code all open whichever note was registered last. This has bitten
-  this project once already — see the streak widget's `widgetId * 10 + n`.
-- The theme must come from `WidgetTheme`, not a hardcoded palette. Both
-  existing widgets got this wrong on the first pass in different ways.
-- Nothing on the widget may be an emoji.
+The first device run should confirm, in this order: the widget appears in the
+picker; it renders in a non-Dark theme; the New note button lands in an empty
+note with the keyboard up; four rows open four different notes.

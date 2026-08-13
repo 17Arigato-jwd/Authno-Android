@@ -55,6 +55,11 @@ public class WidgetDataPlugin extends Plugin {
         // rather than reporting a live book as deleted.
         Boolean streaksOn = call.getBoolean("streaksEnabled", Boolean.TRUE);
         String streaksOff = call.getString("streaksOffJson", "[]");
+        // Quick-capture notes. The array is only the handful of rows a widget
+        // can show; the total comes separately so the header can say how many
+        // notes there really are rather than how many fit on the card.
+        String notesJson  = call.getString("notesJson", "[]");
+        Integer notesTotal = call.getInt("notesTotal", 0);
 
         Context ctx = getContext();
 
@@ -69,6 +74,8 @@ public class WidgetDataPlugin extends Plugin {
         ed.putString(StreakWidgetProvider.KEY_THEME_JSON, themeJson != null ? themeJson : "");
         ed.putBoolean(StreakWidgetProvider.KEY_STREAKS_ENABLED, streaksOn == null || streaksOn);
         ed.putString(StreakWidgetProvider.KEY_STREAKS_OFF_JSON, streaksOff != null ? streaksOff : "[]");
+        ed.putString(StreakWidgetProvider.KEY_NOTES_JSON, notesJson != null ? notesJson : "[]");
+        ed.putInt(StreakWidgetProvider.KEY_NOTES_TOTAL, notesTotal != null ? notesTotal : 0);
         ed.apply();
 
         // 2. Also write authno_books.json so the file-first path in
@@ -86,6 +93,9 @@ public class WidgetDataPlugin extends Plugin {
         }
         for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, ResumeWidgetProvider.class))) {
             ResumeWidgetProvider.updateWidget(ctx, mgr, id);
+        }
+        for (int id : mgr.getAppWidgetIds(new ComponentName(ctx, NotesWidgetProvider.class))) {
+            NotesWidgetProvider.updateWidget(ctx, mgr, id);
         }
 
         call.resolve();
