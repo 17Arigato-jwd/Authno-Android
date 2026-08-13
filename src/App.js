@@ -19,7 +19,7 @@ import { FontCustomizer } from "./components/FontCustomizer";
 import { DEFAULT_FONTS, setWebFontsEnabled } from "./utils/fontManager";
 import TitleBar from "./components/TitleBar";
 import ChapterInfoModal from "./components/ChapterInfoModal";
-import { saveResumePoint, getResumePoint, getLastResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
+import { saveResumePoint, getResumePoint, getLastResume, clearResume, pruneResume, caretOffsetIn, restoreCaretIn } from "./utils/resumeState";
 import { updateAppShortcuts } from "./utils/appShortcuts";
 import ThreadsPanel, { ThreadsTilesDesktop } from "./components/ThreadsPanel";
 import { ThreadSelectionLayer, ThreadGutter, flashAnchor } from "./components/ThreadLayer";
@@ -988,6 +988,15 @@ function AppInner({ navigateRef }) {
       const saved2 = localStorage.getItem("offlineWriterSessions");
       if (saved2) { try { const parsed = JSON.parse(saved2); if (Array.isArray(parsed)) checkFileIntegrity(parsed).then(broken => { if (broken.length > 0) setBrokenFiles(broken); }); } catch { /* ignore */ } }
     }
+    // Sweep resume points for books that are no longer here. Deleting through
+    // handleDeleteBook clears its own, but the broken-file modal's Remove
+    // takes a book out of the list without going near it, so a boot-time pass
+    // against the surviving ids is what actually covers every door.
+    try {
+      const parsed = JSON.parse(localStorage.getItem("offlineWriterSessions") || "[]");
+      if (Array.isArray(parsed) && parsed.length) pruneResume(parsed.map((s) => s?.id).filter(Boolean));
+    } catch { /* no mirror to compare against — leave resume state alone */ }
+
     // The synchronous session load is done — let the startup-behavior effect run.
     setBootReady(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1935,6 +1944,12 @@ function AppInner({ navigateRef }) {
     const book = sessions.find((s) => s.id === id);
     const updated = sessions.filter((s) => s.id !== id);
     setSessions(updated);
+    // Otherwise the resume point outlives the book. If it was the book you
+    // were last in, everything that reads getLastResume — the widget, the home
+    // Continue card, the 'resume' startup mode — goes on naming an id nothing
+    // can resolve, and shows its empty state with your other books sitting
+    // right there. clearResume re-points at the next most recent book.
+    clearResume(id);
     if (hookCount('onBookDelete') > 0) fireHook('onBookDelete', { sessionId: id, title: book?.title ?? '' });
     if (id === currentId) { setCurrentId(null); setView("home"); }
     // The mirror effect skips empty arrays (it can't tell "deleted the last
