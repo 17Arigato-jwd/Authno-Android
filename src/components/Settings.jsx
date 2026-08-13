@@ -614,7 +614,7 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
 
 // ── General (Raycast-style, beta.2): profile · startup · device ─────────────
 function GeneralPanel(props) {
-  const { settings, onChange, accentHex } = props;
+  const { settings, onChange, accentHex, onSignOut } = props;
   const fileRef = useRef(null);
   const handleAvatarFile = (e) => {
     const file = e.target.files?.[0];
@@ -627,6 +627,17 @@ function GeneralPanel(props) {
 
   return (
     <div>
+      {/* Who you are on the account, above who you are on the page.
+          This lived in Settings → About until now, filed with the version
+          number and the open-source credits — so somebody looking for "my
+          account" opened General, found a name field and an avatar, and had no
+          reason to think their pen name, their invites or the way out were
+          behind a tab labelled About.
+          The two are different things and both belong here: the card is the
+          identity the gate issued, the fields below are the byline that goes
+          into a .authbook. About keeps what About means. */}
+      <MembershipCard accentHex={accentHex} onSignOut={onSignOut} />
+
       <RGroupLabel>Profile</RGroupLabel>
       <RCard>
         <div className="rrow" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px' }}>
@@ -1273,15 +1284,12 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges, onStartTour, onSignOut }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
   const { isPro } = useEntitlement();
   return (
     <div>
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
-
-      {/* Renders only on invite-gated builds — see MembershipCard. */}
-      <MembershipCard accentHex={accentHex} onSignOut={onSignOut} />
 
       {/* Authno Pro (U10) */}
       <div style={{
@@ -1618,13 +1626,13 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   // One panel switch for both orientations (they used to be duplicated).
   const renderPanel = () => (
     <>
-      {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
+      {activeSection === 'general'    && <GeneralPanel    {...panelProps} onSignOut={onSignOut} />}
       {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
       {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
       {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
       {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
       {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onSignOut={onSignOut} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
