@@ -159,6 +159,78 @@ export function canDeferLoad(session) {
   return !!session?.filePath;
 }
 
+// ── Booting from a degraded mirror ───────────────────────────────────────────
+//
+// App.js mirrors the session array into localStorage, and that mirror has a
+// ~5 MB quota. A writer with a few hundred thousand words exceeds it, the write
+// throws, and App.js degrades the mirror to `{id,title,filePath,type,updated}`
+// stubs so that something survives. On the next launch that mirror is the only
+// source of sessions, so the app boots holding stubs: the shelf lists every
+// book and each one opens with no chapters.
+//
+// Nothing is lost — the .authbook files are untouched, and the save guards in
+// storage.js refuse to write a stub back over a real book. The problem is that
+// it looks exactly like loss, which for a writing app is its own harm.
+//
+// A stub and a preview-mode book already mean nearly the same thing: the file
+// on disk is the real copy, and the bodies are not in memory. The difference is
+// that a preview book knows its chapter list and a stub does not. So the fix is
+// not a second mechanism, it is one file read that turns the stub into the
+// thing the app already knows how to render, open, hydrate and refuse to
+// clobber.
+
+/**
+ * True when this session is a shell left behind by a degraded mirror write.
+ *
+ * The flag is the reliable signal; the second clause covers stubs written by
+ * builds that predate it. A real saved book always has at least chapter 1, so
+ * "has a file but no chapters" cannot be anything else.
+ */
+export function isMirrorStub(session) {
+  if (!session) return false;
+  if (session._mirrorStub) return true;
+  return !!session.filePath && !(session.chapters || []).length;
+}
+
+/**
+ * Turn a stub back into a preview-mode book, using a session freshly read from
+ * the stub's own file.
+ *
+ * Fails closed. A `fresh` that is null (unreadable file, revoked SAF grant, no
+ * filesystem on this platform) or that carries no chapters leaves the stub
+ * exactly as it was. That matters more than it looks: returning a chapter-less
+ * session with the stub flag cleared would tell every downstream guard the book
+ * is genuinely empty, and `isContentless` and `isTextKnown` are what stand
+ * between a failed read and an overwritten manuscript.
+ *
+ * Where the two copies disagree the stub wins, because the stub is the app's
+ * own record of live state and the file may predate an unsaved rename. Only
+ * fields the stub does not carry at all — authors, genre, cover, the chapter
+ * list itself — come from the file. `id` is forced from the stub even though
+ * the file has one of its own: the in-app id is what resume state, the widget
+ * links, the remembered large-book choice and `currentId` all point at, and
+ * adopting the file's id would quietly orphan every one of them.
+ */
+export function rehydrateStub(stub, fresh) {
+  if (!stub) return stub;
+  if (!fresh || !(fresh.chapters || []).length) return stub;
+
+  const preview = toPreviewSession(fresh);
+  // Drop the flag by omission rather than setting it false — `isMirrorStub`
+  // reads it as a boolean, but so does anything else that ever checks it, and
+  // a stale `_mirrorStub: false` on a normal book is a claim nobody needs.
+  const { _mirrorStub, ...carried } = stub;
+
+  return {
+    ...preview,
+    ...carried,
+    id:       stub.id,
+    chapters: preview.chapters,
+    content:  '',
+    _preview: true,
+  };
+}
+
 // ── Remembering the answer ───────────────────────────────────────────────────
 // Per book, not global: a writer may want one enormous manuscript deferred and
 // still open everything else normally.

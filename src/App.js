@@ -59,6 +59,7 @@ import { makeGate } from "./utils/exclusive";
 import {
   isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
   hasUnhydratedChapters, canDeferLoad, isTextKnown, getLargeBookChoice, setLargeBookChoice,
+  isMirrorStub, rehydrateStub,
 } from "./utils/largeBooks";
 import ExtensionPage from "./components/ExtensionPage";
 
@@ -1040,6 +1041,95 @@ function AppInner({ navigateRef }) {
     }
   }, [bootReady, sessions, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Rehydrating a degraded boot ──────────────────────────────────────────
+  // When the localStorage mirror hit its quota last session it was degraded to
+  // stubs, and stubs are all this launch had to boot from: the shelf lists
+  // every book and every one of them opens with no chapters. Nothing is lost —
+  // the .authbook files are whole and the save guards refuse to write a stub
+  // back over one — but it looks precisely like loss, and a writer has no way
+  // to tell the difference from the outside.
+  //
+  // Each stub carries the path to its own file, so the chapter list is one read
+  // away. Reading it turns the stub into a preview-mode book, which is a shape
+  // the app already renders, opens, hydrates chapter-by-chapter and refuses to
+  // clobber. No second mechanism, and no new screen: the shelf simply stops
+  // being wrong.
+  //
+  // Deliberately background and sequential rather than awaited at boot. Books
+  // appear immediately from the stubs and fill in behind that, because holding
+  // a blank screen behind a spinner while a shelf of large manuscripts is
+  // Reed-Solomon-verified one at a time is a worse launch than the bug.
+  //
+  // Runs once, but takes `sessions` as a dependency rather than reading
+  // sessionsRef: the ref is synced by an effect declared further down, so on
+  // the commit where bootReady flips it still holds the empty array this
+  // render started with, and the pass would find no stubs and never look
+  // again. Re-runs after the first are turned away by the ref below.
+  const stubsRehydrated = useRef(false);
+  const stubPassCancelled = useRef(false);
+  // Unmount only. Putting this in the pass's own effect would abort an
+  // in-flight rehydration every time a keystroke changed `sessions`.
+  useEffect(() => () => { stubPassCancelled.current = true; }, []);
+  useEffect(() => {
+    if (!bootReady || stubsRehydrated.current) return;
+    // Preview mode fetches bodies back from the file, so this is only
+    // meaningful where a file can actually be read. On the web build
+    // readSessionFromFile returns null for everything and the pass would be a
+    // loop of failures.
+    if (!android && !window.electron) return;
+    const stubs = (sessions || []).filter((s) => isMirrorStub(s) && s.filePath);
+    if (stubs.length === 0) return;
+    stubsRehydrated.current = true;
+
+    (async () => {
+      for (const stub of stubs) {
+        if (stubPassCancelled.current) return;
+        // Re-check against live state: the writer may have opened this book
+        // themselves while the pass was working through the shelf, in which
+        // case it is already loaded and reading the file again would be a
+        // waste at best and a stale overwrite at worst. By now every effect
+        // from the boot commit has run, so the ref is current.
+        const live = (sessionsRef.current || []).find((s) => s.id === stub.id);
+        if (!live || !isMirrorStub(live)) continue;
+
+        const fresh = await readSessionFromFile(live);
+        if (stubPassCancelled.current) return;
+        // A stub whose file will not read stays a stub. It is the honest
+        // answer, it keeps every save guard armed, and on Android the same
+        // launch already runs checkFileIntegrity, which reports unreadable
+        // files through a surface that exists for exactly this.
+        if (!fresh) continue;
+
+        setSessions((prev) => prev.map((s) => (
+          s.id === live.id && isMirrorStub(s) ? rehydrateStub(s, fresh) : s
+        )));
+
+        // Tell autosave this book is already on disk, because it is — the
+        // chapter list it now holds was read out of the file a line ago.
+        //
+        // Without this the pass below sees a book it has no fingerprint for,
+        // decides it is unsaved, and does the one thing this whole effect
+        // exists to avoid: reads every file again, hydrates every chapter into
+        // memory, and writes every manuscript back. That is not just wasted
+        // work at launch — a fully hydrated shelf is what overflowed the
+        // mirror in the first place, so it would degrade to stubs again on the
+        // next write and rehydrate again on the next launch, forever.
+        //
+        // Fingerprinted from `live` rather than from whatever the mapper
+        // produced. If the two have drifted — a rename in the moment between
+        // the read starting and finishing — the fingerprints will not match,
+        // autosave will save the book, and the rename reaches the file. The
+        // race resolves towards writing, which is the safe direction.
+        savedFingerprints.current.set(live.id, bookFingerprint(rehydrateStub(live, fresh)));
+
+        // A breather between books. Unpacking is synchronous and RS-verified,
+        // so back-to-back reads on a large shelf would hold the main thread
+        // through the whole launch.
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    })();
+  }, [bootReady, android, sessions]);
+
   // Persist sessions. Cover images live in the .authbook files on disk; keeping
   // their base64 in the localStorage mirror (N8) bloated it and could exceed the
   // ~5 MB quota, throwing here and silently killing all persistence. Strip heavy
@@ -1488,6 +1578,27 @@ function AppInner({ navigateRef }) {
   // lives in one big manuscript should be asked once, not every session.
   const [largeBookPrompt, setLargeBookPrompt] = useState(null); // the pending session
   const openBookNow = useCallback(async (id, { preview = false } = {}) => {
+    // A book the writer reaches before the background rehydration pass does.
+    // Same read, same conversion — just pulled forward, because opening the one
+    // book you want should not wait its turn behind the rest of the shelf.
+    const stub = sessionsRef.current?.find((s) => s.id === id);
+    if (stub && isMirrorStub(stub) && stub.filePath) {
+      const fresh = await readSessionFromFile(stub);
+      if (fresh) {
+        setSessions((prev) => prev.map((s) => (
+          s.id === id && isMirrorStub(s) ? rehydrateStub(s, fresh) : s
+        )));
+        // Same reason as the boot pass: what it holds came out of the file, so
+        // autosave has nothing to write and should not read it all back to
+        // find that out.
+        savedFingerprints.current.set(id, bookFingerprint(rehydrateStub(stub, fresh)));
+      }
+      // On failure it stays a stub and opens showing no chapters, which is what
+      // it did before any of this. Saying so is checkFileIntegrity's job — it
+      // runs at launch, owns the copy for an unreadable file, and duplicating
+      // it here would mean two different messages for one broken path.
+    }
+
     if (preview) {
       // Prove the file is readable BEFORE dropping the chapter bodies.
       //
