@@ -167,9 +167,25 @@ public class StreakWidgetConfigActivity extends AppCompatActivity {
                 .putString(StreakWidgetProvider.WIDGET_BOOK_PREFIX + widgetId, book.id)
                 .apply();
 
-        // Render the widget immediately
+        // Render the widget immediately — whichever kind is being configured.
+        //
+        // Both the streak widget and the countdown widget pick a book, so both
+        // point android:configure here rather than growing a second screen
+        // that would drift from this one. The launcher does not tell us which
+        // it is, but AppWidgetManager does: the widget's own provider info
+        // names the class.
         AppWidgetManager mgr = AppWidgetManager.getInstance(this);
-        StreakWidgetProvider.updateWidget(this, mgr, widgetId);
+        String provider = "";
+        try {
+            android.appwidget.AppWidgetProviderInfo info = mgr.getAppWidgetInfo(widgetId);
+            if (info != null && info.provider != null) provider = info.provider.getClassName();
+        } catch (Exception ignored) { /* fall through to the streak widget */ }
+
+        if (provider.endsWith("CountdownWidgetProvider")) {
+            CountdownWidgetProvider.updateWidget(this, mgr, widgetId);
+        } else {
+            StreakWidgetProvider.updateWidget(this, mgr, widgetId);
+        }
 
         // Return OK so the launcher places the widget
         Intent result = new Intent();

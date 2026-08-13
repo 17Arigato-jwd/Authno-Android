@@ -47,6 +47,9 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     // Quick-capture notes, for NotesWidgetProvider. The array is only the few
     // rows a widget can show; the total is stored separately so the header can
     // say how many there really are rather than how many fit.
+    // Today's deadline, computed in JS so the app and every widget agree on
+    // when a writing day ends — see utils/streakWindow.js.
+    static final String KEY_COUNTDOWN_JSON   = "authno_countdown";
     static final String KEY_NOTES_JSON       = "authno_notes";
     static final String KEY_NOTES_TOTAL      = "authno_notes_total";
 

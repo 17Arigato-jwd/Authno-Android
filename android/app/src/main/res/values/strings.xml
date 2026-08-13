@@ -12,5 +12,7 @@
     <string name="resume_widget_description">The chapter you were last writing in. Tap to pick up where you left off.</string>
     <string name="widget_description">Your writing streak for one book, with buttons to start writing, add a chapter, or switch which book it shows.</string>
     <string name="notes_widget_label">AuthNo Notes</string>
+    <string name="countdown_widget_label">AuthNo Countdown</string>
+    <string name="countdown_widget_description">Time left in today\'s writing day for one book, with how much you have written.</string>
     <string name="notes_widget_description">Jot an idea down without opening anything first, and reopen the last few you wrote.</string>
 </resources>

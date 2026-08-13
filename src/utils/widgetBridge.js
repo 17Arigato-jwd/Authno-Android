@@ -30,6 +30,7 @@
 import { useEffect } from 'react';
 import { booksWithStreaks, streaksEnabledGlobally, streaksEnabledFor } from './streakSettings';
 import { countWords } from './wordCount';
+import { countdownState, DEFAULT_GRACE_HOURS } from './streakWindow';
 
 // ── Capacitor plugin bridge ───────────────────────────────────────────────────
 
@@ -205,6 +206,23 @@ export async function syncWidget(sessions, accentHex, theme, settings) {
       notesTotal = noteCount();
     } catch { /* no notes store on this platform — the widget shows its empty state */ }
 
+    // The countdown widget's deadline. Computed here rather than natively so
+    // the widget, the app and any future surface cannot disagree about when a
+    // writing day ends — two surfaces disagreeing about a deadline is worse
+    // than neither having one. The widget is handed an absolute timestamp and
+    // lets the system tick it, so nothing has to wake up to keep it honest.
+    let countdownJson = '';
+    try {
+      const grace = settings?.streakGraceHours ?? DEFAULT_GRACE_HOURS;
+      const cd = countdownState({ graceHours: grace });
+      countdownJson = JSON.stringify({
+        deadline: cd.deadline,
+        dayKey: cd.dayKey,
+        inGrace: cd.inGrace,
+        graceHours: grace,
+      });
+    } catch { /* the widget falls back to its own midnight */ }
+
     await box.plugin.syncBooks({
       booksJson: JSON.stringify(slim),
       accentHex: accentHex ?? '#5a00d9',
@@ -215,6 +233,7 @@ export async function syncWidget(sessions, accentHex, theme, settings) {
       streaksOffJson: JSON.stringify(offIds),
       notesJson,
       notesTotal,
+      countdownJson,
     });
   } catch (err) {
     // Silently ignore — widget sync is best-effort
