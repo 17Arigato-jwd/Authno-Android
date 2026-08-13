@@ -8,7 +8,6 @@
  * every entry — non-manifest entries (or plain files) return null and are skipped.
  */
 
-import { isAndroid } from './platform';
 import { logError } from './ErrorLogger';
 import { APP_VERSION } from '../version';
 
@@ -89,22 +88,49 @@ async function loadManifest(dirName) {
 
 // ─── Discovery ────────────────────────────────────────────────────────────────
 
-export async function discoverExtensions() {
-  // ── Dev / web / Electron fallback ────────────────────────────────────────
-  if (!isAndroid()) {
-    try {
-      const raw = localStorage.getItem('__authno_dev_extensions');
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter(m => {
-        try { validateManifest(m); return true; } catch { return false; }
-      }) : [];
-    } catch {
-      return [];
-    }
+/**
+ * Hand-written manifests in localStorage.
+ *
+ * How an extension gets loaded without packing a .extbk first, and the only
+ * mechanism a browser tab has. Kept as one source among two rather than as the
+ * desktop branch — see discoverExtensions.
+ */
+function devStoreManifests() {
+  try {
+    const raw = localStorage.getItem('__authno_dev_extensions');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((m) => {
+      try { validateManifest(m); return true; } catch { return false; }
+    });
+  } catch {
+    return [];
   }
+}
 
-  // ── Android ───────────────────────────────────────────────────────────────
+/**
+ * Every extension this install can see.
+ *
+ * The filesystem scan runs on **every** platform, and that is the fix rather
+ * than an incidental tidy-up. It used to be the Android branch of an
+ * if/else whose other half read only the localStorage dev store — so on
+ * desktop, installing a .extbk wrote the manifest, the entry and every asset
+ * through `Filesystem` (whose web implementation is real, backed by
+ * IndexedDB), the InstallSheet ran all the way to "done"… and then discovery
+ * looked somewhere else entirely and found nothing. The extension installed
+ * perfectly and never appeared. Nothing in the codebase has ever *written*
+ * `__authno_dev_extensions`, so on desktop that branch could only ever return
+ * what somebody had typed into DevTools by hand.
+ *
+ * The dev store is still read, because typing a manifest in by hand is a
+ * legitimate way to develop one. It is merged rather than preferred: an
+ * installed copy of the same id wins, since that is the one whose files are
+ * actually on disk for `readExtensionFile` to load.
+ */
+export async function discoverExtensions() {
+  const found = new Map();
+
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
 
@@ -116,18 +142,16 @@ export async function discoverExtensions() {
       });
     } catch (_) {}
 
-    let files;
+    let files = [];
     try {
       const result = await Filesystem.readdir({
         path: EXTENSIONS_DIR,
         directory: Directory.Data,
       });
       files = result.files ?? [];
-    } catch {
-      return [];
-    }
+    } catch { files = []; }
 
-    // FIX: Capacitor 3 → string[], Capacitor 4+ → FileInfo[]
+    // Capacitor 3 → string[], Capacitor 4+ → FileInfo[].
     // Don't filter by .type (unreliable across versions).
     // Just attempt to load manifest.json from every entry name.
     const names = files
@@ -135,11 +159,14 @@ export async function discoverExtensions() {
       .filter(n => n.length > 0 && !n.startsWith('.'));
 
     const manifests = await Promise.all(names.map(name => loadManifest(name)));
-    return manifests.filter(Boolean);
+    for (const m of manifests) if (m) found.set(m.id, m);
   } catch (e) {
     logError('extensionLoader:discoverExtensions', e);
-    return [];
   }
+
+  for (const m of devStoreManifests()) if (!found.has(m.id)) found.set(m.id, m);
+
+  return [...found.values()];
 }
 
 // ─── Per-extension config ─────────────────────────────────────────────────────

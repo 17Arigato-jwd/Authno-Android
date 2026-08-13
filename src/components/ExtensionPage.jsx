@@ -167,8 +167,16 @@ function StatusBox({ icon, title, subtitle }) {
 // eslint-disable-next-line no-useless-concat
 const CLOSE_SCRIPT = '<' + '/script>';
 
+/**
+ * Read one file out of an installed extension.
+ *
+ * No platform check. It used to return null off Android, which meant that on
+ * desktop a UI page could only ever render its "could not read" error — and
+ * since installExtbkBytes writes through this same `Filesystem`, whose web
+ * implementation is backed by IndexedDB, the file it was refusing to read was
+ * sitting right there.
+ */
 async function readExtensionFile(extId, relPath) {
-  if (!isAndroid()) return null;
   const { Filesystem, Directory } = await import('@capacitor/filesystem');
   const r = await Filesystem.readFile({
     path: `AuthNo/extensions/${extId}/${relPath}`,
