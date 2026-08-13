@@ -1,5 +1,12 @@
 // main.js
-const { app, BrowserWindow, Menu, ipcMain, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, nativeImage, Notification } = require("electron");
+
+// Windows shows nothing at all for a notification from an app with no
+// AppUserModelId — no error, no toast, no entry in the Action Center. It must
+// match the installer's appId (package.json → build.appId) or the toast is
+// attributed to an app the shell has never heard of and is dropped. Harmless
+// on macOS and Linux, which ignore it.
+if (process.platform === "win32") app.setAppUserModelId("com.aurorastudios.authno");
 const path = require("path");
 const fs = require("fs");
 const { applyLinuxLauncherIcon } = require("./linuxIconTheme");
@@ -166,6 +173,33 @@ if (!gotTheLock) {
   // Open a URL in the OS browser. Renderer-supplied URLs are untrusted, so this
   // hard-refuses anything that isn't https — shell.openExternal on a file:// or
   // custom-scheme URL can launch local programs.
+  // ── Desktop notification ──────────────────────────────────────────────────
+  // Windows needs an AppUserModelId set before a notification will show at
+  // all (see app.setAppUserModelId near startup); Linux needs a running
+  // notification daemon, which most desktops have and a bare WM may not.
+  // isSupported() answers both, and answering "unsupported" honestly is more
+  // use to the settings screen than a silent no-op.
+  ipcMain.handle("notify", (_e, msg) => {
+    try {
+      if (!Notification.isSupported()) return { ok: false, reason: "unsupported" };
+      const title = String(msg?.title || "AuthNo");
+      const body = String(msg?.body || "");
+      const n = new Notification({ title, body, silent: false });
+      // Clicking it should bring the app back — a reminder you cannot act on
+      // from the notification is a reminder that costs you the trip anyway.
+      n.on("click", () => {
+        if (!mainWindow) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      });
+      n.show();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: String(e?.message || e) };
+    }
+  });
+
   ipcMain.handle("open-external", async (_e, url) => {
     try {
       const u = new URL(String(url));

@@ -18,6 +18,15 @@ contextBridge.exposeInMainWorld('electron', {
   //    address bar; main.js refuses anything that isn't https). ──
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // ── Desktop notifications ─────────────────────────────────────────────────
+  // Goes to the main process rather than using the renderer's own
+  // `new Notification()`. The renderer one is tied to the page: it looks
+  // like it works while the window is open and silently does nothing once
+  // it is hidden or minimised — which is precisely when a writing reminder
+  // is worth anything. Electron's main-process Notification reaches the
+  // Windows Action Center and a Linux notification daemon either way.
+  notify: (msg) => ipcRenderer.invoke('notify', msg),
+
   // ── App icon switcher (desktop) — swaps the taskbar/window icon at runtime ──
   setAppIcon: (id) => ipcRenderer.invoke('set-app-icon', id),
   getAppIcon: ()   => ipcRenderer.invoke('get-app-icon'),

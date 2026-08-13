@@ -91,6 +91,16 @@ export const DEFAULT_REMINDER = {
   minute: 0,
   /** Skip the nudge on days the goal is already met. */
   skipWhenMet: true,
+  /**
+   * The second slot, off by default even when the first is on.
+   *
+   * Two notifications a day is twice the intrusion, and it is not the app's
+   * call to make on somebody's lock screen. Switching the reminder on gets
+   * you one; asking for two is a separate, deliberate act.
+   */
+  secondEnabled: false,
+  secondHour: 9,
+  secondMinute: 0,
 };
 
 export function reminderConfig(settings) {
@@ -101,7 +111,40 @@ export function reminderConfig(settings) {
     hour: clampInt(r.hour, 0, 23, DEFAULT_REMINDER.hour),
     minute: clampInt(r.minute, 0, 59, DEFAULT_REMINDER.minute),
     skipWhenMet: r.skipWhenMet !== false,
+    secondEnabled: !!r.secondEnabled,
+    secondHour: clampInt(r.secondHour, 0, 23, DEFAULT_REMINDER.secondHour),
+    secondMinute: clampInt(r.secondMinute, 0, 59, DEFAULT_REMINDER.secondMinute),
   };
+}
+
+/**
+ * The times a reminder should actually fire at, in the order they occur.
+ *
+ * Returns one entry or two. Sorted rather than assumed: nothing stops somebody
+ * setting the "second" reminder to 7am and the first to 9pm, and an alarm that
+ * fires out of order would label the morning one as the evening slot and greet
+ * them with the wrong half of the copy.
+ *
+ * Two slots set to the same minute collapse to one. The alternative is two
+ * identical notifications arriving together, which reads as a bug.
+ */
+export function reminderSlots(settings) {
+  const cfg = reminderConfig(settings);
+  if (!cfg.enabled) return [];
+
+  const slots = [{ hour: cfg.hour, minute: cfg.minute }];
+  if (cfg.secondEnabled) slots.push({ hour: cfg.secondHour, minute: cfg.secondMinute });
+
+  const seen = new Set();
+  return slots
+    .filter((s) => {
+      const key = `${s.hour}:${s.minute}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (a.hour - b.hour) || (a.minute - b.minute))
+    .map((s) => ({ ...s, slot: s.hour >= 12 ? 'evening' : 'morning' }));
 }
 
 /**

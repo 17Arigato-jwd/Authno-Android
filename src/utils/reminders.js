@@ -13,7 +13,7 @@
  * to get it.
  */
 
-import { reminderConfig, shouldScheduleReminder } from './streakSettings';
+import { reminderConfig, reminderSlots, shouldScheduleReminder } from './streakSettings';
 import { isAndroid } from './platform';
 
 let _cache = null;
@@ -60,6 +60,40 @@ export async function requestNotificationPermission() {
   }
 }
 
+/**
+ * Whether the OS will actually let the alarm run in the background.
+ *
+ * Separate from the notification permission and far less understood. An
+ * aggressive OEM power manager will silently drop a repeating alarm from an
+ * app it considers idle, and the writer experiences that as the reminder
+ * being broken rather than as a setting they have never seen. Asked so the
+ * settings screen can say what is happening; never demanded.
+ *
+ * @returns {Promise<'unrestricted'|'restricted'|'unavailable'>}
+ */
+export async function checkBackgroundAllowed() {
+  const box = await getPlugin();
+  if (!box) return 'unavailable';
+  try {
+    const res = await box.plugin.checkBackgroundAllowed();
+    return res?.status === 'restricted' ? 'restricted' : 'unrestricted';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+/** Open the system screen where that restriction can be lifted. */
+export async function openBackgroundSettings() {
+  const box = await getPlugin();
+  if (!box) return false;
+  try {
+    await box.plugin.openBackgroundSettings();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** What the system currently thinks, without prompting. */
 export async function checkNotificationPermission() {
   const box = await getPlugin();
@@ -90,10 +124,16 @@ export async function syncReminder(sessions, settings) {
       return 'cancelled';
     }
     const cfg = reminderConfig(settings);
+    const slots = reminderSlots(settings);
     await box.plugin.schedule({
       hour: cfg.hour,
       minute: cfg.minute,
       skipWhenMet: cfg.skipWhenMet,
+      // The second slot rides alongside rather than replacing the first two
+      // fields, so a build of the app running against an older native side
+      // keeps its single daily reminder instead of losing it to an argument
+      // it does not understand.
+      slotsJson: JSON.stringify(slots),
     });
     return 'scheduled';
   } catch {

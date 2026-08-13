@@ -47,7 +47,54 @@ describe('scheduling', () => {
       streakReminder: { enabled: true, hour: 7, minute: 5 },
     }));
     expect(out).toBe('scheduled');
-    expect(calls).toEqual([{ hour: 7, minute: 5, skipWhenMet: true }]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ hour: 7, minute: 5, skipWhenMet: true });
+  });
+
+  /**
+   * The second slot travels as its own field rather than replacing hour and
+   * minute, so a build of the app running against an older native side keeps
+   * its single daily reminder instead of losing it to an argument the plugin
+   * does not understand.
+   */
+  test('one slot by default, and the legacy fields still carry it', async () => {
+    const calls = [];
+    const m = mockPlugin({ schedule: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.syncReminder([book()], {
+      streakReminder: { enabled: true, hour: 20, minute: 0 },
+    }));
+    expect(JSON.parse(calls[0].slotsJson)).toEqual([{ hour: 20, minute: 0, slot: 'evening' }]);
+    expect(calls[0].hour).toBe(20);
+  });
+
+  test('a second reminder is sent as a second slot, in time order', async () => {
+    const calls = [];
+    const m = mockPlugin({ schedule: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.syncReminder([book()], {
+      streakReminder: {
+        enabled: true, hour: 20, minute: 0,
+        secondEnabled: true, secondHour: 9, secondMinute: 30,
+      },
+    }));
+    // Sorted, not as configured: an alarm firing out of order would greet the
+    // morning with the evening's half of the copy.
+    expect(JSON.parse(calls[0].slotsJson)).toEqual([
+      { hour: 9, minute: 30, slot: 'morning' },
+      { hour: 20, minute: 0, slot: 'evening' },
+    ]);
+  });
+
+  test('two reminders set to the same minute collapse to one', async () => {
+    const calls = [];
+    const m = mockPlugin({ schedule: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.syncReminder([book()], {
+      streakReminder: {
+        enabled: true, hour: 20, minute: 0,
+        secondEnabled: true, secondHour: 20, secondMinute: 0,
+      },
+    }));
+    // Two identical notifications arriving together reads as a bug.
+    expect(JSON.parse(calls[0].slotsJson)).toHaveLength(1);
   });
 
   test('cancels rather than schedules when the reminder is off', async () => {

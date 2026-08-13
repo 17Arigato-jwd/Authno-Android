@@ -9,7 +9,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
+
+import androidx.core.app.NotificationCompat;
 
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
@@ -111,6 +116,113 @@ public class RemindersPlugin extends Plugin {
 
         ensureChannel(ctx);
         arm(ctx);
+        call.resolve();
+    }
+
+    /**
+     * Post a notification immediately — what the "Send a test notification"
+     * button calls.
+     *
+     * Deliberately goes through the same channel and the same permission a
+     * scheduled reminder uses. A test that posted on its own channel could
+     * come through cheerfully while the real reminder was blocked by a
+     * per-channel toggle the writer had forgotten about, which would make the
+     * button worse than useless: it would certify a path that does not work.
+     *
+     * A different notification id, though, so testing does not quietly
+     * dismiss or replace a real reminder sitting on the shade.
+     */
+    @PluginMethod
+    public void showNow(PluginCall call) {
+        Context ctx = getContext();
+        JSObject out = new JSObject();
+
+        if (!hasPermission(ctx)) {
+            out.put("status", "denied");
+            call.resolve(out);
+            return;
+        }
+
+        ensureChannel(ctx);
+
+        Intent open = new Intent(ctx, MainActivity.class);
+        open.setAction(Intent.ACTION_MAIN);
+        open.putExtra("authnoAction", "resume");
+        open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pi = PendingIntent.getActivity(ctx, ALARM_REQUEST_CODE + 2,
+                open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_authno)
+                .setContentTitle(call.getString("title", "AuthNo"))
+                .setContentText(call.getString("body", ""))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .setContentIntent(pi);
+
+        try {
+            NotificationManagerCompat.from(ctx).notify(NOTIFICATION_ID + 1, b.build());
+            out.put("status", "shown");
+        } catch (SecurityException e) {
+            out.put("status", "denied");
+        }
+        call.resolve(out);
+    }
+
+    /**
+     * Whether this app is exempt from battery optimisation.
+     *
+     * This is the difference between a reminder that arrives and one that does
+     * not, on a great many devices. setInexactRepeating is a request, and
+     * aggressive OEM power managers — Xiaomi, Huawei, Oppo, Samsung to a
+     * lesser degree — will drop an alarm from an app they have decided is
+     * idle. The writer experiences that as the feature being broken, so the
+     * settings screen needs to be able to say what is actually happening.
+     *
+     * Reported, never demanded: this is checked so the app can explain, and
+     * the request below only ever happens when somebody asks for it.
+     */
+    @PluginMethod
+    public void checkBackgroundAllowed(PluginCall call) {
+        JSObject out = new JSObject();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            // No such restriction existed yet, so nothing can be exempt from it.
+            out.put("status", "unrestricted");
+            call.resolve(out);
+            return;
+        }
+        Context ctx = getContext();
+        PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+        boolean ok = pm != null && pm.isIgnoringBatteryOptimizations(ctx.getPackageName());
+        out.put("status", ok ? "unrestricted" : "restricted");
+        call.resolve(out);
+    }
+
+    /**
+     * Open the system screen where the writer can lift the restriction.
+     *
+     * ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS shows a system dialog but
+     * requires a permission Google Play treats as a policy matter, so this
+     * takes the honest route: the settings list, where the choice is theirs
+     * and visibly theirs. Falls back to the app's own settings page if the
+     * device has no such screen.
+     */
+    @PluginMethod
+    public void openBackgroundSettings(PluginCall call) {
+        Context ctx = getContext();
+        try {
+            Intent i = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+        } catch (Exception e) {
+            try {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + ctx.getPackageName()));
+                i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+            } catch (Exception ignored) { /* nothing else to try */ }
+        }
         call.resolve();
     }
 
