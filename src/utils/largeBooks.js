@@ -25,7 +25,7 @@
  * ever treats null and empty as interchangeable.
  */
 
-import { countWords } from './wordCount';
+import { countWords, plainText } from './wordCount';
 
 /** A book at or above this is offered deferred loading. */
 export const LARGE_BOOK_BYTES = 5 * 1024 * 1024;
@@ -143,6 +143,33 @@ export function isTextKnown(session) {
   // predates the _mirrorStub flag. A real book always has at least chapter 1.
   if (session.filePath && !(session.chapters || []).length) return false;
   return true;
+}
+
+/**
+ * True when this is a fresh, untitled, genuinely empty book — one that "start
+ * on a blank page" can reuse rather than stacking another Untitled Book beside
+ * it on every launch.
+ *
+ * `isTextKnown` is checked FIRST and is not an optimisation. A book whose text
+ * is not in memory — preview mode, a quota-degraded stub — reads as empty to
+ * any check that inspects content, without being empty. Reusing one drops the
+ * writer into their real manuscript believing it is a fresh blank page.
+ *
+ * The emptiness test goes through plainText rather than stripping tags inline,
+ * and that is the fix rather than tidiness: the inline version did not decode
+ * entities, so `<p>&nbsp;</p>` read as text. contenteditable emits non-breaking
+ * spaces routinely — pressing space in an empty paragraph is enough — so a book
+ * that looked blank to its writer failed this test, and the blank-page setting
+ * stacked a new book anyway. Which is the exact pile-up this predicate exists
+ * to prevent.
+ */
+export function isPristineBook(session) {
+  if (!session) return false;
+  if (session.type !== 'book') return false;
+  if (session.title && session.title !== 'Untitled Book') return false;
+  if (!isTextKnown(session)) return false;
+  if (plainText(session.content)) return false;
+  return (session.chapters || []).every((c) => !plainText(c?.content));
 }
 
 /**

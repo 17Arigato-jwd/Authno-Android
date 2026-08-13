@@ -417,6 +417,7 @@ export default function HomeScreen({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button ref={burgerBtnRef} onClick={onToggleMenu}
+            aria-label="Menu"
             style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', transition: 'background 0.15s', color: 'var(--text-1)' }}>
             <DSIcons.MoreVertical size={20} color="var(--text-1)" style={{ display: 'block' }} />
           </button>
