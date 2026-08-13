@@ -6,6 +6,8 @@
  * see the same rule in ThreadLayer.jsx anchor insertion).
  */
 
+import { countWordsIn } from './wordCount';
+
 // ── Range helpers ─────────────────────────────────────────────────────────────
 
 function selectionRangeIn(editorEl) {
@@ -154,7 +156,10 @@ export function sanitizePastedHtml(html) {
 export function textStats(html) {
   const text = htmlToText(html);
   const trimmed = text.trim();
-  const words = trimmed ? trimmed.split(/\s+/).filter(Boolean).length : 0;
+  // Not a space-split: these numbers are shown per chapter, and a chapter of
+  // Japanese, Chinese or Thai has no spaces in it, so that reported 1 word and
+  // a reading time of "< 1 min" for the whole thing.
+  const words = countWordsIn(trimmed);
   const charsWithSpaces = text.length;
   const charsNoSpaces = text.replace(/\s/g, '').length;
   const sentences = trimmed ? (trimmed.match(/[.!?…]+(?=\s|$)/g) || []).length || (words > 0 ? 1 : 0) : 0;

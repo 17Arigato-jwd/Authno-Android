@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { DSIcons, CloseButton } from '../DesignSystem';
 import { isAndroid } from '../utils/platform';
+import { countWordsIn } from '../utils/wordCount';
 
 function Row({ icon: Icon, title, subtitle, accent, onClick, accentHex }) {
   return (
@@ -55,7 +56,7 @@ export default function ShareImportSheet({ text, subject, sessions, accentHex, o
     .sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
 
   const preview = (text || '').trim().slice(0, 120);
-  const wordCount = (text || '').trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = countWordsIn(text);
 
   const chapters = book ? [...(book.chapters || [])].sort((a, b) => a.order - b.order) : [];
 

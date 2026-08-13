@@ -22,7 +22,7 @@
  * .authbook (authbook.js strips `baseline` and provisional entries on save).
  */
 
-import { countWords as wordCountOf } from './wordCount';
+import { countWords as wordCountOf, countWordsIn } from './wordCount';
 
 export const SESSION_HISTORY_LIMIT = 50;
 export const BOOK_HISTORY_LIMIT = 10;
@@ -188,11 +188,11 @@ export function diffBlocks(beforeHtml, afterHtml) {
     }
     for (let k = paired; k < dels.length; k++) {
       const B = a[dels[k]];
-      ops.push({ type: 'removed', before: B, aIndex: dels[k], bIndex: bFrom + paired, words: B.text ? B.text.split(' ').length : 0 });
+      ops.push({ type: 'removed', before: B, aIndex: dels[k], bIndex: bFrom + paired, words: countWordsIn(B.text) });
     }
     for (let k = paired; k < adds.length; k++) {
       const A = b[adds[k]];
-      ops.push({ type: 'added', after: A, aIndex: aFrom + paired, bIndex: adds[k], words: A.text ? A.text.split(' ').length : 0 });
+      ops.push({ type: 'added', after: A, aIndex: aFrom + paired, bIndex: adds[k], words: countWordsIn(A.text) });
     }
   };
 

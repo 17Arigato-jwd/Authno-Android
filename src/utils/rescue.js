@@ -18,9 +18,24 @@
  *     we detect that and say so rather than handing over a blank file.
  */
 
-const MIRROR_KEY = 'offlineWriterSessions';
+// The shared strip and counter. rescue.js is the escape hatch and stays
+// dependency-light on purpose, and wordCount.js imports nothing at all, so
+// this costs it no reachability.
+//
+// It used to carry its own copy of both, and both were wrong in the same way
+// every other counter in the app was before they were consolidated: the strip
+// did not decode entities, and the count was `text.split(' ')`. That split
+// returns 1 for an entire chapter of Japanese, Chinese or Thai, which do not
+// put spaces between words.
+//
+// This screen is the one that mattered most. It is what somebody locked out
+// sees, its whole job is helping them recognise their own books, and it was
+// telling every writer working in those scripts that each manuscript held one
+// word. The comment on bookWordCount already said a count that does not match
+// their book is the last thing this screen should offer.
+import { plainText, countWords } from './wordCount';
 
-const plain = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const MIRROR_KEY = 'offlineWriterSessions';
 
 /**
  * Words across every chapter, or the legacy top-level body — never both.
@@ -37,10 +52,7 @@ const plain = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/\s+
 export function bookWordCount(session) {
   const chapters = session?.chapters || [];
   const parts = chapters.length ? chapters.map((c) => c?.content) : [session?.content];
-  return parts.reduce((n, part) => {
-    const text = plain(part);
-    return n + (text ? text.split(' ').length : 0);
-  }, 0);
+  return parts.reduce((n, part) => n + countWords(part), 0);
 }
 
 /**
@@ -50,8 +62,8 @@ export function bookWordCount(session) {
  */
 export function isStub(session) {
   if (!session) return true;
-  const hasChapterText = (session.chapters || []).some((c) => plain(c?.content));
-  return !hasChapterText && !plain(session.content);
+  const hasChapterText = (session.chapters || []).some((c) => plainText(c?.content));
+  return !hasChapterText && !plainText(session.content);
 }
 
 /**
