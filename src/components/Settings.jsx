@@ -12,7 +12,6 @@ import { useMotionEnabled, PRESS, SPRING } from '../utils/motion';
 
 // ── DesignSystem imports (all shared UI comes from here now) ──────────────────
 import {
-  COLORS, TYPOGRAPHY,
   Toggle, ColorSwatchRow,
   AboutSection,
   DSIcons,
@@ -1566,13 +1565,12 @@ export const DEFAULT_SETTINGS = {
 };
 
 export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave, onClearSessions, onOpenCustomizer, onOpenFontCustomizer, sessions = [], onSessionChange, onSeeChanges, onStartTour, onReplayWelcome, onSignOut }) {
-  const { theme, switchTheme } = useTheme();
+  const { switchTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('general');
   const [query, setQuery] = useState('');           // sidebar settings search (beta.2)
   const isPortrait = useIsPortrait();
 
   const extSettingsItems = useExtensionContributions('settings');
-  const { navigate }     = useExtensions();
 
   const isExtSection = extSettingsItems.some(item => activeSection === `ext::${item._extId}::${item.id}`);
 
@@ -1597,7 +1595,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
           HardDrive: 'Package', Server: 'Package', Box: 'Package', Database: 'Package',
           BookOpen: 'BookOpen', Zap: 'Lightning' };
         const dsKey = item.icon && DS_MAP[item.icon];
-        if (dsKey && DSIcons[dsKey]) { const _C = DSIcons[dsKey]; return (props) => <_C {...props} />; }
+        if (dsKey && DSIcons[dsKey]) { const Mapped = DSIcons[dsKey]; return (props) => <Mapped {...props} />; }
         const fallback = item._extIcon ?? item.icon;
         if (!fallback) return (props) => <DSIcons.Extension {...props} />;
         return () => <span style={{ fontSize: '16px', lineHeight: 1 }}>{fallback}</span>;

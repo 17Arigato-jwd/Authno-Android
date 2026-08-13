@@ -18,7 +18,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces, webFontsEnabled } from '../utils/fontManager';
 import { isAndroid } from '../utils/platform';
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { createPortal } from 'react-dom';
-import { GradientButton, MinimalButton, COLORS, DSIcons } from '../DesignSystem';
+import { DSIcons } from '../DesignSystem';
 
 /**
  * Shown on startup when one or more saved file paths are no longer accessible.

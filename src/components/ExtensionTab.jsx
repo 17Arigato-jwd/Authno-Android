@@ -115,7 +115,7 @@ const CHIPS_VISIBLE_DEFAULT = 3;
 
 
 function ExtensionCard({ ext, accentHex, session, onClose }) {
-  const { navigate, refresh, clearConfig, uninstall } = useExtensions();
+  const { navigate, clearConfig, uninstall } = useExtensions();
   const [expanded, setExpanded] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);

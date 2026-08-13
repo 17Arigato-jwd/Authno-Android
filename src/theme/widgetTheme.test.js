@@ -34,7 +34,11 @@ describe('buildWidgetTheme', () => {
   });
 
   THEMES.forEach((theme) => {
-    describe(theme.meta?.id ?? 'unnamed', () => {
+    // The suite is generated from the theme registry on purpose — a theme
+    // added later gets covered without anyone remembering to add a describe.
+    // That makes the title dynamic, which is the only thing the rule objects to.
+    // eslint-disable-next-line jest/valid-title
+    describe(String(theme.meta?.id ?? 'unnamed'), () => {
       const w = buildWidgetTheme(theme);
 
       it('sends a colour the native parser accepts for every field', () => {

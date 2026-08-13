@@ -12,8 +12,6 @@
  *   </ProGate>
  */
 
-import { useState, useEffect } from 'react';
-import { isPro } from '../utils/entitlements';
 import { useEntitlement } from '../utils/useEntitlement';
 import { openBilling } from '../utils/billingBus';
 import { GradientButton, Badge, COLORS } from '../DesignSystem';

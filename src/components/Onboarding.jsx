@@ -357,7 +357,7 @@ export function Onboarding({ accentHex = "#5a00d9", onDone, onStartTour }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [page, onDone, pages.length]);
+  }, [page, onDone, pages.length, current.permissionPage]);
 
   // Seeing (or skipping) the tour once is enough — it used to persist only
   // when the "don't show again" box was ticked, so it replayed on every
@@ -608,7 +608,7 @@ export function UpdateOnboarding({ accentHex = "#5a00d9", onDone }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [page, isLast, onDone]);
+  }, [page, isLast, onDone, current.permissionPage]);
 
   const finish = async () => { await markUpdateSeen(); onDone?.(); };
   const next = async () => {

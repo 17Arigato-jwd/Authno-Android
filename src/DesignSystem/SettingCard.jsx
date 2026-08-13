@@ -30,7 +30,7 @@
  *   />
  */
 
-import { COLORS, TYPOGRAPHY, RADIUS, SPACING } from './tokens';
+import { COLORS, TYPOGRAPHY, RADIUS } from './tokens';
 import { Toggle } from './Toggle';
 import { MinimalButton } from './Buttons';
 import { OptionSelector } from './Controls';

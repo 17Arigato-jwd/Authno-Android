@@ -159,7 +159,13 @@ function StatusBox({ icon, title, subtitle }) {
 // Message protocol (parent → iframe):
 //   { type: 'api-result', id, result?, error? }      — response to api-call
 
-const EXT_BASE = 'https://localhost/extensions';
+// Assembled from two pieces so the literal sequence never appears in this
+// module's source. It is written into an iframe srcdoc, but if a build step
+// ever inlines this chunk into an HTML document the parser would treat the
+// sequence as the end of the surrounding script. A backslash escape does the
+// same job and reads to eslint as a useless escape, which it is not.
+// eslint-disable-next-line no-useless-concat
+const CLOSE_SCRIPT = '<' + '/script>';
 
 async function readExtensionFile(extId, relPath) {
   if (!isAndroid()) return null;
@@ -177,8 +183,13 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(true);
   const iframeRef               = useRef(null);
-  const pendingRef              = useRef({});   // id → { resolve, reject }
-  const msgIdRef                = useRef(0);
+
+  // Held in a ref so the message listener below always reaches the current
+  // handler. Listing onBack as a dependency would tear the listener down and
+  // rebuild it on every parent render that produces a fresh closure; leaving
+  // it out entirely would let the listener call a stale one.
+  const onBackRef               = useRef(onBack);
+  useEffect(() => { onBackRef.current = onBack; }, [onBack]);
 
   // ── Build srcdoc ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -338,12 +349,12 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
   <style>
     html, body { margin: 0; padding: 0; background: transparent; }
   </style>
-  <script>${bridgeShim}<\/script>
+  <script>${bridgeShim}${CLOSE_SCRIPT}
 </head>
 <body>
   <script type="module">
 ${fileCode}
-  <\/script>
+  ${CLOSE_SCRIPT}
 </body>
 </html>`;
 
@@ -374,7 +385,7 @@ ${fileCode}
       const msg = e.data;
       // ext-close: ConflictResolution (or any iframe page) signals a back navigation
       if (msg?.type === 'ext-close' && e.source === iframeRef.current?.contentWindow) {
-        onBack?.();
+        onBackRef.current?.();
         return;
       }
       if (!msg || msg.type !== 'api-call' || e.source !== iframeRef.current?.contentWindow) return;

@@ -44,7 +44,7 @@ import BookStudio from "./components/BookStudio";
 import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
-import { subscribeBilling, openBilling } from "./utils/billingBus";
+import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
 import { startTrialMock } from "./utils/entitlements";
@@ -212,6 +212,18 @@ function Editor({
   }, [current]);
 
   useEffect(() => { setTitle(chapterTitle ?? current?.title ?? ""); }, [current, chapterTitle]);
+  // Loads a chapter's text into the editor when you switch to it. The deps are
+  // the identity of what is being edited — the book and the chapter — and NOT
+  // its content, even though the effect reads it.
+  //
+  // Adding `current.content` (which is what exhaustive-deps asks for) would put
+  // this effect on the typing path. Writes to the editor are debounced, so
+  // between keystroke and flush the state holds text that is one beat behind
+  // the DOM. The effect would see that difference, decide the DOM is wrong, and
+  // assign the older string over what was just typed — losing the newest
+  // characters, the caret and the native undo stack (4B). The guard below does
+  // not save it: the whole point of the guard is that it writes when the two
+  // differ, and here they differ in the DOM's favour.
   useEffect(() => {
     // Only overwrite the DOM when the incoming content actually differs from
     // what's already rendered. Blindly assigning innerHTML on every dependency
@@ -220,6 +232,7 @@ function Editor({
       const next = current.content || "";
       if (editorRef.current.innerHTML !== next) editorRef.current.innerHTML = next;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, current?._editingChap]);
 
   const execCommand = (cmd, val = null) => {
