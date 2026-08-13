@@ -1176,9 +1176,18 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
    */
   const sendTest = async () => {
     setTestResult('sending');
+    // The writer's real goal, resolved exactly the way every other row on this
+    // screen resolves it: the book's own target if it has one, otherwise the
+    // global default. This read settings.dailyGoal, which is not a key that
+    // exists anywhere — so the test always announced a hardcoded 300 whatever
+    // the writer had set. A test notification that shows the wrong number is
+    // worth less than no test notification, because it certifies a lie.
+    const goalWords = selectedBook?.streak?.goalWords ?? settings?.dailyWordGoal ?? 500;
     const msg = buildReminder({
-      streakDays: 0,
-      goalWords: settings?.dailyGoal ?? 300,
+      // The live streak too, so what arrives is a real sample of tonight's
+      // reminder rather than a permanent first-run placeholder.
+      streakDays: Number(selectedBook?.streak?.current) || 0,
+      goalWords,
       wordsToday: 0,
       bookTitle: selectedBook?.title,
       hour: reminder.hour,
