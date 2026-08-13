@@ -119,6 +119,7 @@ export function ChapterRow({
               <button
                 onClick={onMoveUp}
                 disabled={!canMoveUp}
+                aria-label="Move chapter up"
                 style={{
                   width: '22px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'none', border: 'none', cursor: canMoveUp ? 'pointer' : 'default',
@@ -132,6 +133,7 @@ export function ChapterRow({
               <button
                 onClick={onMoveDown}
                 disabled={!canMoveDown}
+                aria-label="Move chapter down"
                 style={{
                   width: '22px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'none', border: 'none', cursor: canMoveDown ? 'pointer' : 'default',

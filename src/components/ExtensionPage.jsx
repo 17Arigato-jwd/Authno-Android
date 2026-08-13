@@ -168,6 +168,21 @@ function StatusBox({ icon, title, subtitle }) {
 const CLOSE_SCRIPT = '<' + '/script>';
 
 /**
+ * Bridge tracing, off in a shipped build.
+ *
+ * These fire per CALL, not per session — every provider method an extension
+ * invokes announced itself in the console, naming the provider and the method.
+ * That is useful while writing an extension and is noise in a writer's console,
+ * where the only things worth interrupting for are warnings and errors. Same
+ * gate widgetBridge uses; install and uninstall still log unconditionally
+ * because those happen once and are the first thing worth knowing when an
+ * install goes wrong.
+ */
+const bridgeTrace = (...args) => {
+  if (process.env.NODE_ENV === 'development') console.debug('[ext-bridge]', ...args);
+};
+
+/**
  * Read one file out of an installed extension.
  *
  * No platform check. It used to return null off Android, which meant that on
@@ -510,10 +525,10 @@ ${fileCode}
             'syncNow not available on CloudBackupAPI. ' +
             'The extension may not be fully activated yet — try reopening Cloud Backup.'
           );
-          console.log('[ext-bridge] syncNow started');
+          bridgeTrace('syncNow started');
           try {
             await api.syncNow();
-            console.log('[ext-bridge] syncNow finished');
+            bridgeTrace('syncNow finished');
           } catch (err) {
             throw new Error(`syncNow failed: ${err.message}`);
           }
@@ -534,7 +549,7 @@ ${fileCode}
             `Provider '${providerKey}' has no method '${providerMethod}'. ` +
             `Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(provider)).filter(k => k !== 'constructor').join(', ')}`
           );
-          console.log(`[ext-bridge] provider.${providerMethod}(${providerKey}, ...)`);
+          bridgeTrace(`provider.${providerMethod}(${providerKey}, ...)`);
           try {
             result = await provider[providerMethod](...methodArgs);
           } catch (err) {

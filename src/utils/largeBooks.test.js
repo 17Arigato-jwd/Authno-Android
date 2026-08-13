@@ -1,7 +1,7 @@
 import {
   estimateBookBytes, isLargeBook, shouldWarn, formatSize, snippetOf,
   isUnhydrated, hasUnhydratedChapters, toPreviewSession, hydrateChapter, hydrateAll, canDeferLoad, isTextKnown,
-  isMirrorStub, rehydrateStub,
+  isMirrorStub, rehydrateStub, isPristineBook,
   LARGE_BOOK_BYTES, WARN_BOOK_BYTES,
 } from './largeBooks';
 
@@ -353,5 +353,84 @@ describe('rehydrateStub', () => {
 
   test('nothing in, nothing out', () => {
     expect(rehydrateStub(null, onDisk())).toBeNull();
+  });
+});
+
+// ── isPristineBook ───────────────────────────────────────────────────────────
+
+describe('isPristineBook', () => {
+  const untitled = (chapters, over = {}) => ({
+    id: 'b1', type: 'book', title: 'Untitled Book', chapters, ...over,
+  });
+
+  test('an untitled book with one empty chapter is pristine', () => {
+    expect(isPristineBook(untitled([chap(1, '')]))).toBe(true);
+  });
+
+  test('so is one with no title at all', () => {
+    expect(isPristineBook(untitled([chap(1, '')], { title: '' }))).toBe(true);
+  });
+
+  /**
+   * The bug this was extracted for. contenteditable emits &nbsp; routinely —
+   * pressing space in an empty paragraph is enough — and the old inline check
+   * stripped tags without decoding entities, so this read as text. The book
+   * looked blank to its writer, failed the test, and "start on a blank page"
+   * stacked another Untitled Book beside it. Which is the pile-up the whole
+   * predicate exists to prevent.
+   */
+  test('a chapter holding only a non-breaking space is still pristine', () => {
+    expect(isPristineBook(untitled([chap(1, '<p>&nbsp;</p>')]))).toBe(true);
+    expect(isPristineBook(untitled([chap(1, '<p>&NBSP;</p>')]))).toBe(true);
+  });
+
+  test('markup with no text in it is still pristine', () => {
+    expect(isPristineBook(untitled([chap(1, '<p><br></p>')]))).toBe(true);
+    expect(isPristineBook(untitled([chap(1, '<p>   </p>')]))).toBe(true);
+  });
+
+  test('one real word anywhere is not', () => {
+    expect(isPristineBook(untitled([chap(1, '<p>word</p>')]))).toBe(false);
+    expect(isPristineBook(untitled([chap(1, ''), chap(2, '<p>word</p>')]))).toBe(false);
+  });
+
+  test('legacy flat content counts too', () => {
+    expect(isPristineBook(untitled([], { content: '<p>word</p>' }))).toBe(false);
+    expect(isPristineBook(untitled([], { content: '<p>&nbsp;</p>' }))).toBe(true);
+  });
+
+  test('a named book is never pristine, however empty', () => {
+    expect(isPristineBook(untitled([chap(1, '')], { title: 'The Long Novel' }))).toBe(false);
+  });
+
+  test('a storyboard is not a blank book to reuse', () => {
+    expect(isPristineBook(untitled([chap(1, '')], { type: 'storyboard' }))).toBe(false);
+  });
+
+  /**
+   * The isTextKnown guard, which is the dangerous half. A preview book or a
+   * quota-degraded stub reads as empty to any content check without being
+   * empty — reusing one drops the writer into their real manuscript believing
+   * it is a fresh blank page.
+   */
+  test('a preview-mode book is NOT pristine even though it looks empty', () => {
+    const preview = toPreviewSession({
+      id: 'b1', type: 'book', title: 'Untitled Book',
+      filePath: 'content://x/1', chapters: [chap(1, '<p>a whole novel</p>')],
+    });
+    expect(preview.chapters[0].content).toBeNull();
+    expect(isPristineBook(preview)).toBe(false);
+  });
+
+  test('nor is a quota-degraded stub', () => {
+    expect(isPristineBook({
+      id: 'b1', type: 'book', title: 'Untitled Book',
+      filePath: 'content://x/1', _mirrorStub: true,
+    })).toBe(false);
+  });
+
+  test('nothing is not pristine', () => {
+    expect(isPristineBook(null)).toBe(false);
+    expect(isPristineBook(undefined)).toBe(false);
   });
 });

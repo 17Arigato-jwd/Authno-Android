@@ -559,6 +559,7 @@ export default function BookDashboard({
               </span>
             )}
             <button ref={burgerBtnRef} onClick={onToggleMenu}
+              aria-label="Menu"
               style={{ padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--text-1)', transition: 'background 0.15s' }}>
               <DSIcons.MoreVertical size={20} color="var(--text-1)" style={{ display: 'block' }} />
             </button>
@@ -944,7 +945,7 @@ export default function BookDashboard({
 
       {/* ── Scroll-to-top FAB ── */}
       {showScrollTop && (
-        <button onClick={scrollToTop} style={{
+        <button onClick={scrollToTop} aria-label="Scroll to top" style={{
           position: 'fixed', bottom: '28px', right: '20px',
           width: '50px', height: '50px', borderRadius: '50%',
           background: accentHex, border: 'none', color: 'var(--on-accent, #fff)',

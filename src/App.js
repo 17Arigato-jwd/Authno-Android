@@ -58,7 +58,7 @@ import { bookFingerprint } from "./utils/bookFingerprint";
 import { makeGate } from "./utils/exclusive";
 import {
   isLargeBook, toPreviewSession, isUnhydrated, hydrateChapter, hydrateAll,
-  hasUnhydratedChapters, canDeferLoad, isTextKnown, getLargeBookChoice, setLargeBookChoice,
+  hasUnhydratedChapters, canDeferLoad, isPristineBook, getLargeBookChoice, setLargeBookChoice,
   isMirrorStub, rehydrateStub,
 } from "./utils/largeBooks";
 import ExtensionPage from "./components/ExtensionPage";
@@ -1019,16 +1019,10 @@ function AppInner({ navigateRef }) {
     } else if (behavior === "blank") {
       // Reuse an existing pristine (empty, untitled) book instead of stacking a
       // fresh Untitled Book on every launch — the "blank keeps piling up" fix.
-      // isTextKnown first: a book whose text is not in memory — preview mode,
-      // a quota-degraded stub — reads as empty to the content checks below
-      // without being empty. Reusing one drops the writer into their real
-      // manuscript believing it is a fresh blank book.
-      const isPristine = (s) =>
-        s.type === "book" && (s.title === "Untitled Book" || !s.title) &&
-        isTextKnown(s) &&
-        !(s.content && s.content.replace(/<[^>]*>/g, "").trim()) &&
-        (s.chapters || []).every((c) => !(c.content && c.content.replace(/<[^>]*>/g, "").trim()));
-      const existing = sessions.find(isPristine);
+      // The predicate lives in largeBooks.js with the isTextKnown it depends on,
+      // and is tested there; it used to be inline here with its own tag-strip
+      // that could not see through &nbsp;.
+      const existing = sessions.find(isPristineBook);
       if (existing) { openBook(existing.id); return; }
       const now = new Date().toISOString();
       const blank = {
