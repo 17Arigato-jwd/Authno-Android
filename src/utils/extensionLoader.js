@@ -13,6 +13,13 @@ import { APP_VERSION } from '../version';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 
+/**
+ * Where a hand-written manifest goes. Exported because uninstall has to remove
+ * from it too — discovery reads two stores, so anything that claims to remove
+ * an extension has to know about both or the card comes straight back.
+ */
+export const DEV_STORE_KEY = '__authno_dev_extensions';
+
 // ─── Version comparison ───────────────────────────────────────────────────────
 
 /**
@@ -97,7 +104,7 @@ async function loadManifest(dirName) {
  */
 function devStoreManifests() {
   try {
-    const raw = localStorage.getItem('__authno_dev_extensions');
+    const raw = localStorage.getItem(DEV_STORE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];

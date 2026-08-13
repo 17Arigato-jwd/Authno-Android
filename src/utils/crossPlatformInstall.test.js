@@ -52,7 +52,14 @@ jest.mock('@capacitor/filesystem', () => ({
       }
       return { files: [...names].map((name) => ({ name, type: 'directory' })) };
     },
-    rmdir: async () => {},
+    // Throws on a missing directory, like the real one. That is not incidental
+    // detail — it is the exact condition uninstallExtension has to survive for
+    // a hand-written entry, which has no directory at all.
+    rmdir: async ({ path }) => {
+      const doomed = [...mockFiles.keys()].filter((p) => p === path || p.startsWith(`${path}/`));
+      if (doomed.length === 0) throw new Error(`no such directory: ${path}`);
+      for (const p of doomed) mockFiles.delete(p);
+    },
   },
 }), { virtual: true });
 
@@ -181,6 +188,51 @@ describe('the hand-written dev store', () => {
     const found = await discoverExtensions();
     expect(found).toHaveLength(1);
     expect(found[0].name).toBe('Demo');
+  });
+
+  /**
+   * Uninstall has to reach both stores, because discovery reads both. It used
+   * to only rmdir: for a hand-written entry that threw (no such directory), the
+   * card reported "Could not remove", and the extension was still in the list
+   * afterwards because the dev store still held it. Failed and didn't take.
+   */
+  test('uninstalling a hand-written entry actually removes it', async () => {
+    localStorage.setItem('__authno_dev_extensions', JSON.stringify([devEntry]));
+    const { uninstallExtension } = require('./extbkInstaller');
+    const { discoverExtensions } = require('./extensionLoader');
+
+    await expect(uninstallExtension('dev.only')).resolves.toBe(true);
+    expect((await discoverExtensions()).map((m) => m.id)).not.toContain('dev.only');
+  });
+
+  test('and leaves the other hand-written entries alone', async () => {
+    localStorage.setItem('__authno_dev_extensions', JSON.stringify([
+      devEntry, { id: 'dev.other', name: 'Other', version: '1.0.0' },
+    ]));
+    const { uninstallExtension } = require('./extbkInstaller');
+    const { discoverExtensions } = require('./extensionLoader');
+
+    await uninstallExtension('dev.only');
+    expect((await discoverExtensions()).map((m) => m.id)).toEqual(['dev.other']);
+  });
+
+  test('uninstalling an installed extension still works', async () => {
+    const { installExtbkBytes, uninstallExtension } = require('./extbkInstaller');
+    const { packExtbk } = require('./extbkFormat');
+    const { discoverExtensions } = require('./extensionLoader');
+
+    await installExtbkBytes(b64(await packExtbk({
+      manifest: { id: 'com.example.demo', name: 'Demo', version: '1.0.0', entry: 'index.js' },
+      entry: 'export default {};',
+    })), { silent: true });
+
+    await uninstallExtension('com.example.demo');
+    expect(await discoverExtensions()).toEqual([]);
+  });
+
+  test('a path-traversal id is refused before anything is touched', async () => {
+    const { uninstallExtension } = require('./extbkInstaller');
+    await expect(uninstallExtension('../../etc')).rejects.toThrow(/Invalid extension id/);
   });
 
   test('a corrupt dev store is ignored rather than fatal', async () => {
