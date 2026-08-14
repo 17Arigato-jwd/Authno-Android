@@ -1,7 +1,7 @@
 {
   "name": "authno",
   "version": "1.1.19-beta.3",
-  "description": "AuthNo — offline story editor",
+  "description": "AuthNo \u2014 offline story editor",
   "author": {
     "name": "VCHS Studios",
     "email": "varchas.mishra@gmail.com"
@@ -93,7 +93,7 @@
   "build": {
     "appId": "com.aurorastudios.authno",
     "productName": "AuthNo",
-    "copyright": "© 2026 VCHS Studios",
+    "copyright": "\u00a9 2026 VCHS Studios",
     "files": [
       "build/**/*",
       "public/**/*",
@@ -170,7 +170,7 @@
       "category": "Office;WordProcessor;",
       "icon": "public/authno-512.png",
       "synopsis": "Offline story editor",
-      "description": "AuthNo is a private, offline-first editor for books and long-form stories. Your work stays on your device in the resilient .authbook format — no account, no cloud lock-in. Includes a distraction-free chapter editor, plot/character Threads, writing streaks, multi-format import (TXT, Markdown, HTML, RTF, DOCX, ODT, EPUB, PDF) and export.",
+      "description": "AuthNo is a private, offline-first editor for books and long-form stories. Your work stays on your device in the resilient .authbook format \u2014 no account, no cloud lock-in. Includes a distraction-free chapter editor, plot/character Threads, writing streaks, multi-format import (TXT, Markdown, HTML, RTF, DOCX, ODT, EPUB, PDF) and export.",
       "desktop": {
         "entry": {
           "Name": "AuthNo",
@@ -206,7 +206,8 @@
       {
         "name": "AuthNo",
         "schemes": [
-          "authno"
+          "authno",
+          "com.aurorastudios.authno"
         ],
         "role": "Viewer"
       }

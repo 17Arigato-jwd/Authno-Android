@@ -201,3 +201,51 @@ describe('what refuses to start, and says why', () => {
     });
   });
 });
+
+/**
+ * `oauth` — the portable round trip, and the one capability an extension can
+ * point at a URL of its choosing.
+ *
+ * The redirect check is the load-bearing part. An extension that could name
+ * any prefix could ask to be woken by `authno://auth/google` — the app's own
+ * sign-in coming home — and read the handoff that is exchanged for an account.
+ */
+describe('what an extension may ask oauth for', () => {
+  const refusal = async (opts) => {
+    let err = null;
+    await withFs({}, async (m) => {
+      try { await m.__testDispatch('oauth', [opts]); } catch (e) { err = e; }
+    });
+    return err;
+  };
+
+  test('an https authUrl and one of our own redirects', async () => {
+    // Only the refusals are asserted here: the success path opens a browser
+    // and waits for the OS, which is what check:extensions and the deep-link
+    // bus tests cover between them.
+    expect((await refusal({ authUrl: 'http://example.com', redirect: 'com.aurorastudios.authno://oauth2/x' })).message)
+      .toMatch(/https authUrl/);
+  });
+
+  test('the app\'s own sign-in scheme is refused', async () => {
+    const e = await refusal({ authUrl: 'https://accounts.google.com/o/oauth2/v2/auth', redirect: 'authno://auth/google' });
+    expect(e.message).toMatch(/redirect must start with/);
+  });
+
+  test('so is somebody else\'s scheme, and a lookalike', async () => {
+    for (const redirect of [
+      'https://evil.example/steal',
+      'com.evil.app://oauth2/x',
+      'com.aurorastudios.authnotes://oauth2/x',
+      '',
+    ]) {
+      const e = await refusal({ authUrl: 'https://accounts.google.com/o/oauth2/v2/auth', redirect });
+      expect(e && e.message).toMatch(/redirect must start with/);
+    }
+  });
+
+  test('a missing options object does not throw something unreadable', async () => {
+    const e = await refusal(undefined);
+    expect(e.message).toMatch(/https authUrl/);
+  });
+});

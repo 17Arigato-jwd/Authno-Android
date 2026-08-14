@@ -27,8 +27,22 @@
  * CommonJS, because main.js is not a module.
  */
 
-/** The one scheme this app claims. Must match AndroidManifest and the Worker. */
+/**
+ * The schemes this app claims.
+ *
+ * `authno` is its own: sign-in comes home on `authno://auth/google`, and the
+ * Worker's callback has redirected there since Android shipped.
+ *
+ * `com.aurorastudios.authno` is the reverse-DNS one OAuth providers accept as
+ * a native redirect target — Google will not take a bare `authno://` as a
+ * redirect_uri, but it takes this shape. Android has registered
+ * `oauth2/gdrive`, `oauth2/dropbox` and `oauth2/onedrive` on it since Drive
+ * shipped; desktop claims the same scheme so a redirect written once lands on
+ * both.
+ */
 const SCHEME = 'authno';
+const OAUTH_SCHEME = 'com.aurorastudios.authno';
+const SCHEMES = [SCHEME, OAUTH_SCHEME];
 
 /**
  * The first `authno://` argument, or null.
@@ -41,15 +55,16 @@ const SCHEME = 'authno';
  * @param {string} scheme
  * @returns {string|null}
  */
-function deepLinkFromArgv(argv, scheme = SCHEME) {
-  const prefix = `${scheme}://`;
+function deepLinkFromArgv(argv, schemes = SCHEMES) {
+  const prefixes = (Array.isArray(schemes) ? schemes : [schemes]).map((x) => `${x}://`);
   for (const a of argv || []) {
     if (typeof a !== 'string') continue;
     // Windows can hand it over quoted when the URL contains characters cmd
     // treats as special, and a base64url handoff contains `-` and `_` but the
     // query separator `&` is enough to earn quotes on its own.
     const clean = a.trim().replace(/^"(.*)"$/, '$1');
-    if (clean.toLowerCase().startsWith(prefix)) return clean;
+    const lower = clean.toLowerCase();
+    if (prefixes.some((p) => lower.startsWith(p))) return clean;
   }
   return null;
 }
@@ -62,9 +77,10 @@ function deepLinkFromArgv(argv, scheme = SCHEME) {
  * handoff inside is exchanged over TLS and refused if it is wrong — but a URL
  * that is not even ours should not reach the renderer at all.
  */
-function isAuthnoLink(url, scheme = SCHEME) {
+function isAuthnoLink(url, schemes = SCHEMES) {
   if (typeof url !== 'string') return false;
-  return url.trim().toLowerCase().startsWith(`${scheme}://`);
+  const lower = url.trim().toLowerCase();
+  return (Array.isArray(schemes) ? schemes : [schemes]).some((s) => lower.startsWith(`${s}://`));
 }
 
-module.exports = { SCHEME, deepLinkFromArgv, isAuthnoLink };
+module.exports = { SCHEME, OAUTH_SCHEME, SCHEMES, deepLinkFromArgv, isAuthnoLink };

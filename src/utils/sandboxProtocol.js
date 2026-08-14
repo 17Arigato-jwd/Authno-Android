@@ -67,13 +67,18 @@ export const BOOTSTRAP = `
   }
 
   var api = {
-    version: 3,
+    version: 4,
     storage: makeStorage(),
     navigate: function (pageId, session) { return call('navigate', [pageId, session]); },
     toast: function (m, o) { return call('toast', [String(m == null ? '' : m), o || {}]); },
     openBrowser: function (url) { return call('openBrowser', [url]); },
     closeBrowser: function () { return call('closeBrowser', []); },
     googleSignIn: function (clientId) { return call('googleSignIn', [clientId]); },
+    // The portable round trip. Opens authUrl in a browser this app cannot see
+    // into, waits for the redirect to come home on one of the app's schemes,
+    // and resolves with its query parameters. Works the same on a phone and a
+    // laptop, which googleSignIn and requestDriveToken cannot.
+    oauth: function (opts) { return call('oauth', [opts || {}]); },
     getSessions: function () { return call('getSessions', []); },
     encodeSession: function (s) { return call('encodeSession', [s]); },
     importSession: function (b64) { return call('importSession', [b64]); },

@@ -46,13 +46,12 @@
  *
  * ── What still is not the same on desktop ────────────────────────────────────
  *
- * Loading, storage, navigation, the library and the export formats are. Three
- * calls in `dispatch` are not, because they are native plugins with no desktop
- * equivalent: googleSignIn (Credential Manager) and requestDriveToken (the
- * account picker) throw with a reason, and openBrowser falls back to the real
- * browser instead of a Custom Tab. An extension whose whole job is a Google
- * OAuth round trip is therefore still Android-only, and that is a gap in the
- * host API rather than in the sandbox.
+ * Loading, storage, navigation, hooks, the library, the export formats and now
+ * `oauth` all are. Two calls are not: googleSignIn and requestDriveToken are
+ * Play Services APIs whose whole value is what does not exist off Android — no
+ * client id, no redirect, no browser, and silent refresh. They cannot be
+ * ported, so they throw with a reason and point at `oauth`, which does the same
+ * round trip the ordinary way and works on both.
  */
 
 import { registerHook } from './sessionHooks';
@@ -62,6 +61,7 @@ import { toast as _toast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { planModuleGraph, rewriteSpecifiers } from './moduleGraph';
 import { sandboxDocument, createHostRouter, toSendable } from './sandboxProtocol';
+import { OAUTH_SCHEME } from './deepLinkBus';
 
 // Re-exported so callers and tests have one import for the sandbox. The
 // protocol lives in its own file because it imports nothing, which is what
@@ -207,14 +207,47 @@ async function dispatch(method, args, ctx) {
       return registerPlugin('OAuth').closeAuthBrowser().catch(() => {});
     }
 
+    /**
+     * The portable round trip: open a URL, wait for the redirect to come home
+     * on one of the app's schemes, hand back its query parameters.
+     *
+     * This is what the two calls below cannot be on desktop. They are Play
+     * Services APIs — no client id, no redirect, no browser, and silent
+     * refresh — and their whole value is the parts that do not exist off
+     * Android. What CAN be carried across is the shape underneath: an
+     * authorisation URL, a browser, and a redirect that lands back in the app.
+     *
+     * `redirect` must be one of ours, and the check is a real one rather than
+     * a formality: an extension that could name any prefix could ask to be
+     * woken by a link meant for the app's own sign-in, and read the handoff.
+     */
+    case 'oauth': {
+      const authUrl = String(args[0]?.authUrl ?? '');
+      const redirect = String(args[0]?.redirect ?? '');
+      if (!/^https:\/\//i.test(authUrl)) throw new Error('oauth needs an https authUrl');
+      if (!redirect.toLowerCase().startsWith(OAUTH_SCHEME)) {
+        throw new Error(`oauth redirect must start with ${OAUTH_SCHEME}`);
+      }
+      const { awaitDeepLink } = await import('./deepLinkBus');
+      // Listen before opening. A provider that has already granted consent can
+      // bounce back before an await scheduled after the open would have run.
+      const landing = awaitDeepLink(redirect, { timeoutMs: 5 * 60 * 1000 });
+      await dispatch('openBrowser', [authUrl], ctx);
+      return landing;
+    }
+
     case 'googleSignIn': {
-      if (!isAndroid()) throw new Error('googleSignIn is Android only — it uses Credential Manager, which has no desktop equivalent');
+      if (!isAndroid()) {
+        throw new Error('googleSignIn is Android only — it uses Credential Manager, which has no client id, redirect or browser to port. Use host.oauth({ authUrl, redirect }) with your own client instead.');
+      }
       const { registerPlugin } = await import('@capacitor/core');
       return registerPlugin('GoogleSignIn').signIn({ clientId: args[0] });
     }
 
     case 'native.GoogleDrive.requestDriveToken': {
-      if (!isAndroid()) throw new Error('requestDriveToken is Android only — the Drive token comes from the native account picker');
+      if (!isAndroid()) {
+        throw new Error('requestDriveToken is Android only — it uses Play Services, which handles consent and silent refresh with no client id. Use host.oauth({ authUrl, redirect }) with the drive.file scope instead.');
+      }
       const { registerPlugin } = await import('@capacitor/core');
       return registerPlugin('GoogleDrive').requestDriveToken();
     }
@@ -240,6 +273,18 @@ async function dispatch(method, args, ctx) {
     default:
       throw new Error(`${method} is not something an extension can call`);
   }
+}
+
+/**
+ * The capability switch, reachable from a test.
+ *
+ * Not part of the API any caller uses — runExtension wires `dispatch` into the
+ * router itself. It is exported because the refusals in there are the security
+ * boundary, and a boundary only checked through a frame is a boundary checked
+ * on one platform in one browser.
+ */
+export function __testDispatch(method, args, ctx = { extId: 'test', manifest: {}, handlers: {} }) {
+  return dispatch(method, args, ctx);
 }
 
 /**

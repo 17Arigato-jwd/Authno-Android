@@ -124,3 +124,48 @@ describe('deciding whether a URL is ours', () => {
     expect(SCHEME).toBe('authno');
   });
 });
+
+/**
+ * The second scheme.
+ *
+ * Google will not accept a bare `authno://` as a redirect_uri, but it takes
+ * the reverse-DNS shape — which Android has registered for Drive, Dropbox and
+ * OneDrive since Drive shipped. Desktop claims the same one so a redirect
+ * written for a phone lands on a laptop unchanged.
+ */
+describe('the OAuth scheme', () => {
+  const { SCHEMES, OAUTH_SCHEME } = require('../../deepLink');
+  const DRIVE = 'com.aurorastudios.authno://oauth2/gdrive?code=abc&state=xyz';
+
+  test('both schemes are claimed', () => {
+    expect(SCHEMES).toEqual(['authno', 'com.aurorastudios.authno']);
+    expect(OAUTH_SCHEME).toBe('com.aurorastudios.authno');
+    // AndroidManifest registers this one for oauth2/*. Three files, one string.
+    expect(OAUTH_SCHEME).toBe('com.aurorastudios.authno');
+  });
+
+  test('a provider redirect is found in argv', () => {
+    expect(deepLinkFromArgv(['AuthNo.exe', DRIVE])).toBe(DRIVE);
+    expect(deepLinkFromArgv(['/usr/bin/electron', '/home/me/main.js', DRIVE])).toBe(DRIVE);
+  });
+
+  test('and recognised as ours', () => {
+    expect(isAuthnoLink(DRIVE)).toBe(true);
+    expect(isAuthnoLink('com.aurorastudios.authno://oauth2/dropbox?code=1')).toBe(true);
+  });
+
+  /**
+   * `authno` is a prefix of nothing here, but `com.aurorastudios.authno` is a
+   * plausible prefix of somebody else's id. Matching has to be on the scheme
+   * separator, not on the name.
+   */
+  test('a neighbouring id is not ours', () => {
+    expect(isAuthnoLink('com.aurorastudios.authnotes://oauth2/gdrive')).toBe(false);
+    expect(deepLinkFromArgv(['x', 'com.aurorastudios.authnotes://oauth2/gdrive'])).toBeNull();
+  });
+
+  test('asking for one scheme does not match the other', () => {
+    expect(deepLinkFromArgv(['x', DRIVE], 'authno')).toBeNull();
+    expect(deepLinkFromArgv(['x', 'authno://auth/google?google=1'], 'com.aurorastudios.authno')).toBeNull();
+  });
+});

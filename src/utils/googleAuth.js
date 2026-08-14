@@ -37,6 +37,7 @@ import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { GATE_API, gateConfigured, GateError } from './gateApi';
 import { isElectron } from './platform';
+import { onDeepLink } from './deepLinkBus';
 
 /** The scheme registered in AndroidManifest.xml. Both halves must agree. */
 export const APP_REDIRECT = 'authno://auth/google';
@@ -82,31 +83,6 @@ async function post(path, body, token) {
   try { data = await resp.json(); } catch { /* non-JSON error body */ }
   if (!resp.ok) throw new GateError(data?.error || `http-${resp.status}`, resp.status);
   return data;
-}
-
-/**
- * Listen for the deep link coming home, whichever OS is delivering it.
- *
- * Android: Capacitor's appUrlOpen. Desktop: an IPC channel fed by main.js,
- * plus one question for a URL that arrived before this listener existed —
- * clicking "Open AuthNo?" with the app closed LAUNCHES it, so on the cold path
- * the URL is always earlier than anything the renderer can register.
- *
- * Returns an unsubscribe. Both sides must have one: a second sign-in attempt
- * stacking a second listener would settle the first attempt's promise with the
- * second attempt's handoff.
- */
-async function onDeepLink(handler) {
-  if (isElectron() && window.electron?.onDeepLink) {
-    const off = window.electron.onDeepLink(handler);
-    try {
-      const pending = await window.electron.claimPendingDeepLink?.();
-      if (pending) handler(pending);
-    } catch { /* nothing was waiting */ }
-    return off;
-  }
-  const sub = await App.addListener('appUrlOpen', ({ url }) => handler(url));
-  return () => { sub?.remove?.(); };
 }
 
 /** The consent screen, in a browser this app cannot see into. */

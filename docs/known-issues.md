@@ -107,20 +107,31 @@ it concluded, reasonably, that UI pages had to be one file.
 
 Both halves of an extension now link their modules the same way.
 
-### 8. Two host calls are still Android-only — APP
+### 8. Two host calls are still Android-only — APP · won't fix
 
 The extension system itself runs on desktop — loading, isolation, the module
 graph, storage, hooks, UI pages and the whole lifecycle, all covered by
-`npm run check:extensions` in a real browser. Two *capabilities* an extension
-can ask for do not: `googleSignIn` (Credential Manager) and `requestDriveToken`
-(the native account picker) have no desktop equivalent and throw with a reason
-rather than a raw Capacitor string.
+`npm run check:extensions` in a real browser.
 
-`openBrowser` is fine: it opens the real browser, and an extension routing its
-round trip through the gate can be handed the result back on `authno://`
-exactly as the app is. What is missing is only the two native shortcuts, so an
-extension that wants Drive on desktop has to do the ordinary OAuth dance rather
-than ask Android for a token. That is a capability gap, not a platform gap.
+`googleSignIn` and `requestDriveToken` cannot be ported, and this is closed as
+won't-fix rather than left open. They are Play Services APIs, and everything
+that makes them worth calling is the part that does not exist off Android: no
+client id, no redirect, no browser, and silent refresh handled by the OS.
+`requestDriveToken` goes through `Identity.authorize()`, which derives the
+caller from the package name and signing certificate. There is nothing on a
+laptop to derive.
+
+What replaces them is `host.oauth({ authUrl, redirect })` — open a URL in a
+browser, wait for the redirect to come home on `com.aurorastudios.authno://`,
+hand back its parameters. The same on both platforms. An extension wanting
+Drive on desktop does the ordinary OAuth dance with its own client instead of
+asking Android for a token, and the two native calls now throw with a message
+pointing at it.
+
+Worth knowing if you write one: Google will not accept a bare `authno://` as a
+`redirect_uri`. The reverse-DNS form is what it takes, which is why that is the
+scheme `oauth` insists on — and why an extension cannot name `authno://auth/`
+as its redirect and be woken by the app's own sign-in.
 
 ### 9. The reminder falls back to generic wording — APP
 
@@ -145,6 +156,12 @@ widget can look.
 ---
 
 ## Notes on things that look like issues and are not
+
+- **The JS suite has failed 4 tests twice, unreproducibly.** Both times a
+  re-run — including `--json`, which reports per-test results — came back
+  clean, and nine consecutive runs since have been green. No cause found and
+  none invented. If it recurs, capture the whole output rather than the summary
+  line: the failing suite names are the only thing that was missing.
 
 - **`console.debug` about `WidgetData` off-device.** Expected, and only ever as
   a caught error. If it returns as an uncaught page error, that is the

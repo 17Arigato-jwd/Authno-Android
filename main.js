@@ -14,7 +14,7 @@ const { applyLinuxLauncherIcon } = require("./linuxIconTheme");
 let DESKTOP_NAME = "authno.desktop";
 try { DESKTOP_NAME = require("./package.json").desktopName || DESKTOP_NAME; } catch { /* keep default */ }
 
-const { SCHEME, deepLinkFromArgv, isAuthnoLink } = require("./deepLink");
+const { SCHEMES, deepLinkFromArgv, isAuthnoLink } = require("./deepLink");
 
 let mainWindow;
 let openFilePath = null;
@@ -87,10 +87,12 @@ if (!openFilePath) openFilePath = authbookFromArgv(process.argv.slice(1));
 // the handler — clicking the link then opens a bare Electron with no app in it,
 // which looks like the scheme is broken rather than like a dev-mode quirk.
 try {
-  if (process.defaultApp && process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(SCHEME, process.execPath, [path.resolve(process.argv[1])]);
-  } else {
-    app.setAsDefaultProtocolClient(SCHEME);
+  for (const scheme of SCHEMES) {
+    if (process.defaultApp && process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1])]);
+    } else {
+      app.setAsDefaultProtocolClient(scheme);
+    }
   }
 } catch (e) {
   // A locked-down machine can refuse the registry write. The flow degrades to
@@ -152,7 +154,9 @@ ipcMain.handle("deep-link-ready", () => {
 // "paste the address you were sent to" rather than waiting for a link that is
 // never coming.
 ipcMain.handle("deep-link-registered", () => {
-  try { return app.isDefaultProtocolClient(SCHEME); } catch { return false; }
+  // The app's own scheme is the one sign-in needs. The OAuth scheme is asked
+  // for separately, because an extension can want one without the other.
+  try { return app.isDefaultProtocolClient(SCHEMES[0]); } catch { return false; }
 });
 
 // 🟢 Handle file open (macOS — fired before app is ready)
