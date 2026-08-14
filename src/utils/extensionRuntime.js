@@ -31,11 +31,12 @@
 import { logError } from './ErrorLogger';
 import { runExtension, stopExtension, stopAll } from './extensionSandbox';
 
-
 // ── window.AuthNoExtensionAPI ────────────────────────────────────────────────
 //
-// Host-app bridge for operations extensions can't do themselves.
-// Set once and shared across all extensions.
+// Host-INTERNAL now, despite the name and despite living on window. It is what
+// ExtensionPage's message router calls to service a ui-file page's request.
+// Extension code cannot see it: the frames that run extensions have an opaque
+// origin, and reading `parent.AuthNoExtensionAPI` from one throws.
 
 let _replaceSessionFn = null;
 let _importSessionFn  = null;
