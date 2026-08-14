@@ -76,6 +76,30 @@ function normalizeLog(rawLog, fallbackGoal) {
 function isEntryMet(entry) { return !!(entry && entry.words >= entry.goal); }
 function isKeyMet(log, key) { return isEntryMet(log[key] ?? null); }
 
+/**
+ * A book's live streak and today's words, for anywhere outside FlameButton
+ * that needs to say them.
+ *
+ * There is no `streak.current` or `streak.wordsToday` on a session — the
+ * persisted object holds `log`, `dailyBaseline` and `goalWords` and nothing
+ * else — so reading either field gets a zero that looks like an answer. This
+ * derives both from the log, through the same normalisation and the same walk
+ * the flame uses, which is the only way two surfaces can be made to agree.
+ */
+export function bookStreakStats(book, fallbackGoal = 0) {
+  const streak = book?.streak ?? {};
+  const goal = streak.goalWords ?? fallbackGoal;
+  const log = normalizeLog(streak.log, goal);
+  const key = getTodayKey();
+  const entry = log[key] ?? null;
+  return {
+    streakDays: computeStreak(log),
+    wordsToday: entry?.words ?? 0,
+    goalWords: entry?.goal ?? goal,
+    dayKey: key,
+  };
+}
+
 /** "2026-08-14" → local midnight on that date. */
 function keyToDate(key) {
   const [y, m, d] = String(key).split('-').map(Number);

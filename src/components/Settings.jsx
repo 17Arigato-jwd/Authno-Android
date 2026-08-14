@@ -39,6 +39,8 @@ import { checkNotificationPermission, requestNotificationPermission,
 import { notifyNow, notifyResultText } from '../utils/notify';
 import { isDevModeUnlocked, setDevModeUnlocked, tapVersion, tapHint } from '../utils/devMode';
 import { buildReminder } from '../utils/reminderCopy';
+import { bookStreakStats } from './Streak';
+import { DEFAULT_WORD_GOAL } from './constants';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -1182,16 +1184,22 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
     // exists anywhere — so the test always announced a hardcoded 300 whatever
     // the writer had set. A test notification that shows the wrong number is
     // worth less than no test notification, because it certifies a lie.
-    const goalWords = selectedBook?.streak?.goalWords ?? settings?.dailyWordGoal ?? 500;
+    // Everything derived from the log, the way the flame derives it. Reading
+    // `streak.current` and `streak.wordsToday` — which is what this did —
+    // returns 0 forever: neither field exists on a session, so the test
+    // notification announced a first day to writers on a fifty-day run.
+    const stats = bookStreakStats(selectedBook, settings?.dailyWordGoal ?? DEFAULT_WORD_GOAL);
     const msg = buildReminder({
-      // The live streak too, so what arrives is a real sample of tonight's
-      // reminder rather than a permanent first-run placeholder.
-      streakDays: Number(selectedBook?.streak?.current) || 0,
-      goalWords,
-      wordsToday: 0,
+      streakDays: stats.streakDays,
+      goalWords: stats.goalWords,
+      wordsToday: stats.wordsToday,
       bookTitle: selectedBook?.title,
       hour: reminder.hour,
-      dayKey: new Date().toISOString().slice(0, 10),
+      // The writing day, and local. toISOString() is UTC, which puts half the
+      // world on the wrong side of midnight — and this seeds which line the
+      // copy picks, so a test would show a different sample than the reminder
+      // it is meant to be previewing.
+      dayKey: stats.dayKey,
     });
     const res = await notifyNow(msg);
     setTestResult(res);

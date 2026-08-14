@@ -8,7 +8,7 @@
  * today's words landing on a day nobody is looking at.
  */
 
-import { getTodayKey, computeStreak } from './Streak';
+import { getTodayKey, computeStreak, bookStreakStats } from './Streak';
 import { markWrote, clearWriteClock } from '../utils/writeClock';
 
 /** Freeze the wall clock. Everything here depends on what time it is. */
@@ -116,6 +116,64 @@ describe('counting the days in a row', () => {
     // throwing — which is the safe direction.
     at('2026-08-14T12:00:00', () => {
       expect(() => computeStreak({ '2026-08-14': 900 })).not.toThrow();
+    });
+  });
+});
+
+/**
+ * What anything outside FlameButton has to call to say a number out loud.
+ *
+ * The bug this replaced: `book.streak.current` and `book.streak.wordsToday`
+ * read as 0 forever, because a session's streak object holds `log`,
+ * `dailyBaseline` and `goalWords` and has never held either of those. A zero
+ * that looks like an answer is worse than a crash — the test notification
+ * announced a first day to somebody fifty days in, and nothing looked broken.
+ */
+describe('a book\'s streak, read from outside', () => {
+  const withLog = (log, over = {}) => ({ id: 'b1', title: 'A Book', streak: { goalWords: 500, log, ...over } });
+
+  test('reports the run, today\'s words and the goal', () => {
+    at('2026-08-14T12:00:00', () => {
+      const s = bookStreakStats(withLog({
+        '2026-08-12': { words: 600, goal: 500 },
+        '2026-08-13': { words: 500, goal: 500 },
+        '2026-08-14': { words: 120, goal: 500 },
+      }));
+      expect(s.streakDays).toBe(2);
+      expect(s.wordsToday).toBe(120);
+      expect(s.goalWords).toBe(500);
+      expect(s.dayKey).toBe('2026-08-14');
+    });
+  });
+
+  test('a book with no streak data at all is zeroes, not a crash', () => {
+    expect(() => bookStreakStats(null)).not.toThrow();
+    expect(bookStreakStats(null)).toMatchObject({ streakDays: 0, wordsToday: 0 });
+    expect(bookStreakStats({ id: 'b1' }, 300)).toMatchObject({ streakDays: 0, goalWords: 300 });
+  });
+
+  test('the book\'s own goal beats the global fallback', () => {
+    at('2026-08-14T12:00:00', () => {
+      expect(bookStreakStats(withLog({}), 300).goalWords).toBe(500);
+      expect(bookStreakStats({ id: 'b1', streak: {} }, 300).goalWords).toBe(300);
+    });
+  });
+
+  test('the older bare-number log is normalised before it is counted', () => {
+    at('2026-08-14T12:00:00', () => {
+      const s = bookStreakStats(withLog({ '2026-08-13': 900, '2026-08-14': 700 }));
+      expect(s.wordsToday).toBe(700);
+      expect(s.streakDays).toBe(2);
+    });
+  });
+
+  test('inside an extension it reports the night before, not an empty new day', () => {
+    at('2026-08-14T23:50:00', () => markWrote());
+    at('2026-08-15T00:30:00', () => {
+      const s = bookStreakStats(withLog({ '2026-08-14': { words: 800, goal: 500 } }));
+      expect(s.dayKey).toBe('2026-08-14');
+      expect(s.wordsToday).toBe(800);
+      expect(s.streakDays).toBe(1);
     });
   });
 });
