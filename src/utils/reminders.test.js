@@ -204,6 +204,51 @@ describe('reporting progress', () => {
   });
 
   /**
+   * The words themselves cross the bridge, one set per slot.
+   *
+   * Without this the "highly customisable notification texts" reach exactly
+   * one surface — the test button — and every real reminder arrives in the
+   * receiver's own two fixed sentences. The feature would look shipped and be
+   * invisible on the only screen it exists for.
+   */
+  test('both slots\' lines are rendered and sent', async () => {
+    const calls = [];
+    const m = mockPlugin({ reportProgress: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.reportProgress(false, 4, 500, { bookTitle: 'The Long Novel', wordsToday: 120 }));
+
+    const lines = JSON.parse(calls[0].linesJson);
+    for (const slot of ['morning', 'evening']) {
+      expect(typeof lines[slot].title).toBe('string');
+      expect(lines[slot].title.length).toBeGreaterThan(0);
+      expect(lines[slot].body.length).toBeGreaterThan(0);
+      // A token that failed to fill is the failure this cannot afford: it
+      // arrives on a lock screen reading "Write {goal} words".
+      expect(`${lines[slot].title} ${lines[slot].body}`).not.toMatch(/[{}]/);
+    }
+  });
+
+  test('the book name and the day reach the wording', async () => {
+    const calls = [];
+    const m = mockPlugin({ reportProgress: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.reportProgress(false, 4, 500, { bookTitle: 'The Long Novel', wordsToday: 480 }));
+    const lines = JSON.parse(calls[0].linesJson);
+    const all = JSON.stringify(lines);
+    expect(all).toContain('The Long Novel');
+    // 480 of 500 is the "nearly there" situation; the number has to be in it
+    // for the line to be worth sending at all.
+    expect(all).toMatch(/\b20\b/);
+  });
+
+  test('missing context still produces sendable lines', async () => {
+    const calls = [];
+    const m = mockPlugin({ reportProgress: (p) => { calls.push(p); return Promise.resolve(); } });
+    await within(m.reportProgress(false, 0, 0));
+    const lines = JSON.parse(calls[0].linesJson);
+    expect(lines.morning.title.length).toBeGreaterThan(0);
+    expect(`${lines.morning.title} ${lines.morning.body}`).not.toMatch(/[{}]|undefined|NaN/);
+  });
+
+  /**
    * The receiver reads a stored number with the app closed; a NaN or a
    * negative would render as "-1 day streak" on somebody's lock screen.
    */

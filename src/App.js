@@ -1237,6 +1237,12 @@ function AppInner({ navigateRef }) {
       // longest live run — the one the writer is most likely to be thinking
       // of when the reminder arrives.
       let bestGoal = fallbackGoal;
+      // Its title and today's words too: the reminder's wording names the book
+      // and knows how close the goal is, and neither is reachable from the
+      // receiver — it runs with the app closed. Same book as the goal, for the
+      // same reason.
+      let bestTitle = '';
+      let bestWords = 0;
       for (const b of counting) {
         // A log entry is `{ words, goal }` now and was a bare number before;
         // both shapes are still on disk. See normalizeLog in Streak.jsx.
@@ -1245,9 +1251,9 @@ function AppInner({ navigateRef }) {
         const words = typeof entry === 'number' ? entry : (entry?.words ?? 0);
         if (words >= (entry?.goal ?? goal)) met = true;
         const days = computeStreak(b.streak?.log ?? {});
-        if (days >= best) { best = days; bestGoal = goal; }
+        if (days >= best) { best = days; bestGoal = goal; bestTitle = b.title || ''; bestWords = words; }
       }
-      reportProgress(met, best, bestGoal);
+      reportProgress(met, best, bestGoal, { bookTitle: bestTitle, wordsToday: bestWords });
     }, 2000);
     return () => clearTimeout(progressTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
