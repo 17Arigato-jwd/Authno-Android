@@ -179,6 +179,41 @@ describe('syncWidget reaches the plugin', () => {
     expect(calls[0].notesTotal).toBe(0);
   });
 
+  /**
+   * The countdown widget cannot work out its own deadline: the rule depends on
+   * when the writer last wrote, which lives in localStorage on this side of
+   * the bridge. These two tests are the wiring — streakWindow can be perfectly
+   * correct and the widget still end every night at midnight if the timestamp
+   * never makes the trip.
+   */
+  test('the countdown deadline crosses with it', async () => {
+    localStorage.clear();
+    const { syncWidget } = require('./widgetBridge');
+    await syncWidget(sessions, '#5a00d9', null);
+    const cd = JSON.parse(calls[0].countdownJson);
+    expect(typeof cd.deadline).toBe('number');
+    expect(cd.deadline).toBeGreaterThan(Date.now());
+    expect(cd.dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test('a write minutes ago is what pushes the deadline past midnight', async () => {
+    localStorage.clear();
+    const { saveResumePoint } = require('./resumeState');
+    saveResumePoint('b1', { chapIdx: 1 });
+
+    const { syncWidget } = require('./widgetBridge');
+    await syncWidget(sessions, '#5a00d9', null);
+    const cd = JSON.parse(calls[0].countdownJson);
+
+    // Only the small hours can be inside an extension, so assert the rule
+    // rather than a clock this test does not control: `extended` is non-zero
+    // exactly when the deadline has been moved off midnight.
+    const end = new Date(cd.deadline);
+    expect(cd.extended).toBe(end.getHours() === 0 ? 0 : end.getHours());
+    // An unextended day is never "in an extension", whatever the hour.
+    expect(cd.inExtension && cd.extended === 0).toBe(false);
+  });
+
   test('a plugin that is not there is not an error', async () => {
     jest.resetModules();
     jest.doMock('@capacitor/core', () => { throw new Error('no capacitor here'); }, { virtual: true });

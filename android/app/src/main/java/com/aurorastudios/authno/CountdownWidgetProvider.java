@@ -36,11 +36,14 @@ import org.json.JSONObject;
  * ── The deadline ─────────────────────────────────────────────────────────────
  *
  * Sent from JS (streakWindow.countdownState) rather than computed here. A
- * writing day ends at a configurable hour past midnight, and the app, this
- * widget and any future surface disagreeing about when that is would be worse
- * than none of them having a countdown at all. Falling back to local midnight
- * when nothing has been synced is the one guess this makes, and it is the one
- * a reader would make too.
+ * writing day ends at midnight unless the writer was still going when it
+ * arrived, in which case it buys an hour at a time up to 4am — a rule that
+ * depends on when they last wrote, which this process has no way of knowing.
+ * Recomputing it here would also mean the app, this widget and any future
+ * surface could disagree about when the day ends, which is worse than none of
+ * them having a countdown at all. Falling back to local midnight when nothing
+ * has been synced is the one guess this makes, and it is the one a reader
+ * would make too.
  */
 public class CountdownWidgetProvider extends AppWidgetProvider {
 
@@ -97,10 +100,12 @@ public class CountdownWidgetProvider extends AppWidgetProvider {
         boolean met = goalWords > 0 && wordsToday >= goalWords;
 
         long deadline = deadlineFrom(prefs);
+        int extendedHours = extendedFrom(prefs);
 
         views.setTextViewText(R.id.countdown_book, book.optString("title", "Untitled Book"));
         views.setTextViewText(R.id.countdown_progress, CountdownText.progress(wordsToday, goalWords));
-        views.setTextViewText(R.id.countdown_caption, CountdownText.caption(streakDays, met));
+        views.setTextViewText(R.id.countdown_caption,
+                CountdownText.caption(streakDays, met, extendedHours));
 
         String left = CountdownText.remaining(wordsToday, goalWords);
         views.setTextViewText(R.id.countdown_remaining, left == null ? "" : left);
@@ -157,6 +162,25 @@ public class CountdownWidgetProvider extends AppWidgetProvider {
         c.set(java.util.Calendar.SECOND, 0);
         c.set(java.util.Calendar.MILLISECOND, 0);
         return c.getTimeInMillis();
+    }
+
+    /**
+     * How many hours past midnight the deadline has been pushed, or 0.
+     *
+     * Read rather than derived. Working it out here from the deadline and the
+     * current time would mean this widget re-deciding a question streakWindow
+     * has already answered, and the two would drift the first time either
+     * changed — the drift being invisible until somebody's streak disagreed
+     * with their widget at 1am.
+     */
+    private static int extendedFrom(SharedPreferences prefs) {
+        String raw = prefs.getString(StreakWidgetProvider.KEY_COUNTDOWN_JSON, "");
+        if (raw == null || raw.trim().isEmpty()) return 0;
+        try {
+            return Math.max(0, new JSONObject(raw).optInt("extended", 0));
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     private static JSONObject findBook(SharedPreferences prefs, String bookId) {

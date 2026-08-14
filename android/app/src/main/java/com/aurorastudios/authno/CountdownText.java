@@ -43,6 +43,22 @@ final class CountdownText {
      * dressed as motivation.
      */
     static String caption(int streakDays, boolean met) {
+        return caption(streakDays, met, 0);
+    }
+
+    /**
+     * The same line, once the clock has run past midnight.
+     *
+     * Worth its own wording: a widget showing "58:12 left" on a date that is
+     * already tomorrow looks broken, and the reader is owed the reason before
+     * they conclude it is. "Yesterday" is the calendar's word here, not the
+     * writer's — the day they are finishing began yesterday morning.
+     */
+    static String caption(int streakDays, boolean met, int extendedHours) {
+        if (extendedHours > 0) {
+            if (met) return "Yesterday is counted";
+            return "left — yesterday is still open";
+        }
         if (met) return "Today is counted";
         if (streakDays <= 0) return "left to start a streak";
         return "left to extend your streak";

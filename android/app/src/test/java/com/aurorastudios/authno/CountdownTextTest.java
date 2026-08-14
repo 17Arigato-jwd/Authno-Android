@@ -42,6 +42,23 @@ public class CountdownTextTest {
         assertEquals("Today is counted", CountdownText.caption(0, true));
     }
 
+    /**
+     * Past midnight the date on the phone and the day being counted are two
+     * different days, and the caption is the only place that gap is explained.
+     */
+    @Test public void anExtendedNightSaysSo() {
+        assertEquals("left — yesterday is still open", CountdownText.caption(4, false, 1));
+        assertEquals("left — yesterday is still open", CountdownText.caption(0, false, 3));
+        assertEquals("Yesterday is counted", CountdownText.caption(4, true, 2));
+    }
+
+    /** No extension, no special wording — the ordinary evening is the default. */
+    @Test public void zeroExtensionReadsAsAnOrdinaryEvening() {
+        assertEquals(CountdownText.caption(4, false), CountdownText.caption(4, false, 0));
+        assertEquals(CountdownText.caption(0, true), CountdownText.caption(0, true, 0));
+        assertEquals("left to extend your streak", CountdownText.caption(4, false, -1));
+    }
+
     @Test public void theStreakLabelSaysNothingWhenThereIsNoStreak() {
         assertEquals("", CountdownText.streakLabel(0));
         assertEquals("", CountdownText.streakLabel(-2));

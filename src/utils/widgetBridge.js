@@ -30,7 +30,7 @@
 import { useEffect } from 'react';
 import { booksWithStreaks, streaksEnabledGlobally, streaksEnabledFor } from './streakSettings';
 import { countWords } from './wordCount';
-import { countdownState, DEFAULT_GRACE_HOURS } from './streakWindow';
+import { countdownState } from './streakWindow';
 
 // ── Capacitor plugin bridge ───────────────────────────────────────────────────
 
@@ -211,15 +211,25 @@ export async function syncWidget(sessions, accentHex, theme, settings) {
     // writing day ends — two surfaces disagreeing about a deadline is worse
     // than neither having one. The widget is handed an absolute timestamp and
     // lets the system tick it, so nothing has to wake up to keep it honest.
+    //
+    // The deadline moves past midnight only when there is a recent write to
+    // move it, which is why the last resume timestamp has to reach this call:
+    // without it every night ends at midnight regardless of who is still
+    // typing, and the extension would exist in streakWindow and nowhere else.
     let countdownJson = '';
     try {
-      const grace = settings?.streakGraceHours ?? DEFAULT_GRACE_HOURS;
-      const cd = countdownState({ graceHours: grace });
+      let lastWriteAt = null;
+      try {
+        const { getLastResume } = await import('./resumeState');
+        lastWriteAt = getLastResume()?.ts ?? null;
+      } catch { /* nothing recorded yet — the day ends at midnight */ }
+
+      const cd = countdownState({ lastWriteAt });
       countdownJson = JSON.stringify({
         deadline: cd.deadline,
         dayKey: cd.dayKey,
-        inGrace: cd.inGrace,
-        graceHours: grace,
+        extended: cd.extended,
+        inExtension: cd.inExtension,
       });
     } catch { /* the widget falls back to its own midnight */ }
 
