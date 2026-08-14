@@ -43,6 +43,16 @@
  * web and Electron — and linked into blob URLs inside the frame. Blob URLs need
  * no origin and no server, so the same path works on a phone, a laptop and in a
  * test. See moduleGraph.js for the ordering, which is the part with the edges.
+ *
+ * ── What still is not the same on desktop ────────────────────────────────────
+ *
+ * Loading, storage, navigation, the library and the export formats are. Three
+ * calls in `dispatch` are not, because they are native plugins with no desktop
+ * equivalent: googleSignIn (Credential Manager) and requestDriveToken (the
+ * account picker) throw with a reason, and openBrowser falls back to the real
+ * browser instead of a Custom Tab. An extension whose whole job is a Google
+ * OAuth round trip is therefore still Android-only, and that is a gap in the
+ * host API rather than in the sandbox.
  */
 
 import { registerHook } from './sessionHooks';
@@ -325,19 +335,44 @@ async function dispatch(method, args, ctx) {
     case 'toast': return _toast(String(args[0] ?? ''), args[1] ?? {});
     case 'navigate': return handlers.navigate?.(manifest, args[0], args[1] ?? null);
 
+    // ── The three that are not the same everywhere ──────────────────────────
+    //
+    // Everything above this line behaves identically on a phone and a laptop.
+    // These do not, because they are native plugins, and an extension that
+    // calls one deserves to be told which of those it is rather than handed a
+    // raw Capacitor "not implemented" string it cannot act on.
+
     case 'openBrowser': {
-      const { registerPlugin } = await import('@capacitor/core');
-      return registerPlugin('OAuth').openAuthUrl({ url: String(args[0]) });
+      const url = String(args[0] ?? '');
+      if (!/^https:\/\//i.test(url)) throw new Error('openBrowser needs an https URL');
+      if (isAndroid()) {
+        // Custom Tabs. Deliberately not @capacitor/browser, which hardcodes
+        // com.android.chrome and hangs silently when Chrome is not default.
+        const { registerPlugin } = await import('@capacitor/core');
+        return registerPlugin('OAuth').openAuthUrl({ url });
+      }
+      // Desktop and web: the real browser. An OAuth flow that ends in a
+      // redirect back to a localhost listener still works; one that expects
+      // the app to be handed the code by a Custom Tab does not, and that is
+      // the honest limit rather than something this can paper over.
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return null;
     }
+
     case 'closeBrowser': {
+      if (!isAndroid()) return null; // a real browser tab is not ours to close
       const { registerPlugin } = await import('@capacitor/core');
       return registerPlugin('OAuth').closeAuthBrowser().catch(() => {});
     }
+
     case 'googleSignIn': {
+      if (!isAndroid()) throw new Error('googleSignIn is Android only — it uses Credential Manager, which has no desktop equivalent');
       const { registerPlugin } = await import('@capacitor/core');
       return registerPlugin('GoogleSignIn').signIn({ clientId: args[0] });
     }
+
     case 'native.GoogleDrive.requestDriveToken': {
+      if (!isAndroid()) throw new Error('requestDriveToken is Android only — the Drive token comes from the native account picker');
       const { registerPlugin } = await import('@capacitor/core');
       return registerPlugin('GoogleDrive').requestDriveToken();
     }

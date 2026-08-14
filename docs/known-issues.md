@@ -84,18 +84,30 @@ it under the app's own chrome.
 
 ## Worth doing, not blocking
 
-### 7. Extension UI pages cannot use relative imports — APP
+### 7. Extension UI pages could not use relative imports — APP
 
-A `ui-file` page is still inlined into its `srcdoc` document as a single
-`<script type="module">`. There is no base URL to resolve `./helper.js`
-against, so a UI split across files fails at load with a bare module error.
+**Fixed in this branch.** A `ui-file` page was inlined into its `srcdoc`
+document as a single `<script type="module">`. A module in a srcdoc document
+has no base URL to resolve `./helper.js` against, so any UI split across files
+failed at load with a bare-specifier error — and every extension author who hit
+it concluded, reasonably, that UI pages had to be one file.
 
-The background half no longer has this problem — `moduleGraph.js` links its
-files into blob URLs inside the frame — and the UI half could call exactly the
-same two functions. It is a small piece of work that was not needed to close
-the security hole, so it is here rather than in the commit.
+Both halves of an extension now link their modules the same way.
 
-### 8. The reminder falls back to generic wording — APP
+### 8. Three host calls are still Android-only — APP
+
+Extensions load and run on desktop now, but `googleSignIn` (Credential Manager)
+and `requestDriveToken` (the native account picker) have no desktop equivalent
+and throw with a reason, and `openBrowser` falls back to the real browser
+rather than a Custom Tab — which is fine for a flow that redirects back to a
+listener and not for one that expects the app to be handed the code.
+
+So an extension whose whole job is a Google OAuth round trip — Cloud Backup+,
+when it lands — is still Android-only. That is a gap in the host API, not in
+the sandbox: closing it means a desktop OAuth path (loopback listener plus a
+`window.open`), not more isolation work.
+
+### 9. The reminder falls back to generic wording — APP
 
 `ReminderText` answers whenever the stored line is from another day — correct,
 since a stale line names a book you may have finished and a streak you may have
@@ -103,12 +115,12 @@ lost. But it means somebody who never opens the app between reminders only ever
 sees the two fixed sentences, which is the opposite of who the varied copy was
 for.
 
-### 9. One 608 kB JS chunk on the site — SITE
+### 10. One 608 kB JS chunk on the site — SITE
 
 Not a bug. The build warns on every run, so the warning has stopped carrying
 information, which is its own small cost.
 
-### 10. `updatePeriodMillis` is the widgets' only refresh — APP
+### 11. `updatePeriodMillis` is the widgets' only refresh — APP
 
 Thirty minutes, the platform floor. The countdown's clock ticks by itself, but
 the word count and the streak underneath it are only as fresh as the last sync

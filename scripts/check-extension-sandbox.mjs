@@ -18,8 +18,11 @@
  *      blob URLs are how extension files reach a frame that has no server
  *      behind it — which is also what makes extensions work off Android.
  *
- * The probe builds the same two-module graph the sandbox builds, leaves first,
- * and checks the entry actually imported the leaf rather than merely running.
+ * The probe builds the graphs the way the app builds them and checks each entry
+ * actually imported its dependencies rather than merely running. Both
+ * assemblies are covered: the background half receives its modules over
+ * postMessage, the ui-file half reads them out of a JSON block baked into its
+ * own document, and those are two separate pieces of code to get wrong.
  *
  * CHROMIUM_PATH overrides the browser; this repo's image keeps one at
  * /opt/pw-browsers/chromium.
@@ -91,6 +94,52 @@ await page.evaluate(() => {
   document.body.appendChild(f);
 });
 
+// ── The UI page's loader, which assembles the same graph differently ─────────
+//
+// The background half is handed its modules over postMessage. A ui-file page
+// gets them baked into its srcdoc as a JSON block, because the host builds that
+// document anyway — so the escaping and the loader are separate code, and a
+// separate thing to get wrong. Three modules here, not two, so a graph deeper
+// than one hop is actually exercised.
+await page.evaluate(() => {
+  const modules = [
+    { path: 'lib/log.js', source: 'export const tag = () => "logged";' },
+    { path: 'lib/queue.js', source: 'import { tag } from "__authno_mod_0__";\nexport const run = () => tag() + ":queued";' },
+    { path: 'ui/main.js', source: 'import { run } from "__authno_mod_1__";\nparent.postMessage({ k: "ui-page", v: run() }, "*");' },
+  ];
+  const json = JSON.stringify(modules).replace(/</g, '\u003c');
+
+  const loader = `
+    (function () {
+      var mods = JSON.parse(document.getElementById('authno-modules').textContent);
+      var urls = [];
+      try {
+        for (var i = 0; i < mods.length; i++) {
+          var src = mods[i].source;
+          for (var j = 0; j < urls.length; j++) {
+            src = src.split('__authno_mod_' + j + '__').join(urls[j]);
+          }
+          urls.push(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        }
+        import(urls[urls.length - 1]).catch(function (err) {
+          parent.postMessage({ k: 'ui-page', v: 'FAILED: ' + err.message }, '*');
+        });
+      } catch (err) {
+        parent.postMessage({ k: 'ui-page', v: 'THREW: ' + err.message }, '*');
+      }
+    })();
+  `;
+
+  const close = `</${'script'}>`;
+  const f = document.createElement('iframe');
+  f.setAttribute('sandbox', 'allow-scripts');
+  f.srcdoc = `<!doctype html><html><body>`
+    + `<script type="application/json" id="authno-modules">${json}${close}`
+    + `<script>${loader}${close}`
+    + `</body></html>`;
+  document.body.appendChild(f);
+});
+
 await page.waitForTimeout(2500);
 await browser.close();
 server.close();
@@ -103,6 +152,7 @@ const checks = [
   ['the frame has no storage of its own',              /"k":"own.localStorage","v":"THREW/],
   ['the frame\'s origin is opaque',                    /"k":"origin","v":"null"/],
   ['a blob module graph still imports and runs',       /"k":"blob-import","v":"activated:42"/],
+  ['a ui page links a three-module graph',             /"k":"ui-page","v":"logged:queued"/],
   ['the access key never crossed the boundary',        new RegExp(`^(?!.*${KEY})`, 's')],
 ];
 
