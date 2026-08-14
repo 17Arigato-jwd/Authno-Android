@@ -161,6 +161,24 @@ widget can look.
 
 ---
 
+## Verifying it
+
+The jest suite covers what jsdom can reach. Four things it cannot, each with a
+script, each of which has caught something real:
+
+| | what it is for |
+|---|---|
+| `npm run check:timezones` | the writing day on days that are 23 or 25 hours long. A zone is fixed before the first `Date` exists, so setting `TZ` inside a test file does nothing — measured. |
+| `npm run check:sandbox` | that a frame really cannot reach the app. jsdom has no origin model, so a unit test of this passes against a sandbox with a hole in it. |
+| `npm run check:extensions` | the protocol end to end. jsdom cannot execute a frame's scripts, so the bootstrap was a string nothing had ever run. |
+| `npm run stress:extensions` | twenty at once, churn, floods, and extensions that misbehave. The bar is not that one cannot be bad — it is that one bad one cannot take its neighbours with it. |
+
+The desktop installers are built by CI only on a tag, a dispatched release, or
+a pull request labelled `build-desktop`. Packaging is the one thing no other
+job catches: electron-builder's config is not exercised by `Build React` or by
+anything in jest, so a broken `protocols` block first shows up when you cut a
+release.
+
 ## Notes on things that look like issues and are not
 
 - **The JS suite has failed 4 tests twice, unreproducibly.** Both times a

@@ -172,14 +172,24 @@ export function inExtension(now = new Date(), lastWriteAt = null, opts = {}) {
 }
 
 /**
- * How many hours the deadline has been pushed past midnight. 0 normally.
+ * How many hours past midnight the deadline sits. 0 normally.
+ *
  * Exposed so a surface can say "extended" honestly rather than inferring it.
+ * Counted on the wall clock, not in elapsed time — see below for why those
+ * differ, and for the night this got wrong.
  */
 export function extensionHours(now = new Date(), lastWriteAt = null, opts = {}) {
   const end = windowEnd(now, lastWriteAt, opts);
-  const base = end.getHours() === 0 ? end : midnightOf(end);
-  if (end.getHours() === 0) return 0;
-  return Math.round((end.getTime() - base.getTime()) / HOUR);
+  // The deadline's LOCAL hour is the extension, because midnight is where the
+  // count starts and both are wall-clock facts.
+  //
+  // This used to subtract timestamps and divide by an hour, which measures
+  // REAL hours instead — and on the two days a year that are 23 or 25 hours
+  // long the two are different numbers. On a fall-back night, local midnight
+  // to 04:00 really is five hours, because 1am happens twice, so a cap of four
+  // reported five. On a spring-forward night the same sum reported three.
+  // Neither is what a writer looking at their clock would say.
+  return end.getHours();
 }
 
 /**
