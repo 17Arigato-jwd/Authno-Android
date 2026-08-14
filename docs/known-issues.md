@@ -109,16 +109,18 @@ Both halves of an extension now link their modules the same way.
 
 ### 8. Two host calls are still Android-only — APP
 
-The app's own Google sign-in now works on desktop through `authno://` — see
-below — but two calls an EXTENSION can make still do not: `googleSignIn`
-(Credential Manager) and `requestDriveToken` (the native account picker) have
-no desktop equivalent and throw with a reason.
+The extension system itself runs on desktop — loading, isolation, the module
+graph, storage, hooks, UI pages and the whole lifecycle, all covered by
+`npm run check:extensions` in a real browser. Two *capabilities* an extension
+can ask for do not: `googleSignIn` (Credential Manager) and `requestDriveToken`
+(the native account picker) have no desktop equivalent and throw with a reason
+rather than a raw Capacitor string.
 
-`openBrowser` is fine now: it opens the real browser, and an extension that
-routes its round trip through the gate can be handed the result back on the
-`authno://` scheme exactly as the app is. What is missing is only the two
-native shortcuts, so an extension that wants Drive on desktop has to do the
-ordinary OAuth dance rather than ask Android for a token.
+`openBrowser` is fine: it opens the real browser, and an extension routing its
+round trip through the gate can be handed the result back on `authno://`
+exactly as the app is. What is missing is only the two native shortcuts, so an
+extension that wants Drive on desktop has to do the ordinary OAuth dance rather
+than ask Android for a token. That is a capability gap, not a platform gap.
 
 ### 9. The reminder falls back to generic wording — APP
 

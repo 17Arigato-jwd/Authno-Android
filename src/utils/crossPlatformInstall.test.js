@@ -45,12 +45,23 @@ jest.mock('@capacitor/filesystem', () => ({
       if (!mockFiles.has(path)) throw new Error(`no such file: ${path}`);
       return { type: 'file' };
     },
+    // `type` matters and used to be a lie here: everything came back as a
+    // directory. The real web implementation reports 'file' for files and
+    // 'directory' for folders (see its dbRequest rows), and readExtensionTree
+    // decides whether to recurse or read on exactly that field — so a mock
+    // that called index.js a directory would have it descend into a file,
+    // find nothing, and report an extension with no code in it.
     readdir: async ({ path }) => {
-      const names = new Set();
+      const seen = new Map();
       for (const p of mockFiles.keys()) {
-        if (p.startsWith(`${path}/`)) names.add(p.slice(path.length + 1).split('/')[0]);
+        if (!p.startsWith(`${path}/`)) continue;
+        const rest = p.slice(path.length + 1);
+        const head = rest.split('/')[0];
+        // More path after the first segment means the segment is a folder.
+        seen.set(head, rest.includes('/') ? 'directory' : 'file');
       }
-      return { files: [...names].map((name) => ({ name, type: 'directory' })) };
+      if (seen.size === 0) throw new Error(`no such directory: ${path}`);
+      return { files: [...seen].map(([name, type]) => ({ name, type })) };
     },
     // Throws on a missing directory, like the real one. That is not incidental
     // detail — it is the exact condition uninstallExtension has to survive for
@@ -92,6 +103,47 @@ describe('installing an extension on a desktop', () => {
     expect(mockFiles.has('AuthNo/extensions/com.example.demo/manifest.json')).toBe(true);
     expect(mockFiles.has('AuthNo/extensions/com.example.demo/index.js')).toBe(true);
     expect(mockFiles.has('AuthNo/extensions/com.example.demo/ui/page.html')).toBe(true);
+  });
+
+  /**
+   * The desktop path, end to end on this side of the frame: install a bundle,
+   * then read back exactly what the sandbox will link and run.
+   *
+   * This is the step that used to be impossible off Android. Extension code
+   * was fetched from https://localhost/extensions/*, which only MainActivity
+   * serves, so activation was skipped on desktop outright. It now comes off
+   * disk through the same Filesystem the install wrote to — and the shapes
+   * that readdir reports are what decides whether a file is read or descended
+   * into, which is why the mock above reports them faithfully.
+   */
+  test('the sandbox can read back what was installed, helpers and all', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const { packExtbk } = require('./extbkFormat');
+    const { readExtensionTree } = require('./extensionSandbox');
+
+    await installExtbkBytes(b64(await packExtbk({
+      manifest,
+      entry: `import { q } from './lib/queue.js';\nexport function activate() { return q; }`,
+      assets: [
+        { path: 'lib/queue.js', data: 'export const q = 1;' },
+        // Neither of these is linkable, and turning a 2 MB icon into a blob
+        // would cost memory for something no module can import.
+        { path: 'ui/page.html', data: '<p>hello</p>' },
+        { path: 'icon.png', data: 'not really a png' },
+      ],
+    })), { silent: true });
+
+    const files = await readExtensionTree('com.example.demo');
+    expect(Object.keys(files).sort()).toEqual(['index.js', 'lib/queue.js']);
+    expect(files['lib/queue.js']).toBe('export const q = 1;');
+
+    // And the graph the sandbox would hand the frame: the leaf first, because
+    // a blob URL cannot be referenced before the content that names it exists.
+    const { planModuleGraph } = require('./moduleGraph');
+    const { order, missing, cycle } = planModuleGraph(files, 'index.js');
+    expect(cycle).toBeNull();
+    expect(missing).toEqual([]);
+    expect(order).toEqual(['lib/queue.js', 'index.js']);
   });
 
   /** The regression. Installing used to succeed and discovery to come up empty. */

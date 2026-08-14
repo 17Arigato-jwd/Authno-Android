@@ -61,6 +61,12 @@ import { isAndroid } from './platform';
 import { toast as _toast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { planModuleGraph, rewriteSpecifiers } from './moduleGraph';
+import { sandboxDocument, createHostRouter, toSendable } from './sandboxProtocol';
+
+// Re-exported so callers and tests have one import for the sandbox. The
+// protocol lives in its own file because it imports nothing, which is what
+// lets a browser run the real thing — see the header there.
+export { BOOTSTRAP, sandboxDocument } from './sandboxProtocol';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 
@@ -127,171 +133,7 @@ export async function readExtensionTree(extId, { maxFiles = 200 } = {}) {
 
 // ── The document the sandbox runs ────────────────────────────────────────────
 
-/**
- * The bootstrap, as source.
- *
- * Exported so a test can read it without a DOM. It is a string rather than a
- * function because it has to execute in a realm that shares nothing with this
- * one — closing over anything here would be exactly the leak the frame exists
- * to prevent.
- */
-export const BOOTSTRAP = `
-(function () {
-  'use strict';
-  var pending = {};
-  var seq = 0;
-  var hooks = {};
 
-  function call(method, args) {
-    return new Promise(function (res, rej) {
-      var id = ++seq;
-      pending[id] = { res: res, rej: rej };
-      parent.postMessage({ type: 'ext-call', id: id, method: method, args: args }, '*');
-    });
-  }
-
-  function reply(id, result, error) {
-    parent.postMessage({ type: 'ext-reply', id: id, result: result, error: error }, '*');
-  }
-
-  // The host API. Every one of these is a round trip the host can refuse; there
-  // is no other surface, because there is no other origin to reach.
-  function makeStorage() {
-    return {
-      get: function (k) { return call('storage.get', [k]); },
-      set: function (k, v) { return call('storage.set', [k, v]); },
-      remove: function (k) { return call('storage.set', [k, null]); },
-      keys: function () { return call('storage.keys', []); },
-      getJSON: function (k, fallback) {
-        return call('storage.get', [k]).then(function (v) {
-          if (v === null || v === undefined) return fallback === undefined ? null : fallback;
-          try { return JSON.parse(v); } catch (e) { return fallback === undefined ? null : fallback; }
-        });
-      },
-      setJSON: function (k, v) { return call('storage.set', [k, JSON.stringify(v)]); },
-    };
-  }
-
-  var api = {
-    version: 3,
-    storage: makeStorage(),
-    navigate: function (pageId, session) { return call('navigate', [pageId, session]); },
-    toast: function (m, o) { return call('toast', [String(m == null ? '' : m), o || {}]); },
-    openBrowser: function (url) { return call('openBrowser', [url]); },
-    closeBrowser: function () { return call('closeBrowser', []); },
-    googleSignIn: function (clientId) { return call('googleSignIn', [clientId]); },
-    getSessions: function () { return call('getSessions', []); },
-    encodeSession: function (s) { return call('encodeSession', [s]); },
-    importSession: function (b64) { return call('importSession', [b64]); },
-    replaceSession: function (id, b64) { return call('replaceSession', [id, b64]); },
-    exportSessionAs: function (s, fmt) { return call('exportSessionAs', [s, fmt]); },
-    requestDriveToken: function () { return call('native.GoogleDrive.requestDriveToken', []); },
-    // Registering is local; the host only needs to know the name so it can
-    // subscribe on the bus and forward. The handler itself never leaves here.
-    registerHook: function (name, handler) {
-      (hooks[name] = hooks[name] || []).push(handler);
-      call('registerHook', [name]);
-      return function off() {
-        hooks[name] = (hooks[name] || []).filter(function (h) { return h !== handler; });
-      };
-    },
-  };
-
-  window.AuthnoHostAPI = api;
-
-  window.addEventListener('message', function (e) {
-    var msg = e.data;
-    if (!msg) return;
-
-    if (msg.type === 'ext-reply') {
-      var p = pending[msg.id];
-      if (!p) return;
-      delete pending[msg.id];
-      if (msg.error) p.rej(new Error(msg.error)); else p.res(msg.result);
-      return;
-    }
-
-    // A hook fired in the app. Run every handler, hand back the first result
-    // that is not undefined, and never let one handler's throw stop the others.
-    if (msg.type === 'ext-hook') {
-      var list = hooks[msg.name] || [];
-      Promise.all(list.map(function (h) {
-        try { return Promise.resolve(h.apply(null, msg.args || [])).catch(function () { return undefined; }); }
-        catch (err) { return Promise.resolve(undefined); }
-      })).then(function (results) {
-        var first;
-        for (var i = 0; i < results.length; i++) {
-          if (results[i] !== undefined) { first = results[i]; break; }
-        }
-        reply(msg.id, first, null);
-      });
-      return;
-    }
-
-    // The module graph, leaves first. Each becomes a blob URL, and the next
-    // module's source already names it — which is the only order blob URLs can
-    // be built in, since a URL cannot be referenced before its content exists.
-    if (msg.type === 'ext-load') {
-      (function () {
-        var urls = [];
-        try {
-          for (var i = 0; i < msg.modules.length; i++) {
-            var src = msg.modules[i].source;
-            // Swap each placeholder for the blob URL that module became. The
-            // list is leaves-first, so everything this module imports already
-            // has one — which is the only order blob URLs can be built in.
-            for (var j = 0; j < urls.length; j++) {
-              src = src.split('__authno_mod_' + j + '__').join(urls[j]);
-            }
-            urls.push(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-          }
-        } catch (err) {
-          parent.postMessage({ type: 'ext-ready', error: 'blob: ' + err.message }, '*');
-          return;
-        }
-        import(urls[urls.length - 1]).then(function (mod) {
-          if (typeof mod.activate !== 'function') {
-            parent.postMessage({ type: 'ext-ready', error: 'no activate() export' }, '*');
-            return;
-          }
-          return Promise.resolve(mod.activate(Object.assign({}, api, {
-            extension: msg.manifest,
-            app: msg.app,
-          }))).then(function (deactivate) {
-            window.__authnoDeactivate = typeof deactivate === 'function' ? deactivate : null;
-            parent.postMessage({ type: 'ext-ready', error: null }, '*');
-          });
-        }).catch(function (err) {
-          parent.postMessage({ type: 'ext-ready', error: String(err && err.message ? err.message : err) }, '*');
-        });
-      })();
-      return;
-    }
-
-    if (msg.type === 'ext-deactivate') {
-      try { if (window.__authnoDeactivate) window.__authnoDeactivate(); } catch (err) { /* teardown is best-effort */ }
-      hooks = {};
-      return;
-    }
-  });
-
-  parent.postMessage({ type: 'ext-boot' }, '*');
-})();
-`;
-
-/**
- * The srcdoc for one extension's frame.
- *
- * No CSP meta tag: the opaque origin is the boundary, and a policy inside the
- * frame would only constrain code that is already walled off.
- *
- * The closing tag is split so this file can be served as a script itself
- * without the parser ending it here — the usual reason, not a typo.
- */
-export function sandboxDocument() {
-  const close = `</${'script'}>`;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><script>${BOOTSTRAP}${close}</head><body></body></html>`;
-}
 
 // ── Host side ────────────────────────────────────────────────────────────────
 
@@ -463,63 +305,26 @@ export async function runExtension(manifest, handlers = {}) {
   frame.srcdoc = sandboxDocument();
 
   const ctx = { extId, manifest, handlers };
-  const hookOffs = [];
   let settle;
   const ready = new Promise((res) => { settle = res; });
 
   const post = (msg) => { try { frame.contentWindow?.postMessage(msg, '*'); } catch { /* torn down */ } };
 
-  // Hook calls travel the other way: the app fires, the frame answers.
-  let hookSeq = 0;
-  const hookPending = new Map();
+  const router = createHostRouter({
+    post,
+    payload: () => ({ modules, entry, manifest, app: appInfo() }),
+    dispatch: (method, args) => dispatch(method, args, ctx),
+    onReady: (outcome) => settle(outcome),
+    registerHook,
+    sendable: toSendable,
+  });
 
-  const onMessage = async (e) => {
+  const onMessage = (e) => {
     // Identity, not origin. An opaque-origin frame reports `origin: "null"`,
     // which several other things also report; the window reference is the only
     // thing that is actually this frame.
     if (e.source !== frame.contentWindow) return;
-    const msg = e.data;
-    if (!msg || typeof msg !== 'object') return;
-
-    if (msg.type === 'ext-boot') {
-      post({ type: 'ext-load', modules, entry, manifest, app: appInfo() });
-      return;
-    }
-
-    if (msg.type === 'ext-ready') {
-      settle(msg.error ? { ok: false, error: msg.error } : { ok: true });
-      return;
-    }
-
-    if (msg.type === 'ext-reply') {
-      const p = hookPending.get(msg.id);
-      if (!p) return;
-      hookPending.delete(msg.id);
-      p(msg.result);
-      return;
-    }
-
-    if (msg.type !== 'ext-call') return;
-
-    if (msg.method === 'registerHook') {
-      const name = String(msg.args?.[0] ?? '');
-      hookOffs.push(registerHook(name, (...args) => new Promise((res) => {
-        const id = ++hookSeq;
-        hookPending.set(id, res);
-        // A frame that never answers must not stall the app's own hook chain.
-        setTimeout(() => { if (hookPending.delete(id)) res(undefined); }, 5000);
-        post({ type: 'ext-hook', id, name, args: sendable(args) });
-      })));
-      post({ type: 'ext-reply', id: msg.id, result: null, error: null });
-      return;
-    }
-
-    try {
-      const result = await dispatch(msg.method, msg.args ?? [], ctx);
-      post({ type: 'ext-reply', id: msg.id, result: sendable(result), error: null });
-    } catch (err) {
-      post({ type: 'ext-reply', id: msg.id, result: null, error: String(err?.message ?? err) });
-    }
+    router.onMessage(e.data);
   };
 
   window.addEventListener('message', onMessage);
@@ -530,16 +335,19 @@ export async function runExtension(manifest, handlers = {}) {
     new Promise((res) => setTimeout(() => res({ ok: false, error: 'activation timed out' }), ACTIVATE_TIMEOUT_MS)),
   ]);
 
-  const teardown = () => {
-    post({ type: 'ext-deactivate' });
-    for (const off of hookOffs) { try { off(); } catch { /* already gone */ } }
+  // Awaited, not fired and forgotten. An extension's deactivate() may flush a
+  // queue or write its last state, and those are host calls that need the app
+  // still listening when they land — removing the frame the moment the request
+  // went out silently dropped every one of them.
+  const teardown = async () => {
+    await router.teardown();
     window.removeEventListener('message', onMessage);
     // Removing the frame drops its realm, its blob URLs and anything it was
     // still holding. There is no other cleanup to get wrong.
     try { frame.remove(); } catch { /* already detached */ }
   };
 
-  if (!outcome.ok) { teardown(); return outcome; }
+  if (!outcome.ok) { await teardown(); return outcome; }
 
   _running.set(extId, { frame, teardown });
   return { ok: true };
@@ -550,7 +358,7 @@ export async function stopExtension(extId) {
   const entry = _running.get(extId);
   if (!entry) return;
   _running.delete(extId);
-  try { entry.teardown(); } catch (e) {
+  try { await entry.teardown(); } catch (e) {
     logError('extensionSandbox:teardown', e, { extId });
   }
 }
@@ -569,17 +377,3 @@ function appInfo() {
   return { name: 'AuthNo', version: APP_VERSION, platform: isAndroid() ? 'android' : 'desktop' };
 }
 
-/**
- * postMessage uses structured clone, which throws on a function, a DOM node or
- * a React element — and a throw here would look to the extension like the host
- * hanging up mid-call. A JSON round trip drops exactly the things that cannot
- * cross anyway, and does it where the failure can be explained.
- */
-function sendable(value) {
-  if (value === undefined || value === null) return value;
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch {
-    return null;
-  }
-}
