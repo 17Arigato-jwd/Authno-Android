@@ -198,8 +198,8 @@ describe('syncWidget reaches the plugin', () => {
 
   test('a write minutes ago is what pushes the deadline past midnight', async () => {
     localStorage.clear();
-    const { saveResumePoint } = require('./resumeState');
-    saveResumePoint('b1', { chapIdx: 1 });
+    const { markWrote } = require('./writeClock');
+    markWrote();
 
     const { syncWidget } = require('./widgetBridge');
     await syncWidget(sessions, '#5a00d9', null);

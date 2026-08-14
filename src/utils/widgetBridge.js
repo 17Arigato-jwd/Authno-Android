@@ -213,18 +213,22 @@ export async function syncWidget(sessions, accentHex, theme, settings) {
     // lets the system tick it, so nothing has to wake up to keep it honest.
     //
     // The deadline moves past midnight only when there is a recent write to
-    // move it, which is why the last resume timestamp has to reach this call:
-    // without it every night ends at midnight regardless of who is still
-    // typing, and the extension would exist in streakWindow and nowhere else.
+    // move it, which is why the write clock has to reach this call: without it
+    // every night ends at midnight regardless of who is still typing, and the
+    // extension would exist in streakWindow and nowhere else.
+    //
+    // Same source as the flame reads, deliberately. The widget and the app
+    // disagreeing about when tonight ends would be worse than neither of them
+    // counting down.
     let countdownJson = '';
     try {
-      let lastWriteAt = null;
+      let writtenAt = null;
       try {
-        const { getLastResume } = await import('./resumeState');
-        lastWriteAt = getLastResume()?.ts ?? null;
+        const { lastWriteAt } = await import('./writeClock');
+        writtenAt = lastWriteAt();
       } catch { /* nothing recorded yet — the day ends at midnight */ }
 
-      const cd = countdownState({ lastWriteAt });
+      const cd = countdownState({ lastWriteAt: writtenAt });
       countdownJson = JSON.stringify({
         deadline: cd.deadline,
         dayKey: cd.dayKey,
