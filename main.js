@@ -146,13 +146,25 @@ ipcMain.handle("deep-link-ready", () => {
   return held.url;
 });
 
-// Whether the OS actually accepted the registration. It usually does — the
-// .deb, the .rpm and the Windows installer all claim the scheme — but a
-// managed machine can refuse the registry write, another program can already
-// hold `authno://`, and a binary run straight out of a checkout has no
-// installed entry at all. When it did not take, the sign-in screen offers
-// "paste the address you were sent to" rather than waiting for a link that is
-// never coming.
+// Whether the OS actually accepted the registration.
+//
+// Worth knowing which half did the accepting, because the two platforms do it
+// differently and the difference is not symmetric:
+//
+//   Linux    the .deb and .rpm write MimeType=x-scheme-handler/<scheme> into
+//            the .desktop entry — electron-builder's `protocols` block does
+//            this — AND setAsDefaultProtocolClient runs above. Belt and braces.
+//   Windows  the installer does NOTHING. electron-builder has no NSIS path for
+//            protocols at all; the schema even calls the option macOS-only.
+//            The registry keys under HKCU\Software\Classes come from the
+//            setAsDefaultProtocolClient call above and from nowhere else, so
+//            deleting it as redundant would take Windows deep links with it.
+//
+// It can still fail: a managed machine can refuse the registry write, another
+// program can already hold the scheme, and a binary run out of a checkout has
+// no installed entry behind it. When it did not take, the sign-in screen
+// offers "paste the address you were sent to" rather than waiting for a link
+// that is never coming.
 ipcMain.handle("deep-link-registered", () => {
   // The app's own scheme is the one sign-in needs. The OAuth scheme is asked
   // for separately, because an extension can want one without the other.

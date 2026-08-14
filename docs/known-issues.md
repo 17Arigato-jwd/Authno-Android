@@ -86,10 +86,16 @@ it under the app's own chrome.
 
 ### 7a. `authno://` can still fail to register — APP
 
-The `.deb`, the `.rpm` and the Windows installer all claim the scheme, and the
-AppImage that could not has been dropped. What remains is narrower: a managed
-machine that refuses the registry write, another program already holding
-`authno://`, or a binary run straight out of a checkout.
+The `.deb` and `.rpm` claim it through their `.desktop` entry, Windows claims
+it at first run through `setAsDefaultProtocolClient`, and the AppImage that
+could do neither has been dropped. What remains is narrower: a managed machine
+that refuses the registry write, another program already holding `authno://`,
+or a binary run straight out of a checkout.
+
+Note for whoever touches the packaging: electron-builder's `protocols` block
+only reaches Linux. There is no NSIS path for it — the option's own schema
+calls it macOS-only — so on Windows the runtime call is the whole mechanism,
+not a belt-and-braces duplicate of the installer.
 
 Handled rather than open — `app.isDefaultProtocolClient` is asked before a
 browser opens, and a paste-the-address panel is offered instead of waiting for

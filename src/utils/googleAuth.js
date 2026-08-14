@@ -101,10 +101,10 @@ async function openConsent(url) {
 /**
  * Whether the OS will actually deliver `authno://` to us.
  *
- * The installers all claim it, so this is normally true. It is false when a
- * managed machine refused the registry write, when another program already
- * holds `authno://`, or when the binary is running out of a checkout with no
- * installed entry behind it. The caller offers a manual path instead of
+ * Normally true: Linux packages claim it in their .desktop entry and Windows
+ * claims it at first run. It is false when a managed machine refused the
+ * registry write, when another program already holds `authno://`, or when the
+ * binary is running out of a checkout with no installed entry behind it. The caller offers a manual path instead of
  * opening a browser and waiting for a link that is never coming.
  */
 export async function deepLinkReady() {
