@@ -57,6 +57,20 @@ countdown on the home screen, and reminders worth reading._
 - **A blank new book no longer stacks up.** Opening the app repeatedly without
   writing produced a shelf of Untitled Books.
 
+### Desktop
+
+- **Sign in with Google works on Windows and Linux.** It leaves the app for
+  your real browser, the same as it does on Android, and comes back when you
+  are done. If your system cannot hand the app the address back, there is a box
+  to paste it into rather than a button that waits forever.
+- **Extensions run on desktop.** Installing one has worked for a while;
+  activating it did not, on any desktop build. Extensions split across several
+  files work too, both their background half and their pages.
+- **No more AppImage.** Linux is `.deb` and `.rpm`. The AppImage could not
+  register the app for the links Google sign-in comes back on, and shipping a
+  build where a feature quietly does not work is worse than shipping one fewer
+  build.
+
 ### Elsewhere
 
 - **Your account details now look like the rest of the app** — the same card

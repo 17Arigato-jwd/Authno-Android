@@ -58,10 +58,11 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   const [googleOn, setGoogleOn] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   // Only ever true on a desktop build where the OS did not take the authno://
-  // registration — an AppImage nobody has integrated, or another program
-  // holding the scheme. Waiting on a link that is never coming is the one
-  // failure in this flow with no visible cause at all, so it is offered a way
-  // through rather than left to time out.
+  // registration: a managed machine that refused the write, another program
+  // already holding the scheme, or a binary run out of a checkout. Waiting on
+  // a link that is never coming is the one failure in this flow with no
+  // visible cause at all, so it is offered a way through rather than left to
+  // time out.
   const [needsPaste, setNeedsPaste] = useState(false);
   const [pastedLink, setPastedLink] = useState('');
   useEffect(() => { let live = true; googleAvailable().then((v) => { if (live) setGoogleOn(v); }); return () => { live = false; }; }, []);

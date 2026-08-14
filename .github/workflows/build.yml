@@ -713,7 +713,6 @@ jobs:
         with:
           name: authno-desktop-linux
           path: |
-            dist-electron/*.AppImage
             dist-electron/*.deb
             dist-electron/*.rpm
             dist-electron/*.tar.gz
@@ -798,6 +797,5 @@ jobs:
             release-assets/**/*.zip
             release-assets/**/*.exe
             release-assets/**/*.msi
-            release-assets/**/*.AppImage
             release-assets/**/*.deb
             release-assets/**/*.rpm

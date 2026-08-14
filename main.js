@@ -144,10 +144,13 @@ ipcMain.handle("deep-link-ready", () => {
   return held.url;
 });
 
-// Whether the OS actually accepted the registration. When it did not — an
-// AppImage nobody has integrated, or another app holding the scheme — the
-// sign-in screen offers "paste the address you were sent to" instead of
-// waiting for a link that will never arrive.
+// Whether the OS actually accepted the registration. It usually does — the
+// .deb, the .rpm and the Windows installer all claim the scheme — but a
+// managed machine can refuse the registry write, another program can already
+// hold `authno://`, and a binary run straight out of a checkout has no
+// installed entry at all. When it did not take, the sign-in screen offers
+// "paste the address you were sent to" rather than waiting for a link that is
+// never coming.
 ipcMain.handle("deep-link-registered", () => {
   try { return app.isDefaultProtocolClient(SCHEME); } catch { return false; }
 });

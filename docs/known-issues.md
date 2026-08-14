@@ -84,18 +84,18 @@ it under the app's own chrome.
 
 ## Worth doing, not blocking
 
-### 7a. AppImage cannot register `authno://` — APP
+### 7a. `authno://` can still fail to register — APP
 
-An AppImage is not installed, so nothing writes the `.desktop` entry that
-claims the scheme, and Google sign-in on that one build cannot be handed its
-address back. The gate detects this before opening a browser
-(`app.isDefaultProtocolClient`) and offers a paste-the-address panel instead of
-waiting for a link that is never coming. `.deb`, `.rpm` and the Windows
-installer all register it properly.
+The `.deb`, the `.rpm` and the Windows installer all claim the scheme, and the
+AppImage that could not has been dropped. What remains is narrower: a managed
+machine that refuses the registry write, another program already holding
+`authno://`, or a binary run straight out of a checkout.
 
-The paste path is not a hole: the address is not a credential, the single-use
-60-second handoff inside it is, and the gate refuses that if it is stale or
-already spent.
+Handled rather than open — `app.isDefaultProtocolClient` is asked before a
+browser opens, and a paste-the-address panel is offered instead of waiting for
+a link that is never coming. The paste path is not a hole: the address is not a
+credential, the single-use 60-second handoff inside it is, and the gate refuses
+that if it is stale or already spent.
 
 ### 7. Extension UI pages could not use relative imports — APP
 

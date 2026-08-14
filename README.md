@@ -36,7 +36,7 @@ Authno uses a custom file format (`.authbook`) to save writing projects quickly.
 
 ### **Cross-Platform**
 * Windows
-* Linux (AppImage, DEB, RPM)
+* Linux (DEB, RPM)
 
 ### **Basic Author Tools**
 * Core writing experience
@@ -66,7 +66,6 @@ You’ll find it directly under the latest release as:
 ### **Linux**
 | Format                  | File                          |
 | ----------------------- | ----------------------------- |
-| **AppImage**            | `Authno-<version>.AppImage`   |
 | **DEB (Ubuntu/Debian)** | `Authno_<version>_amd64.deb`  |
 | **RPM (Fedora/RedHat)** | `Authno-<version>.x86_64.rpm` |
 

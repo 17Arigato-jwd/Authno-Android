@@ -125,10 +125,11 @@ async function openConsent(url) {
 /**
  * Whether the OS will actually deliver `authno://` to us.
  *
- * False on an AppImage nobody has integrated — those are not installed, so
- * nothing writes the .desktop entry that claims the scheme — and false when
- * another program holds it. The caller offers a manual path instead of opening
- * a browser and waiting for a link that is never coming.
+ * The installers all claim it, so this is normally true. It is false when a
+ * managed machine refused the registry write, when another program already
+ * holds `authno://`, or when the binary is running out of a checkout with no
+ * installed entry behind it. The caller offers a manual path instead of
+ * opening a browser and waiting for a link that is never coming.
  */
 export async function deepLinkReady() {
   if (!isElectron()) return true;              // Android registers in its manifest

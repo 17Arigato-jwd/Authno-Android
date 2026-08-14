@@ -34,9 +34,10 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('deep-link', listener);
   },
   claimPendingDeepLink: () => ipcRenderer.invoke('deep-link-ready'),
-  // False on an AppImage nobody has integrated, or when another app holds the
-  // scheme. The sign-in screen offers a manual path rather than waiting on a
-  // link that is never coming.
+  // False when the OS did not take the registration: a managed machine that
+  // refused the registry write, another program already holding the scheme, or
+  // a binary run out of a checkout. The sign-in screen offers a manual path
+  // rather than waiting on a link that is never coming.
   isDeepLinkRegistered: () => ipcRenderer.invoke('deep-link-registered'),
 
   // ── Desktop notifications ─────────────────────────────────────────────────
