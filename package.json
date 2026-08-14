@@ -58,7 +58,8 @@
     "cap:sync": "npx cap sync android",
     "dist:android": "npm run build && npx cap sync android",
     "prestart": "node scripts/sync-version.js",
-    "prebuild": "node scripts/sync-version.js"
+    "prebuild": "node scripts/sync-version.js",
+    "check:sandbox": "node scripts/check-extension-sandbox.mjs"
   },
   "eslintConfig": {
     "extends": [

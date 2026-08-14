@@ -1,82 +1,36 @@
 /**
- * extensionRuntime.js — v1.2.0-alpha.1
+ * extensionRuntime.js — the app's side of the extension boundary.
  *
- * Extension activation runtime. Bridges the gap between installed extension
- * files on disk and the live React app.
+ * Activation itself lives in extensionSandbox.js, which runs extension code in
+ * a frame with an opaque origin. This file is what the app already imported, so
+ * it stays: it holds the handlers App.js registers, the host-internal API the
+ * ui-file page router calls, and the adapter between the two.
  *
- * How it works
- * ────────────
- * 1. Extensions are installed to: AuthNo/extensions/<id>/ (Capacitor internal storage)
- * 2. MainActivity.java intercepts https://localhost/extensions/* requests and
- *    serves files directly from that directory.
- * 3. This lets us use native ES module dynamic import() — relative imports inside
- *    the extension (e.g. `import { X } from './queue.js'`) resolve correctly.
- * 4. activate() is called with the standard API surface.
- * 5. window.AuthNoExtensionAPI is set up so extensions can encode .authbook bytes.
+ * ── What changed, and why the old shape was not fixable ──────────────────────
  *
- * Per-extension storage
- * ─────────────────────
- * A scoped key-value store backed by localStorage, namespaced per extension ID.
- * Values are always stored/retrieved as strings (JSON.stringify before set if needed).
+ * This module used to `import()` extension code straight into the app's own
+ * context. There was no boundary to tighten — an extension had the app's
+ * globals, the app's localStorage (which is where the access key lives) and
+ * every Capacitor plugin, regardless of what its manifest asked for.
  *
- * Version history
- * ───────────────
- * 1.2.0-alpha.1  Initial implementation (fixes Bug 2 — activate() never called)
+ * It also only worked on Android, and for the same reason: the import came from
+ * `https://localhost/extensions/*`, a URL only MainActivity serves. Off Android
+ * the import never settled, which is why activation was skipped there outright.
+ *
+ * Both are gone. The sandbox reads the files through Capacitor's Filesystem —
+ * real on web and Electron, backed by IndexedDB — and links them into blob URLs
+ * inside the frame, which needs no server and no origin. One code path, three
+ * platforms, and the extension is on the other side of a wall on all of them.
+ *
+ * `window.AuthNoExtensionAPI` below is now host-internal. It is still the thing
+ * ExtensionPage's message router calls to service a ui-file page, but extension
+ * code can no longer see it: an opaque-origin frame cannot read `parent`
+ * anything.
  */
 
-import { registerHook }  from './sessionHooks';
-import { logError }      from './ErrorLogger';
-import { isAndroid }     from './platform';
-import { toast as _toast } from '../DesignSystem';
-import { APP_VERSION }   from '../version';
-// OAuth browser helpers — use native OAuthPlugin (Custom Tabs) and
-// GoogleSignInPlugin (Credential Manager) instead of @capacitor/browser.
-// @capacitor/browser hardcodes com.android.chrome which causes a silent hang
-// when Chrome isn't the default browser on the device.
-import { registerPlugin } from '@capacitor/core';
+import { logError } from './ErrorLogger';
+import { runExtension, stopExtension, stopAll } from './extensionSandbox';
 
-const _OAuthPlugin    = registerPlugin('OAuth');
-const _GoogleSignIn   = registerPlugin('GoogleSignIn');
-
-const EXT_BASE_URL = 'https://localhost/extensions';
-
-// ── Per-extension scoped storage ─────────────────────────────────────────────
-
-function makeExtStorage(extId) {
-  const ns = `__ext_kv_${extId}__`;
-  const store = {
-    async get(key) {
-      try { return localStorage.getItem(ns + key); } catch { return null; }
-    },
-    async set(key, val) {
-      try {
-        if (val === null || val === undefined) {
-          localStorage.removeItem(ns + key);
-        } else {
-          localStorage.setItem(ns + key, String(val));
-        }
-      } catch {}
-    },
-    async remove(key) { return store.set(key, null); },
-    // Every extension was hand-rolling this pair, each with its own version of
-    // the "what if the JSON is corrupt" bug. Bad JSON resolves to `fallback`.
-    async getJSON(key, fallback = null) {
-      const raw = await store.get(key);
-      if (raw === null || raw === undefined) return fallback;
-      try { return JSON.parse(raw); } catch { return fallback; }
-    },
-    async setJSON(key, val) { return store.set(key, JSON.stringify(val)); },
-    /** Every key this extension has stored, without the namespace prefix. */
-    async keys() {
-      try {
-        return Object.keys(localStorage)
-          .filter((k) => k.startsWith(ns))
-          .map((k) => k.slice(ns.length));
-      } catch { return []; }
-    },
-  };
-  return store;
-}
 
 // ── window.AuthNoExtensionAPI ────────────────────────────────────────────────
 //
@@ -155,144 +109,52 @@ function ensureHostAPI() {
   };
 }
 
-// ── Activation registry ───────────────────────────────────────────────────────
-
-/** extId → deactivate() fn */
-const _active = new Map();
+// ── Activation ────────────────────────────────────────────────────────────────
 
 /**
- * Activate one extension. Safe to call again on the same extId — deactivates
- * the previous instance first.
+ * Activate one extension. Safe to call again on the same extId — the sandbox
+ * drops the previous frame first.
+ *
+ * Resolves once activate() has returned or failed, and never hangs: the install
+ * sheet waits on this, and the version that could hang froze it at
+ * "Activating…" with nothing to click.
  *
  * @param {object}   manifest    — the extension's manifest object
  * @param {function} navigateFn  — (extension, pageId, session) → void
  */
 export async function activateExtension(manifest, navigateFn) {
-  const { id: extId, version } = manifest;
-
-  await deactivateExtension(extId); // clean up any previous run
-
-  // Extensions execute from https://localhost/extensions/*, which only the
-  // Android WebView serves (MainActivity.shouldInterceptRequest). On desktop
-  // there is no such server — the files live in the Filesystem web shim — so
-  // activation can't work yet. Skip fast with a clear log instead of hanging
-  // the install sheet on an import that never resolves.
-  if (!isAndroid()) {
-    console.warn(`[extensionRuntime] ${extId}: extensions run on mobile only for now — skipping activation on desktop.`);
-    return;
-  }
+  const extId = manifest?.id;
+  if (!extId) return;
 
   ensureHostAPI();
 
-  const storage = makeExtStorage(extId);
-  const navigate = (ext, pageId, session = null) => navigateFn?.(ext, pageId, session);
-
-  // Dynamic import from the HTTP-served extension URL.
-  // Cache-bust with timestamp so reinstalling always picks up fresh code.
-  // EXT_BASE_URL (https://localhost/extensions) is only served by Android's
-  // MainActivity. On Electron/web nothing serves it, and the import can hang
-  // indefinitely instead of rejecting — which froze the install sheet at
-  // "Activating…". Race it against a timeout so activation always settles and
-  // the caller (refresh → InstallSheet) can complete.
-  const url = `${EXT_BASE_URL}/${extId}/index.js?_t=${Date.now()}`;
-  let mod;
-  try {
-    mod = await Promise.race([
-      import(/* webpackIgnore: true */ url),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Extension load timed out — extensions require the mobile runtime')), 8000)),
-    ]);
-  } catch (err) {
-    logError('extensionRuntime:import', err, { extId, url });
-    console.error(`[extensionRuntime] Failed to import ${extId}:`, err.message);
-    return;
-  }
-
-  if (typeof mod?.activate !== 'function') {
-    console.warn(`[extensionRuntime] ${extId}: no activate() export found`);
-    return;
-  }
-
-  // Hooks an extension registers during activate() are tracked here and torn
-  // down on deactivate. Previously only an explicit `return () => {...}` from
-  // activate() cleaned anything up, so an extension that forgot (or threw
-  // after registering) left its handlers on the bus — and every reinstall
-  // stacked another copy, firing the same upload N times.
-  const ownedUnsubs = [];
-  const trackedRegisterHook = (hookName, handler) => {
-    const off = registerHook(hookName, handler);
-    ownedUnsubs.push(off);
-    return off;
-  };
-
-  let deactivate;
-  try {
-    // openBrowser: uses Android Custom Tabs via OAuthPlugin (no Chrome lock-in)
-    const openBrowser  = async (url) => {
-      try {
-        await _OAuthPlugin.openAuthUrl({ url });
-      } catch (err) {
-        logError('extensionRuntime:openBrowser', err, { url });
-        throw err;
-      }
-    };
-    // closeBrowser: launches OAuthFinishActivity to pop Custom Tab from back stack
-    const closeBrowser = async () => {
-      await _OAuthPlugin.closeAuthBrowser().catch(() => {});
-    };
-    // googleSignIn: uses Credential Manager bottom-sheet (no browser/redirect needed)
-    const googleSignIn = async (clientId) => {
-      return _GoogleSignIn.signIn({ clientId });
-    };
-
-    deactivate = mod.activate({
-      registerHook: trackedRegisterHook,
-      storage,
-      navigate,
-      extension: manifest,
-      openBrowser,
-      closeBrowser,
-      googleSignIn,
-      toast: (message, opts = {}) => _toast(String(message ?? ''), opts),
-      app: { name: 'AuthNo', version: APP_VERSION, platform: isAndroid() ? 'android' : 'desktop' },
-    });
-  } catch (err) {
-    logError('extensionRuntime:activate', err, { extId });
-    console.error(`[extensionRuntime] activate() threw for ${extId}:`, err.message);
-    // Roll back any hooks the extension managed to register before it threw —
-    // a half-activated extension used to keep listening forever.
-    for (const off of ownedUnsubs) { try { off(); } catch {} }
-    return;
-  }
-
-  // Always register a teardown, even when activate() returns nothing: the
-  // tracked hook unsubscribes have to run either way.
-  _active.set(extId, () => {
-    for (const off of ownedUnsubs) { try { off(); } catch {} }
-    if (typeof deactivate === 'function') deactivate();
+  const { ok, error } = await runExtension(manifest, {
+    navigate: (ext, pageId, session) => navigateFn?.(ext, pageId, session),
+    getSessions: () => (typeof _getSessionsFn === 'function' ? _getSessionsFn() : []),
+    importSession: (b64) => {
+      if (typeof _importSessionFn !== 'function') throw new Error('importSession handler not registered');
+      return _importSessionFn(b64);
+    },
+    replaceSession: (id, b64) => (typeof _replaceSessionFn === 'function' ? _replaceSessionFn(id, b64) : undefined),
   });
 
-  console.log(`[extensionRuntime] ✓ Activated: ${extId} v${version}`);
+  if (!ok) {
+    logError('extensionRuntime:activate', new Error(error), { extId });
+    console.error(`[extensionRuntime] ${extId} did not activate: ${error}`);
+    return;
+  }
+  console.log(`[extensionRuntime] \u2713 Activated: ${extId} v${manifest.version}`);
 }
 
-/**
- * Deactivate one extension by ID: unregisters every hook it opened during
- * activate(), then calls its own deactivate() cleanup if it returned one.
- */
+/** Stop one extension and drop its frame, hooks and blob URLs with it. */
 export async function deactivateExtension(extId) {
-  const fn = _active.get(extId);
-  if (!fn) return;
-  _active.delete(extId);
-  try { fn(); } catch (e) {
-    console.warn(`[extensionRuntime] deactivate() threw for ${extId}:`, e.message);
-  }
+  await stopExtension(extId);
 }
 
-/**
- * Deactivate all running extensions.
- * Called on full refresh or when the extension list changes.
- */
+/** Stop everything. Called on a full refresh or when the extension list changes. */
 export async function deactivateAll() {
-  for (const extId of [..._active.keys()]) {
-    await deactivateExtension(extId);
-  }
+  await stopAll();
 }
+
+/** Which extensions are live. Exposed for the Developer section in Settings. */
+export { runningExtensions } from './extensionSandbox';

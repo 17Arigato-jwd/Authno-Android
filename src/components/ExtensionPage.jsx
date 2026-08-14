@@ -602,7 +602,19 @@ ${fileCode}
       ref={iframeRef}
       srcDoc={srcdoc}
       title={pageDef.title ?? extension.name}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+      /* allow-scripts and nothing more.
+         allow-same-origin was here, and with allow-scripts beside it the pair
+         is not a weaker sandbox — it is none. srcdoc content inherits the
+         embedder's origin, so that flag handed extension UI code the app's own
+         origin: parent.localStorage (where the access key lives), parent's
+         modules, all of it, one property access away. The postMessage bridge
+         below — scoping storage per extension, proxying the native plugins —
+         was something extension code could simply step around.
+         Without it the frame's origin is opaque, every parent access throws,
+         and the bridge is the only way out, which is what it was written to be.
+         allow-forms and allow-modals went too: a page that needs a form can
+         handle its own submit, and no extension has ever needed alert(). */
+      sandbox="allow-scripts"
       style={{ display: 'flex', flex: 1, width: '100%', height: '100%', minHeight: '200px', border: 'none', background: 'transparent' }}
     />
   );
@@ -706,6 +718,14 @@ function WebviewPage({ url, accentHex }) {
 
   if (!url) return <StatusBox icon="⚠️" title="No URL configured" subtitle="This page does not have a URL specified in the manifest." />;
 
+  // The address comes out of a manifest, which is a file somebody sent the
+  // writer. Anything but https loads under the app's chrome from a channel
+  // nobody can see into — and `javascript:` in particular would not be a page
+  // at all. Nothing legitimate needs the other schemes.
+  if (!/^https:\/\//i.test(String(url))) {
+    return <StatusBox icon="⚠️" title="Blocked" subtitle="Extension pages have to be served over https." />;
+  }
+
   return (
     <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
       {loading && !failed && (
@@ -727,7 +747,12 @@ function WebviewPage({ url, accentHex }) {
             onLoad={() => setLoading(false)}
             onError={() => { setLoading(false); setFailed(true); }}
             style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            /* A remote page keeps its own origin, so allow-same-origin here is
+               not the escape it was on the srcdoc frame above — the origin it
+               keeps is the extension author's server, not ours. It is dropped
+               anyway: nothing about showing a page requires it, and neither
+               does opening popups. */
+            sandbox="allow-scripts allow-forms"
           />
       }
       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', background: 'var(--app-bg)', flexShrink: 0 }}>
