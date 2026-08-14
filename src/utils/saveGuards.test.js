@@ -166,3 +166,82 @@ describe('saveAsBook', () => {
     await expect(saveAsBook(full)).rejects.toThrow(/AuthnoFilePicker/);
   });
 });
+
+/**
+ * What the refusals above look like to whoever asked for the save.
+ *
+ * The guards were the fix; this is the other half of it. saveBook refuses by
+ * returning rather than throwing, and the Save button read only `cancelled` —
+ * so a refused save produced a green "Saved ✓", a haptic tick and a tour step,
+ * and a writer who believed their work was on disk. A prevented data loss
+ * reported as a success is the data loss, one layer up and slower.
+ */
+describe('reading a save result', () => {
+  const { saveOutcome } = require('./storage');
+
+  test('a real save', () => {
+    expect(saveOutcome({ success: true })).toBe('saved');
+    expect(saveOutcome({ success: true, filePath: 'content://x' })).toBe('saved');
+    expect(saveOutcome({ success: true, downloaded: true })).toBe('saved');
+  });
+
+  /** Dismissing the picker is a decision, not a failure. Nothing should shout. */
+  test('a dismissed picker', () => {
+    expect(saveOutcome({ success: false, cancelled: true })).toBe('cancelled');
+  });
+
+  /**
+   * The two the Save button used to call success. Both mean the book on disk
+   * is still whole, and both mean nothing was written.
+   */
+  test('a guard refusing', () => {
+    expect(saveOutcome({ success: false, needsHydration: true })).toBe('refused');
+    expect(saveOutcome({ success: false, skippedEmpty: true })).toBe('refused');
+  });
+
+  /**
+   * Distinct from 'refused' because it is the one with a recovery: the file is
+   * gone, so forgetting the path turns the next save into a fresh "where shall
+   * I put this?" rather than another silent failure against a dead uri.
+   */
+  test('a file that has gone away', () => {
+    expect(saveOutcome({ success: false, staleUri: true })).toBe('stale-path');
+  });
+
+  test('anything else is a failure, including nothing at all', () => {
+    expect(saveOutcome({ success: false })).toBe('failed');
+    expect(saveOutcome({})).toBe('failed');
+    expect(saveOutcome(null)).toBe('failed');
+    expect(saveOutcome(undefined)).toBe('failed');
+    expect(saveOutcome('ok')).toBe('failed');
+  });
+
+  /**
+   * The precedence that matters: a cancelled picker on a book that ALSO could
+   * not be hydrated is still just a cancellation, and a stale path is reported
+   * as such even though `success` is false either way.
+   */
+  test('cancellation and a dead path outrank a plain failure', () => {
+    expect(saveOutcome({ success: false, cancelled: true, needsHydration: true })).toBe('cancelled');
+    expect(saveOutcome({ success: false, staleUri: true, skippedEmpty: true })).toBe('stale-path');
+  });
+
+  /**
+   * Only 'saved' may be reported as saved. Written as the rule rather than as
+   * four cases, because the bug was a caller that tested for the failures it
+   * happened to know about and let the rest through.
+   */
+  test('nothing else is ever "saved"', () => {
+    for (const r of [
+      { success: false, needsHydration: true },
+      { success: false, skippedEmpty: true },
+      { success: false, staleUri: true },
+      { success: false, cancelled: true },
+      { success: false },
+      {},
+      null,
+    ]) {
+      expect(saveOutcome(r)).not.toBe('saved');
+    }
+  });
+});

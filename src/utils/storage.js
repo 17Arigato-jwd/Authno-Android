@@ -446,6 +446,41 @@ export async function deleteBookFiles(session) {
 
 // ─── Core file I/O ────────────────────────────────────────────────────────────
 
+/**
+ * What a `saveBook` result means, in one word.
+ *
+ * saveBook refuses by *returning* rather than throwing — deliberately, because
+ * a refusal is a normal outcome and an exception is not. The cost of that is
+ * that every caller has to read the shape, and the two callers did not agree:
+ * the autosave loop in App.js handled `staleUri` and the Save button did not,
+ * and the Save button also never looked at `success`. So a book whose chapters
+ * were not all loaded, a contentless one, and a book whose file had gone away
+ * each got a green "Saved ✓", a haptic tick, and a tour step — while nothing
+ * had been written.
+ *
+ * That is the guards' own failure mode inverted. They exist to stop a partial
+ * book overwriting a whole one; reporting success turns a prevented data loss
+ * into a writer who believes their work is safe and closes the app. Refusing
+ * loudly is the entire value of refusing.
+ *
+ * One function, so the next caller inherits the reading rather than inventing
+ * one.
+ *
+ *   'saved'       written; `filePath` may be new
+ *   'cancelled'   the picker was dismissed — not a failure, say nothing
+ *   'stale-path'  the file is gone; forget the path and ask again
+ *   'refused'     a guard stopped it; the book on disk is intact
+ *   'failed'      the write itself did not happen
+ */
+export function saveOutcome(result) {
+  if (!result || typeof result !== 'object') return 'failed';
+  if (result.cancelled) return 'cancelled';
+  if (result.staleUri) return 'stale-path';
+  if (result.success) return 'saved';
+  if (result.needsHydration || result.skippedEmpty) return 'refused';
+  return 'failed';
+}
+
 export async function saveBook(session) {
   // Overwriting an existing file with a contentless session destroys it, and
   // the only way to be holding one is a degraded mirror — see isContentless.

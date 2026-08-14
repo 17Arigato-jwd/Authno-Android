@@ -29,7 +29,84 @@
  */
 
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { launchOptions } from './chromium.mjs';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * The sandbox attribute the app ships, read out of the source.
+ *
+ * This script used to write `allow-scripts` into its own frames and check
+ * that. It passed for a year while `ExtensionPage.jsx` — the component that
+ * renders every extension UI page anybody actually opens — carried
+ * `allow-scripts allow-same-origin allow-forms allow-modals`, which on a
+ * srcdoc document is no boundary at all. A check that supplies the answer it
+ * expects is checking its own fixture.
+ *
+ * Parsed rather than imported because src/ is JSX behind a bundler and this is
+ * a bare node script. Both frames now read one exported constant, so there is
+ * exactly one string to find.
+ */
+function shippedSandboxAttribute() {
+  const src = fs.readFileSync(path.join(ROOT, 'src', 'utils', 'sandboxProtocol.js'), 'utf8');
+  const m = src.match(/export const FRAME_SANDBOX = '([^']*)'/);
+  if (!m) throw new Error('sandboxProtocol.js no longer exports FRAME_SANDBOX — this check cannot verify what ships.');
+  return m[1];
+}
+
+const SANDBOX = shippedSandboxAttribute();
+
+/**
+ * And that both frames use it — stated precisely, because the blunt version is
+ * wrong.
+ *
+ * `allow-same-origin` is not always a bug. ExtensionPage's *remote* page type
+ * loads a real https origin, and there the flag means the extension author's
+ * own origin — cross-origin to the app, and what any ordinary page needs in
+ * order to have storage. What must never carry it is a **srcdoc** frame:
+ * srcdoc content has no origin of its own, so the flag hands it the
+ * embedder's, and the embedder is AuthNo.
+ *
+ * So the rule is not "no literal attributes anywhere". It is: nothing that
+ * sets srcdoc gets allow-same-origin, and the two frames that do set srcdoc
+ * read one shared constant.
+ *
+ * Comments are stripped first. Both files explain what the attribute used to
+ * be and why it changed, and that prose is why anybody will understand this in
+ * a year — it must not read as a violation of the rule it documents.
+ */
+const codeOnly = (src) => src
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+for (const rel of [
+  ['src', 'utils', 'extensionSandbox.js'],
+  ['src', 'components', 'ExtensionPage.jsx'],
+]) {
+  const lines = codeOnly(fs.readFileSync(path.join(ROOT, ...rel), 'utf8')).split('\n');
+
+  lines.forEach((line, i) => {
+    if (!/allow-same-origin/.test(line)) return;
+    // Generously bounded: the same JSX element or DOM-building block.
+    const near = lines.slice(Math.max(0, i - 12), i + 12).join('\n');
+    if (/srcdoc/i.test(near)) {
+      console.error(`  \u2716 ${rel.join('/')}:${i + 1} gives a srcdoc frame allow-same-origin:`);
+      console.error(`      ${line.trim()}`);
+      console.error("    srcdoc inherits the embedder's origin, which is the app's own.");
+      process.exit(1);
+    }
+  });
+
+  if (!/FRAME_SANDBOX/.test(lines.join('\n'))) {
+    console.error(`  \u2716 ${rel.join('/')} does not reference FRAME_SANDBOX — its srcdoc frame is spelling its own attribute again.`);
+    process.exit(1);
+  }
+}
+console.log(`Checking the attribute the app ships: sandbox="${SANDBOX}"`);
 
 const PORT = 4399;
 const KEY = 'SECRET-KEY-DO-NOT-LEAK';
@@ -40,10 +117,7 @@ const server = http.createServer((_req, res) => {
 });
 await new Promise((r) => server.listen(PORT, r));
 
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
-  args: ['--no-sandbox'],
-});
+const browser = await chromium.launch(launchOptions());
 const page = await browser.newPage();
 
 const seen = [];
@@ -59,7 +133,7 @@ await page.evaluate((key) => {
   window.addEventListener('message', (e) => console.log(`MSG ${JSON.stringify(e.data)}`));
 }, KEY);
 
-await page.evaluate(() => {
+await page.evaluate((SANDBOX) => {
   const boot = `
     (function () {
       var report = function (k, v) { parent.postMessage({ k: k, v: v }, '*'); };
@@ -89,10 +163,10 @@ await page.evaluate(() => {
     })();
   `;
   const f = document.createElement('iframe');
-  f.setAttribute('sandbox', 'allow-scripts');
+  f.setAttribute('sandbox', SANDBOX);
   f.srcdoc = `<!doctype html><html><head><script>${boot}${`</${'script'}>`}</head><body></body></html>`;
   document.body.appendChild(f);
-});
+}, SANDBOX);
 
 // ── The UI page's loader, which assembles the same graph differently ─────────
 //
@@ -101,7 +175,7 @@ await page.evaluate(() => {
 // document anyway — so the escaping and the loader are separate code, and a
 // separate thing to get wrong. Three modules here, not two, so a graph deeper
 // than one hop is actually exercised.
-await page.evaluate(() => {
+await page.evaluate((SANDBOX) => {
   const modules = [
     { path: 'lib/log.js', source: 'export const tag = () => "logged";' },
     { path: 'lib/queue.js', source: 'import { tag } from "__authno_mod_0__";\nexport const run = () => tag() + ":queued";' },
@@ -132,13 +206,13 @@ await page.evaluate(() => {
 
   const close = `</${'script'}>`;
   const f = document.createElement('iframe');
-  f.setAttribute('sandbox', 'allow-scripts');
+  f.setAttribute('sandbox', SANDBOX);
   f.srcdoc = `<!doctype html><html><body>`
     + `<script type="application/json" id="authno-modules">${json}${close}`
     + `<script>${loader}${close}`
     + `</body></html>`;
   document.body.appendChild(f);
-});
+}, SANDBOX);
 
 await page.waitForTimeout(2500);
 await browser.close();

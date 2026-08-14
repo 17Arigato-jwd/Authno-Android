@@ -4,7 +4,7 @@ Everything open against the app and the site as of 1.1.19-beta.3, ordered by
 what would hurt most if it were still true on release day.
 
 Fixed things are not listed — the changelog has those — except where the shape
-of one is worth remembering: the two site-side entries below, and the two
+of one is worth remembering: the two site-side entries below, and the three
 mistakes at the bottom.
 
 ---
@@ -47,6 +47,14 @@ One-line check on an installed build: paste `authno://auth/google?google=test`
 into a browser address bar. The app should come up and the gate should reject
 it as a bad handoff — which means the whole chain worked except the part that
 is supposed to fail.
+
+Worth saying because it cuts the other way too: everything else the Electron
+build does *was* measured this round, by driving a real Electron under Xvfb
+rather than reasoning about it — what `window.open` does, what a top-level
+navigation does, and what a `file://` iframe can reach. All three answers were
+the unwelcome one, and none of them was guessable from the source. The same
+treatment has still never been applied to the OS half above, which is the whole
+of what keeps this open.
 
 ---
 
@@ -164,6 +172,19 @@ If the Cyrillic range is ever widened past Russian, `CYRILLIC_LOOKALIKE` needs
 the new letters in the same commit. Ukrainian `і`, `ј` and `ѕ` are the
 sharpest lookalikes of all and are currently out of range rather than folded.
 
+### 9b. Extension UI pages cannot use `alert()` or submit a form — APP
+
+The consequence of narrowing both frames to `allow-scripts` and nothing else.
+`allow-forms` and `allow-modals` were the UI half's own additions and went with
+`allow-same-origin` when that was removed.
+
+Neither is likely to be missed, which is why they went rather than being kept
+as exceptions: a `submit` handler that calls `preventDefault` still works
+without `allow-forms` — only the navigation is blocked — and an `alert()` from
+an extension is indistinguishable from one of the app's own dialogs, which is
+an argument against it rather than for it. Listed because it is a real
+behaviour change for anybody who had written one.
+
 ### 10. The reminder falls back to generic wording — APP
 
 `ReminderText` answers whenever the stored line is from another day — correct,
@@ -215,11 +236,19 @@ script, and every one of them has caught something real:
 | | what it is for |
 |---|---|
 | `npm run check:timezones` | the writing day on days that are 23 or 25 hours long. A zone is fixed before the first `Date` exists, so setting `TZ` inside a test file does nothing — measured, not assumed. |
-| `npm run check:sandbox` | that an extension frame really cannot reach the app. jsdom has no origin model, so a unit test of this passes against a sandbox with a hole in it. |
+| `npm run check:sandbox` | that an extension frame really cannot reach the app. jsdom has no origin model, so a unit test of this passes against a sandbox with a hole in it. It reads the `sandbox` attribute out of the source rather than restating it, and refuses any srcdoc frame carrying `allow-same-origin` — see the third mistake below for why that distinction is the whole check. |
 | `npm run check:extensions` | the extension protocol end to end. jsdom cannot execute a frame's scripts, so the bootstrap was a string nothing had ever run. |
 | `npm run stress:extensions` | twenty at once, churn, floods, and extensions that misbehave. The bar is not that one cannot be bad — it is that one bad one cannot take its neighbours with it. |
 | `npm run check:csp` (site) | the shipped Content-Security-Policy, parsed out of the `dist/_headers` the build just wrote and driven over nine routes. Both directions: an unrelated origin has to be refused, and the gate the build names has to not be. A CSP has no compiler behind it. |
 | `npm run check:headers` (site) | that the site's two deployments serve the same headers. Pages reads a file, the Worker sets them in code, and they were two hand-maintained copies until they came from one module. |
+
+**All of these now run in CI**, on every push and pull request, along with the
+whole jest suite. Until this release none of them did: the workflow ran
+`rs.test.js` and nothing else, the browser checks needed an environment
+variable that was documented nowhere, and `playwright-core` — which all four
+import — was not in `package.json` at all, so a clean `npm ci` could not have
+run them even if something had asked. Three separate ways for a check to be
+green by not existing.
 
 The desktop installers are built by CI on a tag, a dispatched release, or a
 pull request labelled `build-desktop`. Packaging is the one thing no other job
@@ -229,9 +258,9 @@ release.
 
 ---
 
-## Two mistakes worth remembering
+## Three mistakes worth remembering
 
-Neither is open. Both are here because the *shape* of them will recur.
+None is open. They are here because the *shape* of each will recur.
 
 **A sandbox that was not one.** Extension UI ran in an iframe carrying
 `sandbox="allow-scripts allow-same-origin"`. Those two flags together are not a
@@ -240,6 +269,27 @@ so the second flag handed extension code the app's own. The careful postMessage
 bridge underneath was decoration that extension code could step around without
 trying. What let it stand was that the isolation was asserted in a comment and
 never executed anywhere.
+
+**A fix recorded as done, in one of the two places that needed it.** The
+sandbox above was narrowed in `extensionSandbox.js`, which builds the
+*background* frame. `ExtensionPage.jsx` renders the *UI* frame — the one a
+reader actually opens — and it still carried
+`allow-scripts allow-same-origin allow-forms allow-modals` a release later,
+with this document recording the hole as closed.
+
+What let that stand is the more useful half. `check:sandbox` exists precisely
+to prove the boundary in a real browser, and it passed throughout, because it
+built its own iframe with its own hard-coded `allow-scripts` instead of the
+attribute the app ships. A check that writes down the answer it expects is
+checking its fixture. It could also not launch a browser at all without an
+undocumented environment variable, and nothing in CI ran it — so it was failing
+to run and failing to test the right thing at the same time, and neither was
+visible.
+
+Both frames now read one exported `FRAME_SANDBOX`, the check reads it out of
+the source and refuses any srcdoc frame that carries `allow-same-origin`, and
+the whole set runs in CI. When a fix has two call sites, the check has to name
+the artefact rather than restate the answer.
 
 **Three doors, two guards.** A book opened in preview has every chapter with
 `content: null`. `saveBook` refused to write one — its comment even called
@@ -256,11 +306,29 @@ backstop, count the doors.
 
 ## Notes on things that look like issues and are not
 
-- **The JS suite has failed 4 tests twice, unreproducibly.** Both times a
-  re-run — including `--json`, which reports per-test results — came back
-  clean, and every run since has been green. No cause found and none invented.
-  If it recurs, capture the whole output rather than the summary line: the
-  failing suite names are the only thing that was missing.
+- **The JS suite fails 4 tests roughly once in ten runs.** Caught a third time
+  and the output captured, so this is no longer "somewhere". It is always the
+  same four, always in `src/utils/crossPlatformInstall.test.js`, and they are
+  exactly the four tests that call `discoverExtensions()`:
+
+  > `and the app then finds it` · `an update replaces rather than duplicates` ·
+  > `sits alongside an installed extension rather than hiding it` ·
+  > `loses to an installed extension of the same id`
+
+  The symptom is precise: `discoverExtensions()` returns `[]` after an install
+  that returned a manifest without throwing. Nothing is logged from its own
+  catch, so the dynamic `import('@capacitor/filesystem')` resolved and
+  `readdir` genuinely saw an empty directory — meaning the mock's `mockFiles`
+  map was empty at that moment, after an awaited write that could not have
+  failed silently. The file passes 19/19 in isolation, every time.
+
+  No cause found, and still none invented. What the next person should NOT
+  spend time on, because it has been ruled out: the two `EXTENSIONS_DIR`
+  constants agree; nothing shares state across test files, since the mock map
+  and jsdom's localStorage are both per-file; the install throws rather than
+  returning quietly, so a silent failure would surface on the install line and
+  does not. Eleven consecutive full runs after the capture were green, so
+  reproducing it costs a loop rather than a run.
 - **`console.debug` about `WidgetData` off-device.** Expected, and only ever as
   a caught error. If it returns as an uncaught page error, that is the
   Capacitor thenable bug back — see the comment on `getPlugin`.

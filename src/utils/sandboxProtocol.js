@@ -29,6 +29,34 @@
  * safe because each side only ever looks up ids it issued.
  */
 
+/**
+ * The sandbox attribute every extension frame carries. One string, exported,
+ * because there are two of those frames and they drifted.
+ *
+ * `extensionSandbox.js` builds the background frame and `ExtensionPage.jsx`
+ * renders the UI one. They run the same bootstrap and need the same boundary,
+ * but each spelled its own attribute — and the UI half kept
+ * `allow-same-origin allow-forms allow-modals` long after the background half
+ * was narrowed. `allow-same-origin` on a *srcdoc* document is the whole
+ * boundary: srcdoc content inherits the embedder's origin, so extension UI was
+ * running with the app's, one property access from `parent.localStorage` and
+ * the books and access key inside it.
+ *
+ * What made that survivable for so long is worse than the flag itself.
+ * `check:sandbox` asserts this exact property in a real browser — and passed,
+ * because it built its own frame with its own hard-coded `allow-scripts`
+ * rather than the one the app ships. A check that writes down the answer it
+ * expects is checking the fixture. It reads this constant now, and so does
+ * every frame.
+ *
+ * Nothing else goes in it. `allow-forms` and `allow-modals` were the UI half's
+ * additions and neither is needed: a `submit` handler that calls
+ * `preventDefault` works without `allow-forms` (only the navigation is
+ * blocked), and `alert()` from an extension is indistinguishable from the
+ * app's own dialogs, which is a good enough reason on its own.
+ */
+export const FRAME_SANDBOX = 'allow-scripts';
+
 export const BOOTSTRAP = `
 (function () {
   'use strict';

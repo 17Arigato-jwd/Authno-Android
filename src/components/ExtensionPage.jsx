@@ -3,6 +3,7 @@ import { DSIcons } from '../DesignSystem';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
 import { readExtensionTree } from '../utils/extensionSandbox';
+import { FRAME_SANDBOX } from '../utils/sandboxProtocol';
 import { planModuleGraph, rewriteSpecifiers } from '../utils/moduleGraph';
 import { isAndroid } from '../utils/platform';
 
@@ -49,12 +50,20 @@ async function openInAppBrowser(url) {
       const oauth = registerPlugin('OAuth');
       if (oauth?.openAuthUrl) { await oauth.openAuthUrl({ url }); return; }
     } catch (_) { /* fall through */ }
+    try {
+      const { Browser } = await import('@capacitor/browser');
+      await Browser.open({ url });
+      return;
+    } catch (_) { /* fall through */ }
   }
-  try {
-    const { Browser } = await import('@capacitor/browser');
-    await Browser.open({ url });
+  // Desktop: ask the main process for the OS browser. window.open here does
+  // not open one — it builds a second Electron window and loads the page
+  // inside AuthNo, which is how a sign-in page ends up on the app's chrome
+  // with no address bar under it. See guardNavigation in main.js.
+  if (typeof window !== 'undefined' && window.electron?.openExternal) {
+    await window.electron.openExternal(url);
     return;
-  } catch (_) { /* fall through */ }
+  }
   window.open(url, '_blank', 'noopener');
 }
 
@@ -627,7 +636,11 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
       ref={iframeRef}
       srcDoc={srcdoc}
       title={pageDef.title ?? extension.name}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+      // Shared with the background frame rather than spelled again. This one
+      // used to add `allow-same-origin allow-forms allow-modals`, and on a
+      // srcdoc document the first of those is the entire boundary — srcdoc
+      // inherits the embedder's origin, so extension UI ran as the app.
+      sandbox={FRAME_SANDBOX}
       style={{ display: 'flex', flex: 1, width: '100%', height: '100%', minHeight: '200px', border: 'none', background: 'transparent' }}
     />
   );
@@ -725,11 +738,43 @@ function AuthFormPage({ extension, accentHex, onBack }) {
 
 // ─── Page type: webview ───────────────────────────────────────────────────────
 
+/**
+ * https, and only https.
+ *
+ * This page type drops a manifest-supplied address into an iframe that keeps
+ * `allow-same-origin` — correct for a genuinely remote page, whose origin is
+ * the extension author's server and cross-origin to the app either way. It is
+ * not correct for a local one. Nothing checked the scheme, and on desktop the
+ * app itself is a `file://` document: measured in Electron, an extension
+ * naming `file:///…` got a frame that is same-origin with the app, could read
+ * the file it named, and — being same-origin — could read the app back.
+ * `allow-popups` then carries whatever it found anywhere it likes.
+ *
+ * `http://` is refused for the ordinary reason as well: the app has no address
+ * bar, so a page loaded under its chrome cannot be seen to be insecure.
+ */
+export function isLoadablePageUrl(url) {
+  try {
+    return new URL(String(url)).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function WebviewPage({ url, accentHex }) {
   const [failed, setFailed]   = useState(false);
   const [loading, setLoading] = useState(true);
 
   if (!url) return <StatusBox icon="⚠️" title="No URL configured" subtitle="This page does not have a URL specified in the manifest." />;
+  if (!isLoadablePageUrl(url)) {
+    return (
+      <StatusBox
+        icon="🚫"
+        title="This page will not be loaded"
+        subtitle={`Extension pages must be served over https. This one asks for ${String(url).slice(0, 80)}.`}
+      />
+    );
+  }
 
   return (
     <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -756,7 +801,7 @@ function WebviewPage({ url, accentHex }) {
           />
       }
       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', background: 'var(--app-bg)', flexShrink: 0 }}>
-        <button onClick={() => { try { window.open(url, '_blank', 'noopener'); } catch {} }}
+        <button onClick={() => { openInAppBrowser(url).catch(() => {}); }}
           style={{ display: 'flex', alignItems: 'center', gap: '5px', background: 'transparent', border: 'none', color: accentHex, fontSize: '12px', cursor: 'pointer' }}>
           <DSIcons.Link size={13} /> Open in browser
         </button>

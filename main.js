@@ -69,6 +69,76 @@ function writeIconPref(id) {
 // The old code never inspected process.argv on first launch, so double-clicking
 // a .authbook while the app was closed opened an empty window (v1 A1). Skip the
 // Electron flags and the app path; take the first real .authbook argument.
+/**
+ * Keep the app window showing the app, and keep the web on the web.
+ *
+ * Electron's defaults are the opposite of what an app wants, and both halves
+ * were measured here rather than assumed:
+ *
+ *   - `window.open('https://…')` does not open a browser. It creates a second
+ *     BrowserWindow loading that URL inside AuthNo — no address bar, no
+ *     padlock, the app's own icon on it. The renderer calls window.open in
+ *     three places, one of them the extension `openBrowser` capability that an
+ *     OAuth flow depends on. Providers refuse embedded user agents (Google
+ *     answers `disallowed_useragent`), and a `com.aurorastudios.authno://`
+ *     redirect fired inside that window never reaches the app — so the promise
+ *     waiting on it sits there for its full five-minute timeout and the writer
+ *     is looking at a consent screen that cannot finish.
+ *
+ *   - `location.href = 'https://…'` navigates the app window away from the
+ *     app. Measured: the window was left on the remote page, with no way back
+ *     short of restarting, and no chrome to tell you where you are.
+ *
+ * So: deny both, and hand https to the real browser through the same
+ * `shell.openExternal` policy the `open-external` IPC handler uses. Anything
+ * that is not https is dropped — openExternal on a `file://` or a custom
+ * scheme can launch a local program.
+ *
+ * Same-page navigation (the SPA's own routing, hash changes, reloads) is
+ * untouched: `will-navigate` does not fire for those.
+ */
+function openInRealBrowser(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== "https:") return false;
+    const { shell } = require("electron");
+    shell.openExternal(u.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True for the app's own document — the dev server, or the packaged bundle. */
+function isAppUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol === "file:") return true;
+    return process.env.NODE_ENV === "development"
+      && u.origin === "http://localhost:3000";
+  } catch {
+    return false;
+  }
+}
+
+function guardNavigation(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    openInRealBrowser(url);
+    return { action: "deny" };
+  });
+
+  contents.on("will-navigate", (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    openInRealBrowser(url);
+  });
+
+  // Extension UI runs in an iframe, and a frame is a webContents of its own
+  // the moment one is created. Without this the guards above cover the top
+  // document only, which is the half that was never the risk.
+  contents.on("did-attach-webview", (_e, attached) => guardNavigation(attached));
+}
+
 function authbookFromArgv(argv) {
   return (argv || []).find(
     (a) => typeof a === "string" && a.toLowerCase().endsWith(".authbook") && fs.existsSync(a)
@@ -409,6 +479,8 @@ if (!gotTheLock) {
 
     // (The chosen icon is baked in via the `icon` option above — no post-create
     // setIcon needed, which also avoids the flaky Windows taskbar refresh.)
+
+    guardNavigation(mainWindow.webContents);
 
     // Notify the renderer's title bar when the maximise state changes so it can
     // swap the maximise/restore glyph.

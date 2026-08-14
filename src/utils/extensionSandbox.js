@@ -60,13 +60,13 @@ import { isAndroid } from './platform';
 import { toast as _toast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { planModuleGraph, rewriteSpecifiers } from './moduleGraph';
-import { sandboxDocument, createHostRouter, toSendable } from './sandboxProtocol';
+import { sandboxDocument, createHostRouter, toSendable, FRAME_SANDBOX } from './sandboxProtocol';
 import { OAUTH_SCHEME } from './deepLinkBus';
 
 // Re-exported so callers and tests have one import for the sandbox. The
 // protocol lives in its own file because it imports nothing, which is what
 // lets a browser run the real thing — see the header there.
-export { BOOTSTRAP, sandboxDocument } from './sandboxProtocol';
+export { BOOTSTRAP, sandboxDocument, FRAME_SANDBOX } from './sandboxProtocol';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 
@@ -193,10 +193,24 @@ async function dispatch(method, args, ctx) {
         const { registerPlugin } = await import('@capacitor/core');
         return registerPlugin('OAuth').openAuthUrl({ url });
       }
-      // Desktop and web: the real browser. An OAuth flow that ends in a
-      // redirect back to a localhost listener still works; one that expects
-      // the app to be handed the code by a Custom Tab does not, and that is
-      // the honest limit rather than something this can paper over.
+      // Desktop: through the preload bridge, which asks the main process to
+      // hand the URL to the OS browser.
+      //
+      // This used to be the window.open below, and the comment beside it said
+      // "the real browser", which is not what window.open does in Electron.
+      // Measured: it creates a second BrowserWindow inside AuthNo. So the
+      // consent screen opened in an app window with no address bar, where
+      // Google refuses to serve it at all (`disallowed_useragent`), and where
+      // a `com.aurorastudios.authno://` redirect could never reach the app —
+      // leaving `oauth` below waiting out its full five-minute timeout. The
+      // whole point of the capability is the round trip, and the round trip
+      // could not close.
+      if (typeof window !== 'undefined' && window.electron?.openExternal) {
+        const r = await window.electron.openExternal(url);
+        if (r && r.ok === false) throw new Error(`could not open a browser: ${r.error}`);
+        return null;
+      }
+      // Plain web: a tab is a tab.
       window.open(url, '_blank', 'noopener,noreferrer');
       return null;
     }
@@ -343,7 +357,9 @@ export async function runExtension(manifest, handlers = {}) {
   // allow-scripts and nothing else. Adding allow-same-origin here would undo
   // the entire file: srcdoc content inherits the embedder's origin, and the
   // frame would be inside the app rather than beside it.
-  frame.setAttribute('sandbox', 'allow-scripts');
+  // One constant, shared with ExtensionPage's UI frame. The two used to spell
+  // this separately and stopped agreeing — see the note on FRAME_SANDBOX.
+  frame.setAttribute('sandbox', FRAME_SANDBOX);
   frame.setAttribute('title', `${manifest.name ?? extId} (background)`);
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden;';
