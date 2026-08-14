@@ -151,6 +151,66 @@ export function sanitizePastedHtml(html) {
   return div.innerHTML;
 }
 
+// ── Defanging book files (paste sanitisation's quieter sibling) ───────────────
+
+/** Tags that can execute or fetch. None has ever been written by the editor. */
+const DANGEROUS_TAGS = 'script,style,link,meta,iframe,frame,frameset,object,embed,applet,base,form,input,button,textarea,select,svg,math,img,video,audio,source,track';
+
+/**
+ * Strip the parts of a chapter's HTML that can run, and nothing else.
+ *
+ * Not sanitizePastedHtml. That one is a whitelist, and it is right for paste —
+ * foreign HTML arrives full of the source site's fonts and colours and a
+ * writer wants none of it. Running it over a book being loaded would delete
+ * the writer's OWN colours, highlights, fonts and line spacing, because those
+ * ride on inline styles the paste whitelist does not keep. Every book on the
+ * device would quietly lose its formatting on the next open.
+ *
+ * So this removes only what can execute: script-ish elements, every `on*`
+ * handler, and hrefs that are not plain links. Nothing the editor produces
+ * matches any of that, which is why it is safe to run on files the writer
+ * wrote themselves — and it has to be, because a book that arrived from
+ * somebody else and a book that has been on this device for a year come
+ * through the same door and cannot be told apart there.
+ *
+ * The threat is not hypothetical: a `.authbook` is a file people send each
+ * other, chapters are dropped straight into a contentEditable, and an
+ * `<img onerror>` in one would run with the app's own reach — the books on
+ * disk and everything in localStorage.
+ */
+export function defangHtml(html) {
+  if (!html || typeof html !== 'string') return html ?? '';
+  // Nothing here is ever attached to the document, so setting innerHTML
+  // neither runs a script nor fires an onerror — the parse is inert, and the
+  // dangerous parts are gone before anything sees the result.
+  if (typeof document === 'undefined') return html;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+
+  div.querySelectorAll(DANGEROUS_TAGS).forEach((el) => el.remove());
+
+  div.querySelectorAll('*').forEach((el) => {
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) { el.removeAttribute(attr.name); continue; }
+      if ((name === 'href' || name === 'src' || name === 'xlink:href' || name === 'action')
+          && !/^(https?:|mailto:|#|\/|$)/i.test(String(attr.value).trim())) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+
+  return div.innerHTML;
+}
+
+/** Every chapter of a book, defanged. Returns a new array; never mutates. */
+export function defangChapters(chapters) {
+  if (!Array.isArray(chapters)) return chapters;
+  return chapters.map((c) => (
+    c && typeof c.content === 'string' ? { ...c, content: defangHtml(c.content) } : c
+  ));
+}
+
 // ── Chapter statistics (B9) ───────────────────────────────────────────────────
 
 export function textStats(html) {

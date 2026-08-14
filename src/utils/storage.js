@@ -16,6 +16,7 @@
 import { isElectron, isAndroid } from './platform';
 import { logError } from './ErrorLogger';
 import { hasUnhydratedChapters, hydrateAll } from './largeBooks';
+import { defangChapters, defangHtml } from './editorFormat';
 import {
   packSession, unpackSession, bookToSession, sessionToBook,
   detectFormat, fromLegacySession, base64ToBytes, bytesToBase64,
@@ -105,6 +106,16 @@ async function decodeBytes(bytes, filePath) {
     if (fmt === 'vchs') {
       const book    = await unpackSession(bytes);
       const session = bookToSession(book);
+      // Every .authbook enters here — the ones on this device and the ones
+      // somebody sent. Chapters go straight into a contentEditable, so
+      // anything executable in one would run with the app's own reach. See
+      // defangHtml: it removes only what can run, never formatting, because
+      // this door cannot tell a stranger's file from the writer's own.
+      session.chapters = defangChapters(session.chapters);
+      // bookToSession mirrors chapter 1 into `content`, and the editor renders
+      // that mirror — defanging only the array would leave the one chapter
+      // most likely to be opened untouched.
+      session.content = defangHtml(session.content);
       if (book.warnings?.length) console.warn('[authbook]', book.warnings);
       // Surface recovery events to the UI: the app toasts when a file needed
       // repair so silent-looking recoveries are visible to the user.
@@ -116,6 +127,8 @@ async function decodeBytes(bytes, filePath) {
     if (fmt === 'legacy-json') {
       const raw     = JSON.parse(new TextDecoder().decode(bytes));
       const session = bookToSession(fromLegacySession(raw));
+      session.chapters = defangChapters(session.chapters);
+      session.content = defangHtml(session.content);
       return { ...session, filePath, _legacy: true };
     }
     throw new Error('Not a valid .authbook file (unrecognised format)');
