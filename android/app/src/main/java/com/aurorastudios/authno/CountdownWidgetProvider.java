@@ -14,6 +14,8 @@ import android.widget.RemoteViews;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.Map;
+
 /**
  * How long is left of today's writing day, for one book.
  *
@@ -93,10 +95,21 @@ public class CountdownWidgetProvider extends AppWidgetProvider {
             return;
         }
 
+        // Derived from the log, the way the streak widget derives it. The
+        // synced book carries `streak: { log, goalWords }` and nothing else —
+        // reading a `wordsToday` or `current` field off it, which the first
+        // version of this did, got a zero every time because the app has never
+        // written either one.
         JSONObject streak = book.optJSONObject("streak");
-        int streakDays = streak == null ? 0 : streak.optInt("current", 0);
-        int goalWords  = streak == null ? 0 : streak.optInt("goalWords", 0);
-        int wordsToday = streak == null ? 0 : streak.optInt("wordsToday", 0);
+        int goalDefault = streak == null ? 0 : streak.optInt("goalWords", 0);
+        Map<String, int[]> log = StreakWidgetRenderer.parseLog(
+                streak == null ? null : streak.optJSONObject("log"), goalDefault);
+
+        String dayKey = StreakWidgetProvider.writingDayKey(prefs);
+        int[] entry = log.get(dayKey);
+        int wordsToday = entry != null ? entry[0] : 0;
+        int goalWords  = entry != null ? entry[1] : goalDefault;
+        int streakDays = StreakWidgetRenderer.computeStreak(log, dayKey);
         boolean met = goalWords > 0 && wordsToday >= goalWords;
 
         long deadline = deadlineFrom(prefs);

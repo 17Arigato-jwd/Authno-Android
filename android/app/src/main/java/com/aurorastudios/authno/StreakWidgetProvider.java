@@ -302,6 +302,31 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         return prefs.getString(KEY_BOOKS_JSON, "[]");
     }
 
+    /**
+     * The day currently being counted, from the last sync's countdown payload.
+     *
+     * Here rather than in WritingDay because this class owns the preferences
+     * file and the key; WritingDay stays free of android and org.json so the
+     * decision it makes can be tested off-device.
+     */
+    static String writingDayKey(Context ctx) {
+        return writingDayKey(ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE));
+    }
+
+    static String writingDayKey(SharedPreferences prefs) {
+        long deadline = 0L;
+        String day = "";
+        try {
+            String raw = prefs == null ? "" : prefs.getString(KEY_COUNTDOWN_JSON, "");
+            if (raw != null && !raw.trim().isEmpty()) {
+                JSONObject o = new JSONObject(raw);
+                deadline = o.optLong("deadline", 0L);
+                day = o.optString("dayKey", "");
+            }
+        } catch (Exception ignored) { /* the device's date, below */ }
+        return WritingDay.pick(deadline, day, System.currentTimeMillis(), WritingDay.deviceToday());
+    }
+
     /** Is this specific book one the writer switched streaks off for? */
     static boolean isStreakOff(String offJson, String bookId) {
         if (bookId == null || bookId.isEmpty()) return false;

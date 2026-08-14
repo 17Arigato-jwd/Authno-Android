@@ -9,9 +9,6 @@ import android.content.SharedPreferences;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
-import java.util.Calendar;
-import java.util.Locale;
-
 /**
  * Posts the daily writing reminder.
  *
@@ -46,7 +43,12 @@ public class ReminderReceiver extends BroadcastReceiver {
         int     streakDays  = p.getInt(RemindersPlugin.KEY_STREAK_DAYS, 0);
         int     goalWords   = p.getInt(RemindersPlugin.KEY_GOAL_WORDS, 0);
 
-        if (!ReminderText.shouldNotify(skipWhenMet, metToday, reportDay, todayKey())) return;
+        // The WRITING day, matching what the app stamped the report with. A
+        // goal met at 00:40 belongs to the night before; comparing it against
+        // the device's date would read that report as yesterday's, treat the
+        // day as unmet, and nag somebody who had just finished.
+        if (!ReminderText.shouldNotify(skipWhenMet, metToday, reportDay,
+                StreakWidgetProvider.writingDayKey(ctx))) return;
 
         RemindersPlugin.ensureChannel(ctx);
 
@@ -80,9 +82,4 @@ public class ReminderReceiver extends BroadcastReceiver {
         RemindersPlugin.arm(ctx);
     }
 
-    private static String todayKey() {
-        Calendar c = Calendar.getInstance();
-        return String.format(Locale.US, "%04d-%02d-%02d",
-                c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
-    }
 }

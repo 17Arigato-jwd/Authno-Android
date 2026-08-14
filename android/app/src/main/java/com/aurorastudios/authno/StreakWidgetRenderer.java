@@ -77,7 +77,11 @@ public class StreakWidgetRenderer {
 
             Map<String, int[]> log = parseLog(rawLog, goalWords);
 
-            String todayKey  = todayKey();
+            // The day being counted, not the date on the device. They are the
+            // same until somebody is still writing when midnight arrives, and
+            // then this widget would otherwise draw an empty new day over a
+            // session that is still running.
+            String todayKey  = StreakWidgetProvider.writingDayKey(ctx);
             int streakDays   = computeStreak(log, todayKey);
             int[] todayEntry = log.get(todayKey);
             int wordsToday   = todayEntry != null ? todayEntry[0] : 0;
@@ -291,7 +295,12 @@ public class StreakWidgetRenderer {
 
     // ── Streak / log helpers ──────────────────────────────────────────────────
 
-    private static Map<String, int[]> parseLog(JSONObject raw, int fallbackGoal) {
+    /**
+     * Package-visible: the countdown widget reads the same log and must reach
+     * the same numbers. A second parser would drift from this one the first
+     * time either changed, and the two widgets sit on the same home screen.
+     */
+    static Map<String, int[]> parseLog(JSONObject raw, int fallbackGoal) {
         Map<String, int[]> map = new HashMap<>();
         if (raw == null) return map;
         try {
@@ -316,9 +325,13 @@ public class StreakWidgetRenderer {
         return e != null && e[0] >= e[1];
     }
 
-    private static int computeStreak(Map<String, int[]> log, String todayKey) {
+    static int computeStreak(Map<String, int[]> log, String todayKey) {
         int streak = 0;
-        Calendar cursor = Calendar.getInstance();
+        // From the day being counted, not from the device's clock. Inside an
+        // extension those are different days, and starting from the calendar
+        // would test a day that has not begun, find nothing, and draw a run
+        // somebody is actively extending as already broken.
+        Calendar cursor = WritingDay.toCalendar(todayKey);
         if (!isMet(log, todayKey)) cursor.add(Calendar.DAY_OF_YEAR, -1);
         for (int i = 0; i < 3650; i++) {
             String k = dateKey(cursor.get(Calendar.YEAR),
@@ -334,11 +347,6 @@ public class StreakWidgetRenderer {
         return streak;
     }
 
-    private static String todayKey() {
-        return dateKey(Calendar.getInstance().get(Calendar.YEAR),
-                       Calendar.getInstance().get(Calendar.MONTH),
-                       Calendar.getInstance().get(Calendar.DAY_OF_MONTH));
-    }
 
     private static String dateKey(int year, int month, int day) {
         return String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day);
