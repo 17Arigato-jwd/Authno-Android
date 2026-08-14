@@ -114,7 +114,25 @@ only reaches Linux. There is no NSIS path for it — the option's own schema
 calls it macOS-only — so on Windows the runtime call is the whole mechanism,
 not a belt-and-braces duplicate of the installer.
 
-### 9. The reminder falls back to generic wording — APP
+### 9. The username rule lives in two files — APP · by design
+
+`worker/src/lib/username.js` is authoritative; `src/utils/penName.js` mirrors
+it so the app can refuse a name without a round trip. They must be changed
+together, and nothing checks that they agree — the app can afford to be no
+stricter than the gate, because a name the gate would refuse is one nobody can
+ever register.
+
+There were three copies until this release: `AccessGate.jsx` had its own regex
+for the Google sign-up button, and it had already drifted — it predated
+hyphens and predated Japanese and Russian, so it would have greyed out the
+button for every name in those alphabets while the gate was willing to
+register them. That one is gone; the remaining two are deliberate.
+
+If the Cyrillic range is ever widened past Russian, `CYRILLIC_LOOKALIKE` needs
+the new letters in the same commit. Ukrainian `і`, `ј` and `ѕ` are the
+sharpest lookalikes of all and are currently out of range rather than folded.
+
+### 10. The reminder falls back to generic wording — APP
 
 `ReminderText` answers whenever the stored line is from another day — correct,
 since a stale line names a book you may have finished and a streak you may have
@@ -122,12 +140,12 @@ lost. But it means somebody who never opens the app between reminders only ever
 sees the two fixed sentences, which is the opposite of who the varied copy was
 written for.
 
-### 10. One 608 kB JS chunk on the site — SITE
+### 11. One 608 kB JS chunk on the site — SITE
 
 Not a bug. The build warns on every run, so the warning has stopped carrying
 information, which is its own small cost.
 
-### 11. `updatePeriodMillis` is the widgets' only refresh — APP
+### 12. `updatePeriodMillis` is the widgets' only refresh — APP
 
 Thirty minutes, the platform floor. The countdown's clock ticks by itself, but
 the word count and the streak underneath it are only as fresh as the last sync

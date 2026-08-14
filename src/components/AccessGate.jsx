@@ -28,6 +28,7 @@ import {
 } from '../utils/access';
 import { designFromSeed, sigilDataUri, seedFromUserId } from '../utils/sigil';
 import { unpackKeyFile, keyFileSecretKind, keyFileErrorText, KEYFILE_EXT } from '../utils/keyfile';
+import { validateUsername } from '../utils/penName';
 import { fetchKeyWithPassword, fetchKeyWithSession, redeemCode, gateConfigured, gateErrorText, GateError } from '../utils/gateApi';
 import { playSound, preloadSounds } from '../utils/sounds';
 import { hapticSelect } from '../utils/haptics';
@@ -135,9 +136,15 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
 
   /* A pen name is not optional for a Google signup, and it has to look valid
      before the trip is worth taking. This is the app's own cheap check — the
-     gate re-checks availability at /start and refuses there. */
+     gate re-checks availability at /start and refuses there.
+
+     Through the shared rule rather than a regex written here. The regex was a
+     third copy of a rule that lives in two other files, and it had already
+     drifted: it predates hyphens and predates Japanese and Russian, so it
+     would have greyed out the button for every name in those alphabets while
+     the gate was perfectly willing to register them. */
   const googleSignupReady =
-    code.trim().length > 0 && /^[a-z0-9_]{3,20}$/i.test(username.trim());
+    code.trim().length > 0 && validateUsername(username).ok;
 
   /**
    * What to do with whatever the gate handed back.

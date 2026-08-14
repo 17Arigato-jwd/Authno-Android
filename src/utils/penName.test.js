@@ -40,9 +40,17 @@ describe('impersonation', () => {
       .forEach((u) => expect(bad(u)).toBe('reserved'));
   });
 
+  /**
+   * Some of these are now caught by the SHAPE rules before the reserved lookup
+   * runs — a name cannot start or end with a separator, so `_admin` never
+   * reaches the list. Refused either way, which is the thing that matters;
+   * asserting the reason would be asserting which rule got there first.
+   */
   test('and the spellings that read the same', () => {
     ['_admin', 'admin_', 'adm1n', '4dm1n', 'r00t', '0wner', 'admin2', 'supp0rt']
-      .forEach((u) => expect(bad(u)).toBe('reserved'));
+      .forEach((u) => expect(good(u)).toBe(false));
+    // These reach the list and are refused by it.
+    ['adm1n', 'r00t', 'admin2', 'supp0rt'].forEach((u) => expect(bad(u)).toBe('reserved'));
   });
 
   test('and the brand with something attached', () => {
@@ -72,9 +80,70 @@ describe('shape', () => {
     expect(good('a'.repeat(20))).toBe(true);
   });
 
-  test('only letters, numbers and underscores', () => {
-    ['bad name', 'naïve', 'jane!', 'jane-writes', '日本語'].forEach((u) =>
+  test('letters, numbers, underscores and hyphens', () => {
+    ['bad name', 'naïve', 'jane!', 'jane😀'].forEach((u) =>
       expect(bad(u)).toBe('bad-characters'));
+    expect(good('jane-writes')).toBe(true);
+  });
+
+  /**
+   * Three scripts, one per name.
+   *
+   * Mixing is the whole homoglyph attack: Cyrillic а is pixel-identical to
+   * Latin a, so `jаne` and `jane` read the same and are different permanent
+   * names. Refusing to mix removes that without enumerating every lookalike.
+   */
+  describe('scripts', () => {
+    test('Japanese and Russian are names too', () => {
+      ['ゆうき', '山田太郎', 'ユウキ_01', 'ゆうきー', 'иван', 'иван_петров']
+        .forEach((u) => expect(good(u)).toBe(true));
+    });
+
+    test('but only one alphabet at a time', () => {
+      ['jаne', 'иванjane', 'ゆうきjane'].forEach((u) =>
+        expect(bad(u)).toBe('mixed-scripts'));
+    });
+
+    test('half-width katakana folds to full-width rather than being refused', () => {
+      expect(normalizePenName('ﾕｳｷ')).toBe('ユウキ');
+      expect(good('ﾕｳｷ')).toBe(true);
+    });
+
+    test('a length mark cannot start a name, the way a hyphen cannot', () => {
+      expect(bad('ーゆうき')).toBe('bad-start');
+    });
+
+    /**
+     * Russian has no lowercase lookalike for r, d, i, u or g, so most of the
+     * reserved list is unspellable in it. These two are not, and the Cyrillic
+     * fold in reservedSkeleton is what catches them.
+     */
+    test('a Cyrillic name that reads as a reserved one is still refused', () => {
+      expect(bad('теам')).toBe('reserved');
+      expect(bad('ехтвк')).toBe('reserved');
+    });
+  });
+
+  describe('separators', () => {
+    test('not at either end', () => {
+      expect(bad('-jane')).toBe('bad-start');
+      expect(bad('_jane')).toBe('bad-start');
+      expect(bad('jane-')).toBe('bad-end');
+      expect(bad('jane_')).toBe('bad-end');
+    });
+
+    test('never two in a row', () => {
+      ['jane__doe', 'jane--doe', 'jane_-doe'].forEach((u) =>
+        expect(bad(u)).toBe('double-separator'));
+    });
+
+    test('alternating is fine, as on reddit', () => {
+      expect(good('j_a_n_e')).toBe(true);
+    });
+
+    test('a name starts with a letter, not a digit', () => {
+      expect(bad('1jane')).toBe('bad-start');
+    });
   });
 
   test('a name needs at least one letter', () => {
