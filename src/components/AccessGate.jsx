@@ -21,7 +21,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import { motion } from 'framer-motion';
 import { DSIcons } from '../DesignSystem';
 import { FloatingBlobs, ONB_THEME_CSS } from './Onboarding';
-import { googleAvailable, googleFlow } from '../utils/googleAuth';
+import { googleAvailable, googleFlow, deepLinkReady, finishFromPastedUrl } from '../utils/googleAuth';
 import {
   verifyAccess, storeAccess, recordFailure, getAttemptState,
   accessErrorText, MAX_ATTEMPTS, trialDaysLeftFrom,
@@ -57,6 +57,13 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
      permanent, and what the invite tree hangs off. */
   const [googleOn, setGoogleOn] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  // Only ever true on a desktop build where the OS did not take the authno://
+  // registration — an AppImage nobody has integrated, or another program
+  // holding the scheme. Waiting on a link that is never coming is the one
+  // failure in this flow with no visible cause at all, so it is offered a way
+  // through rather than left to time out.
+  const [needsPaste, setNeedsPaste] = useState(false);
+  const [pastedLink, setPastedLink] = useState('');
   useEffect(() => { let live = true; googleAvailable().then((v) => { if (live) setGoogleOn(v); }); return () => { live = false; }; }, []);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -131,29 +138,65 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
   const googleSignupReady =
     code.trim().length > 0 && /^[a-z0-9_]{3,20}$/i.test(username.trim());
 
+  /**
+   * What to do with whatever the gate handed back.
+   *
+   * Shared by the deep-link path and the pasted-address path, because the two
+   * differ only in how the handoff got here — what it is worth, and what is
+   * done with it, is identical.
+   */
+  const acceptGoogleResult = useCallback(async (r) => {
+    // Signing up hands back the whole redeem result; signing in hands back a
+    // session, and the key comes from the same place the password path gets
+    // it. Either way what lands here is a signed key verified offline.
+    let accessKey = r.accessKey;
+    let name = r.username || username.trim();
+    if (!accessKey && r.token) {
+      const issued = await fetchKeyWithSession(r.token);
+      accessKey = issued.accessKey;
+      name = issued.username || name;
+    }
+    if (!accessKey) throw new GateError('bad-token');
+    const payload = await verifyAccess(accessKey, name);
+    storeAccess(accessKey, name);
+    hapticSelect();
+    await finish(payload);
+  }, [username, finish]);
+
+  /**
+   * Finish from an address pasted in by hand.
+   *
+   * The URL is not a credential — the single-use, one-minute handoff inside it
+   * is, and the gate refuses that if it is stale or already spent. Which is
+   * also why offering this is not a hole: it is the same exchange the deep
+   * link performs, typed.
+   */
+  const submitPastedLink = useCallback(async () => {
+    if (!pastedLink.trim() || googleBusy) return;
+    setGoogleBusy(true);
+    setError(null);
+    try {
+      await acceptGoogleResult(await finishFromPastedUrl(pastedLink));
+    } catch (e) {
+      setError(gateErrorText(e?.code || e?.message || 'unknown'));
+    } finally {
+      setGoogleBusy(false);
+    }
+  }, [pastedLink, googleBusy, acceptGoogleResult]);
+
   const runGoogle = useCallback(async (flowMode) => {
     setGoogleBusy(true);
     setError(null);
+    // Asked before the browser opens, not after it fails. The consent trip
+    // still has to happen either way — the difference is whether the address
+    // it ends on comes back on its own or has to be carried.
+    setNeedsPaste(!(await deepLinkReady()));
     try {
       const r = await googleFlow(flowMode, {
         code: code.trim() || undefined,
         username: username.trim() || undefined,
       });
-      // Signing up hands back the whole redeem result; signing in hands back a
-      // session, and the key comes from the same place the password path gets
-      // it. Either way what lands here is a signed key verified offline.
-      let accessKey = r.accessKey;
-      let name = r.username || username.trim();
-      if (!accessKey && r.token) {
-        const issued = await fetchKeyWithSession(r.token);
-        accessKey = issued.accessKey;
-        name = issued.username || name;
-      }
-      if (!accessKey) throw new GateError('bad-token');
-      const payload = await verifyAccess(accessKey, name);
-      storeAccess(accessKey, name);
-      hapticSelect();
-      await finish(payload);
+      await acceptGoogleResult(r);
     } catch (e) {
       // Cancelling is not a failed attempt. Dismissing the browser tab must
       // not march somebody towards the app closing itself.
@@ -162,7 +205,7 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
     } finally {
       setGoogleBusy(false);
     }
-  }, [code, username, finish]);
+  }, [code, username, acceptGoogleResult]);
 
   const submit = useCallback(async () => {
     if (!canSubmit) return;
@@ -509,6 +552,38 @@ export default function AccessGate({ accentHex = '#5a00d9', onUnlock }) {
               </button>
             )}
 
+            {/* Shown only when this machine cannot receive the link back —
+                see needsPaste. Everything else about the trip is the same;
+                the address just has to be carried by hand. */}
+            {needsPaste && !locked && (
+              <div style={S.pasteBack}>
+                <p style={S.pasteBackText}>
+                  This build can’t be handed the address back automatically.
+                  Finish signing in with Google, then paste the address it
+                  leaves you on here.
+                </p>
+                <input
+                  type="text"
+                  value={pastedLink}
+                  onChange={(e) => setPastedLink(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') submitPastedLink(); }}
+                  placeholder="authno://auth/google?…"
+                  aria-label="The address Google left you on"
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  style={S.input}
+                />
+                <button
+                  onClick={submitPastedLink}
+                  disabled={googleBusy || !pastedLink.trim()}
+                  style={{ ...S.googleBtn, opacity: (googleBusy || !pastedLink.trim()) ? 0.45 : 1 }}
+                >
+                  Finish signing in
+                </button>
+              </div>
+            )}
+
             {/* Small on purpose. Redeeming is the main path because a code is
                 the only way to have an account at all; the rest are for people
                 who already have one, or who have no signal, and they should be
@@ -651,6 +726,19 @@ const S = {
     background: 'var(--onb-accent, linear-gradient(135deg,#c084fc,#a855f7))',
     color: '#fff', fontFamily: 'Sora, sans-serif', fontWeight: 700, fontSize: 15.5,
     transition: 'opacity .2s',
+  },
+  // The paste-back panel. Set apart from the ordinary controls because it is
+  // an exception being explained, not a choice being offered — nobody should
+  // reach for it unless the app has just told them to.
+  pasteBack: {
+    marginTop: 14, padding: 14, borderRadius: 13,
+    border: '1px solid var(--onb-border, rgba(255,255,255,0.16))',
+    background: 'var(--onb-surface, rgba(255,255,255,0.04))',
+  },
+  pasteBackText: {
+    margin: '0 0 10px', fontSize: 13, lineHeight: 1.5,
+    color: 'var(--onb-text2, rgba(255,255,255,0.72))',
+    fontFamily: 'Sora, sans-serif',
   },
   googleBtn: {
     width: '100%', padding: '12px 20px', borderRadius: 13, marginTop: 10,

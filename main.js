@@ -14,8 +14,20 @@ const { applyLinuxLauncherIcon } = require("./linuxIconTheme");
 let DESKTOP_NAME = "authno.desktop";
 try { DESKTOP_NAME = require("./package.json").desktopName || DESKTOP_NAME; } catch { /* keep default */ }
 
+const { SCHEME, deepLinkFromArgv, isAuthnoLink } = require("./deepLink");
+
 let mainWindow;
 let openFilePath = null;
+
+// A deep link that arrived before there was a window to hand it to.
+//
+// This is the cold-start case and it is the common one: clicking "Open AuthNo?"
+// in a browser when the app is not running LAUNCHES it, so the URL is in argv
+// before `ready` has fired, let alone before the renderer has mounted a
+// listener. Dropping it there would mean the flow that works when the app is
+// already open silently fails when it is not — which is exactly the state
+// somebody signing in for the first time is in.
+let pendingDeepLink = null;   // { url, at }
 
 const isLinux = process.platform === "linux";
 
@@ -63,6 +75,82 @@ function authbookFromArgv(argv) {
   ) || null;
 }
 if (!openFilePath) openFilePath = authbookFromArgv(process.argv.slice(1));
+
+// ── authno:// — the desktop half of Google sign-in ───────────────────────────
+//
+// The gate already ends that round trip by redirecting to
+// authno://auth/google?google=<handoff>; that branch has been live since
+// Android shipped and needs no change to serve desktop as well. All this side
+// has to do is claim the scheme and find the URL again afterwards.
+//
+// Unpackaged, Electron must be told what to launch or it registers ITSELF as
+// the handler — clicking the link then opens a bare Electron with no app in it,
+// which looks like the scheme is broken rather than like a dev-mode quirk.
+try {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(SCHEME);
+  }
+} catch (e) {
+  // A locked-down machine can refuse the registry write. The flow degrades to
+  // the paste-the-address fallback rather than failing at the moment of use.
+  console.error("[deep link] could not register the authno:// scheme", e);
+}
+
+/**
+ * Hand a deep link to the renderer, or hold it until there is one.
+ *
+ * `did-finish-load` is not enough on its own: the window can exist and have
+ * loaded while React has not yet mounted the listener. The renderer asks for
+ * anything outstanding once it is ready (see the deep-link-ready channel), so
+ * a URL is delivered by whichever of the two happens second.
+ */
+function deliverDeepLink(url) {
+  if (!isAuthnoLink(url)) return;
+  pendingDeepLink = { url, at: Date.now() };
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("deep-link", url);
+}
+
+// Cold start: the URL is in our own argv.
+{
+  const initial = deepLinkFromArgv(process.argv.slice(1));
+  if (initial) pendingDeepLink = { url: initial, at: Date.now() };
+}
+
+// macOS never uses argv for this. Harmless to register on the other two, and
+// it is one line against the day a mac build exists.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  deliverDeepLink(url);
+});
+
+// The renderer asks once it is listening, which closes the cold-start race
+// from the other end: whichever of the two arrives second delivers the URL.
+ipcMain.handle("deep-link-ready", () => {
+  const held = pendingDeepLink;
+  pendingDeepLink = null;
+  if (!held) return null;
+  // Anything older than the handoff inside it is worse than nothing: a second
+  // sign-in attempt would claim the FIRST attempt's URL, exchange a handoff
+  // that is already spent, and fail instantly — while the link it was actually
+  // waiting for was still on its way. Sixty seconds is the handoff's own life,
+  // so a link this stale could not have worked anyway.
+  if (Date.now() - held.at > 60 * 1000) return null;
+  return held.url;
+});
+
+// Whether the OS actually accepted the registration. When it did not — an
+// AppImage nobody has integrated, or another app holding the scheme — the
+// sign-in screen offers "paste the address you were sent to" instead of
+// waiting for a link that will never arrive.
+ipcMain.handle("deep-link-registered", () => {
+  try { return app.isDefaultProtocolClient(SCHEME); } catch { return false; }
+});
 
 // 🟢 Handle file open (macOS — fired before app is ready)
 app.on("open-file", (event, filePath) => {
@@ -112,6 +200,12 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", (event, argv) => {
+    // Warm start. Windows and Linux launch a second process holding the URL
+    // and single-instance forwards its argv here; this is the same hook the
+    // .authbook file association already uses, and one argv can carry both.
+    const link = deepLinkFromArgv(argv);
+    if (link) deliverDeepLink(link);
+
     const filePath = authbookFromArgv(argv);
     if (filePath && mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();

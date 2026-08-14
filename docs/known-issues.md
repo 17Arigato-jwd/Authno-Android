@@ -84,6 +84,19 @@ it under the app's own chrome.
 
 ## Worth doing, not blocking
 
+### 7a. AppImage cannot register `authno://` — APP
+
+An AppImage is not installed, so nothing writes the `.desktop` entry that
+claims the scheme, and Google sign-in on that one build cannot be handed its
+address back. The gate detects this before opening a browser
+(`app.isDefaultProtocolClient`) and offers a paste-the-address panel instead of
+waiting for a link that is never coming. `.deb`, `.rpm` and the Windows
+installer all register it properly.
+
+The paste path is not a hole: the address is not a credential, the single-use
+60-second handoff inside it is, and the gate refuses that if it is stale or
+already spent.
+
 ### 7. Extension UI pages could not use relative imports — APP
 
 **Fixed in this branch.** A `ui-file` page was inlined into its `srcdoc`
@@ -94,18 +107,18 @@ it concluded, reasonably, that UI pages had to be one file.
 
 Both halves of an extension now link their modules the same way.
 
-### 8. Three host calls are still Android-only — APP
+### 8. Two host calls are still Android-only — APP
 
-Extensions load and run on desktop now, but `googleSignIn` (Credential Manager)
-and `requestDriveToken` (the native account picker) have no desktop equivalent
-and throw with a reason, and `openBrowser` falls back to the real browser
-rather than a Custom Tab — which is fine for a flow that redirects back to a
-listener and not for one that expects the app to be handed the code.
+The app's own Google sign-in now works on desktop through `authno://` — see
+below — but two calls an EXTENSION can make still do not: `googleSignIn`
+(Credential Manager) and `requestDriveToken` (the native account picker) have
+no desktop equivalent and throw with a reason.
 
-So an extension whose whole job is a Google OAuth round trip — Cloud Backup+,
-when it lands — is still Android-only. That is a gap in the host API, not in
-the sandbox: closing it means a desktop OAuth path (loopback listener plus a
-`window.open`), not more isolation work.
+`openBrowser` is fine now: it opens the real browser, and an extension that
+routes its round trip through the gate can be handed the result back on the
+`authno://` scheme exactly as the app is. What is missing is only the two
+native shortcuts, so an extension that wants Drive on desktop has to do the
+ordinary OAuth dance rather than ask Android for a token.
 
 ### 9. The reminder falls back to generic wording — APP
 
