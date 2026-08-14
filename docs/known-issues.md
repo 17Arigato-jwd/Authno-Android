@@ -3,8 +3,9 @@
 Everything open against the app and the site as of 1.1.19-beta.3, ordered by
 what would hurt most if it were still true on release day.
 
-Fixed things are not listed — the changelog has those — except at the bottom,
-where the shape of two of them is worth remembering.
+Fixed things are not listed — the changelog has those — except where the shape
+of one is worth remembering: the two site-side entries below, and the two
+mistakes at the bottom.
 
 ---
 
@@ -49,23 +50,54 @@ is supposed to fail.
 
 ---
 
-## Should be fixed before release
+## Was "should be fixed before release" — both now done
 
-### 4. `ALLOWED_ORIGIN` defaults to `*` — SITE · SECURITY
+Nothing is left in this tier. Both entries are on the site's
+`claude/audit-followups`, and they are kept here rather than deleted because
+one of them was wrong about itself in a way worth not repeating.
 
-`worker/src/index.js` falls back to `*` when the variable is unset. Sessions
-are Bearer tokens rather than cookies, so this is not credential exposure — a
-browser will not attach anything automatically. It should still be pinned in
-production: leaving it open means any page anywhere can drive the gate API with
-a token it has somehow obtained, and narrowing it later is the kind of change
-that breaks a deploy nobody is watching.
+### 4. `ALLOWED_ORIGIN` defaulted to `*` — SITE · SECURITY
 
-### 5. CSP `connect-src` is wider than it needs to be — SITE · SECURITY
+**Fixed.** The fallback is an explicit list now, in `worker/src/lib/cors.js`,
+and the `"*"` that `wrangler.jsonc` also set is gone.
 
-`https://*.workers.dev` rather than the one gate host, because the exact
-hostname is a per-deploy build variable (`VITE_GATE_API`) the site Worker
-cannot see at runtime. Tightenable by threading it through as a Worker env var
-and templating the header.
+This entry called it "not credential exposure, but pin it anyway", which was
+right about the risk and wrong about the cost. Pinning it to the site's origins
+would have taken sign-in down on both app platforms, because the app is not
+exempt from CORS and nothing here said so:
+
+- Android runs under `androidScheme: "https"`, so the WebView's origin is
+  `https://localhost` and every gate call is cross-origin.
+- The desktop renderer is loaded with `loadFile`, so it is a `file://` page and
+  sends `Origin: null`.
+
+Measured in Chromium rather than assumed: with no matching allow-origin the
+fetch fails outright, preflight included, and `*` and `null` are the only two
+values that let it through. So `null` is on the allowlist, it is the weakest
+entry on it — any sandboxed iframe anywhere serialises to `null` — and what
+removes it is giving the desktop renderer a real origin instead of `file://`.
+That is an app change, not a gate change, and it is the residue this leaves
+behind.
+
+Found on the way: `siteUrl()` fell back to `ALLOWED_ORIGIN`, which was `*`,
+which its own guard rejected — so the real fallback was `""` and a finished
+Google sign-in on the website redirected *relative to the gate*, landing on the
+API's own host.
+
+### 5. CSP `connect-src` was wider than it needed to be — SITE · SECURITY
+
+**Fixed.** It names the one gate origin. `worker-site/securityHeaders.js` is
+the only copy of the policy: the Worker half reads `GATE_ORIGIN` at runtime, a
+vite plugin writes `dist/_headers` at build time from `VITE_GATE_API`, and
+`public/_headers` is gone rather than kept alongside — two copies with a
+comment on each asking whoever edits one to remember the other is how they
+drift, and that pair already had.
+
+`npm run check:csp` drives both directions in a real browser now: an unrelated
+`*.workers.dev` origin must be refused, and the gate the build names must not
+be. CI treats `dist/_headers` as a required build output, because missing it
+means a public site with no CSP, no HSTS and no frame-ancestors, deployed
+green.
 
 ---
 
@@ -152,11 +184,32 @@ the word count and the streak underneath it are only as fresh as the last sync
 or the last half hour. Nothing is wrong; it is the ceiling on how live a widget
 can look.
 
+### 13. The desktop renderer has no origin of its own — APP · SECURITY
+
+Left behind by the fix to issue 4, and the reason `null` is on the gate's CORS
+allowlist. `main.js` loads the built page with `loadFile`, so the renderer is a
+`file://` document and sends `Origin: null` on every call to the gate. The gate
+has to allow `null` for desktop sign-in to work at all, and `null` is what any
+sandboxed iframe anywhere serialises to — so that one entry is close to
+allowing everything, and it is there because there is nothing better to name.
+
+What fixes it is on this side: register a `standard` + `secure` custom scheme
+and load the app from it, so the renderer has a real origin the gate can
+allowlist by name. It is not a one-liner — asset paths, the deep-link handling
+and the packaged/dev split all run through how the window is loaded — and it
+wants the same hardware pass issue 3 does, which is why it is here rather than
+above.
+
+Worth keeping in proportion: sessions are Bearer tokens, never cookies, so no
+browser attaches a credential on its own and a hostile page can already call
+the gate from its own server. This is defence in depth that is currently one
+layer thinner than it reads.
+
 ---
 
 ## Verifying it
 
-The jest suite covers what jsdom can reach. Five things it cannot, each with a
+The jest suite covers what jsdom can reach. Six things it cannot, each with a
 script, and every one of them has caught something real:
 
 | | what it is for |
@@ -165,7 +218,8 @@ script, and every one of them has caught something real:
 | `npm run check:sandbox` | that an extension frame really cannot reach the app. jsdom has no origin model, so a unit test of this passes against a sandbox with a hole in it. |
 | `npm run check:extensions` | the extension protocol end to end. jsdom cannot execute a frame's scripts, so the bootstrap was a string nothing had ever run. |
 | `npm run stress:extensions` | twenty at once, churn, floods, and extensions that misbehave. The bar is not that one cannot be bad — it is that one bad one cannot take its neighbours with it. |
-| `npm run check:csp` (site) | the shipped Content-Security-Policy, parsed out of `_headers` and driven over nine routes. A CSP has no compiler behind it. |
+| `npm run check:csp` (site) | the shipped Content-Security-Policy, parsed out of the `dist/_headers` the build just wrote and driven over nine routes. Both directions: an unrelated origin has to be refused, and the gate the build names has to not be. A CSP has no compiler behind it. |
+| `npm run check:headers` (site) | that the site's two deployments serve the same headers. Pages reads a file, the Worker sets them in code, and they were two hand-maintained copies until they came from one module. |
 
 The desktop installers are built by CI on a tag, a dispatched release, or a
 pull request labelled `build-desktop`. Packaging is the one thing no other job
