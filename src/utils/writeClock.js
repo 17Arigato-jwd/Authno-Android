@@ -16,6 +16,8 @@
  * library to load.
  */
 
+import { writingDayKey, HARD_CAP_HOUR } from './streakWindow';
+
 const KEY = 'authno_last_write_v1';
 
 /**
@@ -61,4 +63,24 @@ export function markWrote(at = Date.now()) {
 /** Test seam, and the thing to call if "forget everything" ever grows a button. */
 export function clearWriteClock() {
   try { localStorage.removeItem(KEY); } catch { /* nothing to clear */ }
+}
+
+/**
+ * The day currently being counted, as "yyyy-mm-dd".
+ *
+ * The pure rule lives in streakWindow; this is the one place that pairs it
+ * with the stored timestamp, so every surface that asks "which day is this?"
+ * gets the same answer. Two of them disagreeing is not a cosmetic problem: the
+ * streak logs against one key and the reminder checks another, and somebody
+ * loses a run they earned.
+ */
+export function currentWritingDay(now = new Date()) {
+  const d = new Date(now);
+  // Only the small hours can belong to yesterday, and callers include an
+  // effect that follows the word count. Outside the window there is nothing an
+  // extension could change, so nothing is read.
+  if (d.getHours() >= HARD_CAP_HOUR) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  return writingDayKey(d, lastWriteAt());
 }

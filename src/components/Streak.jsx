@@ -16,8 +16,7 @@ import { Flame } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
 import { MinimalButton, COLORS, DSIcons, CloseButton } from '../DesignSystem';
 import { countWords } from '../utils/wordCount';
-import { writingDayKey, HARD_CAP_HOUR } from '../utils/streakWindow';
-import { lastWriteAt, markWrote } from '../utils/writeClock';
+import { currentWritingDay, markWrote } from '../utils/writeClock';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -35,14 +34,7 @@ import { lastWriteAt, markWrote } from '../utils/writeClock';
  * whether the goal is met — so all of them follow the window together.
  */
 export function getTodayKey() {
-  const d = new Date();
-  // Only the small hours can belong to yesterday, and this runs on every
-  // FlameButton render, which is every flush of the editor. Outside the window
-  // there is nothing an extension could change, so nothing is read.
-  if (d.getHours() >= HARD_CAP_HOUR) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-  return writingDayKey(d, lastWriteAt());
+  return currentWritingDay();
 }
 
 // The fallback must agree with the cached word_count it stands in for, or the

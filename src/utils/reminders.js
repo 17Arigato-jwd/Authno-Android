@@ -15,6 +15,7 @@
 
 import { reminderConfig, reminderSlots, shouldScheduleReminder } from './streakSettings';
 import { isAndroid } from './platform';
+import { currentWritingDay } from './writeClock';
 
 let _cache = null;
 
@@ -164,6 +165,12 @@ export async function reportProgress(metToday, streakDays, goalWords) {
       goalWords: Number.isFinite(goalWords) ? Math.max(0, Math.round(goalWords)) : 0,
       // Date-stamped so a receiver waking up tomorrow can tell that what it
       // is holding is yesterday's answer and treat the day as unmet.
+      //
+      // The WRITING day, matching the key `metToday` was worked out under.
+      // Stamping the calendar date instead would mean a goal met at 00:40 —
+      // which belongs to the night before — was filed against the day that had
+      // just started, and the following evening's reminder would fall silent
+      // on a day nobody had written a word of.
       dayKey: todayKey(),
     });
     return true;
@@ -173,6 +180,5 @@ export async function reportProgress(metToday, streakDays, goalWords) {
 }
 
 function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return currentWritingDay();
 }

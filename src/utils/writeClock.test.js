@@ -1,4 +1,4 @@
-import { markWrote, lastWriteAt, clearWriteClock } from './writeClock';
+import { markWrote, lastWriteAt, clearWriteClock, currentWritingDay } from './writeClock';
 
 beforeEach(() => { localStorage.clear(); });
 
@@ -69,5 +69,35 @@ describe('the write clock', () => {
     } finally {
       Storage.prototype.setItem = setItem;
     }
+  });
+});
+
+/**
+ * One answer, shared. The streak logs against this key, the reminder decides
+ * whether to stay quiet against it, and the widget counts down to the end of
+ * it. Two of them disagreeing costs somebody a run they earned.
+ */
+describe('the day being counted', () => {
+  const on = (iso) => new Date(iso);
+
+  test('outside the small hours it is the calendar date', () => {
+    expect(currentWritingDay(on('2026-08-14T14:30:00'))).toBe('2026-08-14');
+    expect(currentWritingDay(on('2026-08-14T04:00:00'))).toBe('2026-08-14');
+    expect(currentWritingDay(on('2026-08-14T23:59:00'))).toBe('2026-08-14');
+  });
+
+  test('nobody writing means midnight ended it', () => {
+    expect(currentWritingDay(on('2026-08-15T00:30:00'))).toBe('2026-08-15');
+  });
+
+  test('a session still running holds the night open', () => {
+    markWrote(on('2026-08-14T23:50:00').getTime());
+    expect(currentWritingDay(on('2026-08-15T00:30:00'))).toBe('2026-08-14');
+    expect(currentWritingDay(on('2026-08-15T01:30:00'))).toBe('2026-08-15');
+  });
+
+  test('4am ends it regardless', () => {
+    markWrote(on('2026-08-15T03:55:00').getTime());
+    expect(currentWritingDay(on('2026-08-15T04:01:00'))).toBe('2026-08-15');
   });
 });
