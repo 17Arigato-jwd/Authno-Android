@@ -18,6 +18,37 @@ contextBridge.exposeInMainWorld('electron', {
   //    address bar; main.js refuses anything that isn't https). ──
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // ── authno:// deep links (the desktop half of Google sign-in) ─────────────
+  //
+  // `onDeepLink` returns its own unsubscribe. The sign-in flow registers a
+  // listener per attempt and has to be able to drop it: a second attempt
+  // stacking a second listener would settle the first attempt's promise with
+  // the second attempt's handoff.
+  //
+  // `claimPendingDeepLink` closes the cold-start race. Clicking "Open AuthNo?"
+  // while the app is closed launches it, so the URL exists before React has
+  // mounted anything — the renderer asks for it once, on the way in.
+  onDeepLink: (fn) => {
+    const listener = (_e, url) => fn(url);
+    ipcRenderer.on('deep-link', listener);
+    return () => ipcRenderer.removeListener('deep-link', listener);
+  },
+  claimPendingDeepLink: () => ipcRenderer.invoke('deep-link-ready'),
+  // False when the OS did not take the registration: a managed machine that
+  // refused the registry write, another program already holding the scheme, or
+  // a binary run out of a checkout. The sign-in screen offers a manual path
+  // rather than waiting on a link that is never coming.
+  isDeepLinkRegistered: () => ipcRenderer.invoke('deep-link-registered'),
+
+  // ── Desktop notifications ─────────────────────────────────────────────────
+  // Goes to the main process rather than using the renderer's own
+  // `new Notification()`. The renderer one is tied to the page: it looks
+  // like it works while the window is open and silently does nothing once
+  // it is hidden or minimised — which is precisely when a writing reminder
+  // is worth anything. Electron's main-process Notification reaches the
+  // Windows Action Center and a Linux notification daemon either way.
+  notify: (msg) => ipcRenderer.invoke('notify', msg),
+
   // ── App icon switcher (desktop) — swaps the taskbar/window icon at runtime ──
   setAppIcon: (id) => ipcRenderer.invoke('set-app-icon', id),
   getAppIcon: ()   => ipcRenderer.invoke('get-app-icon'),

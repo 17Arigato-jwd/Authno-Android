@@ -34,7 +34,13 @@ import {
   streaksEnabledGlobally, bookStreakPreference, withBookStreakPreference,
   reminderConfig, formatReminderTime, parseReminderTime,
 } from '../utils/streakSettings';
-import { requestNotificationPermission, checkNotificationPermission } from '../utils/reminders';
+import { checkNotificationPermission, requestNotificationPermission,
+  checkBackgroundAllowed, openBackgroundSettings } from '../utils/reminders';
+import { notifyNow, notifyResultText } from '../utils/notify';
+import { isDevModeUnlocked, setDevModeUnlocked, tapVersion, tapHint } from '../utils/devMode';
+import { buildReminder } from '../utils/reminderCopy';
+import { bookStreakStats } from './Streak';
+import { DEFAULT_WORD_GOAL } from './constants';
 
 function useIsPortrait() {
   const [isPortrait, setIsPortrait] = useState(() => window.innerWidth < window.innerHeight || window.innerWidth < 600);
@@ -614,7 +620,7 @@ function AppearancePanel({ settings, onChange, accentHex, onOpenCustomizer, onOp
 
 // ── General (Raycast-style, beta.2): profile · startup · device ─────────────
 function GeneralPanel(props) {
-  const { settings, onChange, accentHex } = props;
+  const { settings, onChange, accentHex, onSignOut } = props;
   const fileRef = useRef(null);
   const handleAvatarFile = (e) => {
     const file = e.target.files?.[0];
@@ -627,6 +633,17 @@ function GeneralPanel(props) {
 
   return (
     <div>
+      {/* Who you are on the account, above who you are on the page.
+          This lived in Settings → About until now, filed with the version
+          number and the open-source credits — so somebody looking for "my
+          account" opened General, found a name field and an avatar, and had no
+          reason to think their pen name, their invites or the way out were
+          behind a tab labelled About.
+          The two are different things and both belong here: the card is the
+          identity the gate issued, the fields below are the byline that goes
+          into a .authbook. About keeps what About means. */}
+      <MembershipCard accentHex={accentHex} onSignOut={onSignOut} />
+
       <RGroupLabel>Profile</RGroupLabel>
       <RCard>
         <div className="rrow" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px' }}>
@@ -1138,6 +1155,8 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
   const bookPref = bookStreakPreference(selectedBook);
   const reminder = reminderConfig(settings);
   const [permission, setPermission] = useState(null);
+  const [background, setBackground] = useState(null);
+  const [testResult, setTestResult] = useState(null);
 
   // Only meaningful on Android, and only worth asking about once the reminder
   // is on — checking at mount would report "denied" for every desktop user.
@@ -1145,8 +1164,47 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
     if (!isAndroid() || !reminder.enabled) { setPermission(null); return; }
     let alive = true;
     checkNotificationPermission().then((p) => { if (alive) setPermission(p); });
+    // Asked at the same moment, because a granted permission and a dropped
+    // alarm look identical from the writer's side — both are "it never went
+    // off" — and only one of them is fixable from this screen.
+    checkBackgroundAllowed().then((b) => { if (alive) setBackground(b); });
     return () => { alive = false; };
   }, [reminder.enabled]);
+
+  /**
+   * Send one now, through the same channel and permission a real reminder
+   * uses. The words come from the same builder too, so what arrives is a
+   * genuine sample rather than a placeholder that proves nothing.
+   */
+  const sendTest = async () => {
+    setTestResult('sending');
+    // The writer's real goal, resolved exactly the way every other row on this
+    // screen resolves it: the book's own target if it has one, otherwise the
+    // global default. This read settings.dailyGoal, which is not a key that
+    // exists anywhere — so the test always announced a hardcoded 300 whatever
+    // the writer had set. A test notification that shows the wrong number is
+    // worth less than no test notification, because it certifies a lie.
+    // Everything derived from the log, the way the flame derives it. Reading
+    // `streak.current` and `streak.wordsToday` — which is what this did —
+    // returns 0 forever: neither field exists on a session, so the test
+    // notification announced a first day to writers on a fifty-day run.
+    const stats = bookStreakStats(selectedBook, settings?.dailyWordGoal ?? DEFAULT_WORD_GOAL);
+    const msg = buildReminder({
+      streakDays: stats.streakDays,
+      goalWords: stats.goalWords,
+      wordsToday: stats.wordsToday,
+      bookTitle: selectedBook?.title,
+      hour: reminder.hour,
+      // The writing day, and local. toISOString() is UTC, which puts half the
+      // world on the wrong side of midnight — and this seeds which line the
+      // copy picks, so a test would show a different sample than the reminder
+      // it is meant to be previewing.
+      dayKey: stats.dayKey,
+    });
+    const res = await notifyNow(msg);
+    setTestResult(res);
+    if (res === 'denied') setPermission('denied');
+  };
 
   const setReminder = (patch) => onChange({ streakReminder: { ...reminder, ...patch } });
 
@@ -1259,6 +1317,86 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
             >
               <Toggle on={reminder.skipWhenMet} onChange={(v) => setReminder({ skipWhenMet: v })} accentHex={accentHex} ariaLabel="Skip the reminder when the goal is met" />
             </RRow>
+
+            {/* The second slot. Off even when the first is on: two
+                notifications a day is twice the intrusion and not the app's
+                decision to make on somebody's lock screen. */}
+            <div style={{ height: 1, background: 'var(--border-sm)' }} />
+            <RRow
+              label="A second reminder"
+              description="Two a day — one earlier, one later. Each says something different."
+            >
+              <Toggle
+                on={reminder.secondEnabled}
+                onChange={(v) => setReminder({ secondEnabled: v })}
+                accentHex={accentHex}
+                ariaLabel="A second daily reminder"
+              />
+            </RRow>
+            {reminder.secondEnabled && (
+              <RRow label="Second time" description="On your device's clock.">
+                <input
+                  type="time"
+                  aria-label="Second reminder time"
+                  value={formatReminderTime({ hour: reminder.secondHour, minute: reminder.secondMinute })}
+                  onChange={(e) => {
+                    const parsed = parseReminderTime(e.target.value);
+                    if (parsed) setReminder({ secondHour: parsed.hour, secondMinute: parsed.minute });
+                  }}
+                  style={{
+                    padding: '7px 10px', background: 'var(--input-bg)',
+                    border: '1px solid var(--border)', borderRadius: 8,
+                    color: 'var(--text-1)', fontSize: 13.5, outline: 'none',
+                    colorScheme: 'dark light',
+                  }}
+                />
+              </RRow>
+            )}
+
+            {/* Prove the whole path, on this machine, now. */}
+            <div style={{ height: 1, background: 'var(--border-sm)' }} />
+            <RRow
+              label="Send a test notification"
+              description="Posts one right now, exactly the way a real reminder arrives."
+            >
+              <button
+                onClick={sendTest}
+                disabled={testResult === 'sending'}
+                style={{
+                  padding: '7px 13px', borderRadius: 8, cursor: testResult === 'sending' ? 'default' : 'pointer',
+                  background: 'transparent', border: `1px solid ${accentHex}66`,
+                  color: accentHex, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit',
+                  opacity: testResult === 'sending' ? 0.5 : 1,
+                }}
+              >
+                {testResult === 'sending' ? 'Sending…' : 'Send test'}
+              </button>
+            </RRow>
+            {testResult && testResult !== 'sending' && (
+              <div style={{ padding: '0 14px 12px', marginTop: -4, fontSize: 11.5, color: 'var(--text-4)', lineHeight: 1.5 }}>
+                {notifyResultText(testResult)}
+              </div>
+            )}
+
+            {/* The difference between a reminder that arrives and one that
+                does not, on a great many devices — and invisible from
+                everywhere else in the system. */}
+            {background === 'restricted' && (
+              <div style={{ padding: '0 14px 14px', fontSize: 11.5, color: 'var(--text-4)', lineHeight: 1.6 }}>
+                Your device may stop AuthNo running in the background, which can
+                delay a reminder or drop it entirely.{' '}
+                <button
+                  onClick={openBackgroundSettings}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: accentHex, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Allow it to run in the background
+                </button>
+              </div>
+            )}
             {permission === 'denied' && (
               <div style={{ padding: '10px 14px 14px', fontSize: 11.5, color: 'var(--text-4)', lineHeight: 1.5 }}>
                 Notifications are switched off for AuthNo in your system settings, so this
@@ -1273,15 +1411,12 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges, onStartTour, onSignOut }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
   const { isPro } = useEntitlement();
   return (
     <div>
       <SectionTitle>About</SectionTitle>
       <SectionSubtitle>Version info, open-source credits and attribution.</SectionSubtitle>
-
-      {/* Renders only on invite-gated builds — see MembershipCard. */}
-      <MembershipCard accentHex={accentHex} onSignOut={onSignOut} />
 
       {/* Authno Pro (U10) */}
       <div style={{
@@ -1572,6 +1707,19 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
 
   const extSettingsItems = useExtensionContributions('settings');
 
+  // Developer options are diagnostics — a book scanner, an error log — and a
+  // "Developer" tab in a writing app invites poking that support then has to
+  // explain. Seven taps on the version is the oldest gesture on Android:
+  // nobody arrives by accident, and anybody who has been told can get there
+  // in four seconds. See utils/devMode.js.
+  const [devUnlocked, setDevUnlocked] = useState(isDevModeUnlocked);
+  const [tapState, setTapState] = useState(null);
+  const onVersionTap = () => {
+    const next = tapVersion(tapState);
+    setTapState(next);
+    if (next.unlocked) { setDevModeUnlocked(true); setDevUnlocked(true); }
+  };
+
   const isExtSection = extSettingsItems.some(item => activeSection === `ext::${item._extId}::${item.id}`);
 
   useEffect(() => {
@@ -1586,7 +1734,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   const accentHex = settings.accentHex || '#3b82f6';
 
   const allNavItems = [
-    ...NAV_ITEMS,
+    ...NAV_ITEMS.filter((i) => i.id !== 'developer' || devUnlocked),
     ...extSettingsItems.map(item => ({
       id:    `ext::${item._extId}::${item.id}`,
       label: item.label,
@@ -1618,13 +1766,13 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   // One panel switch for both orientations (they used to be duplicated).
   const renderPanel = () => (
     <>
-      {activeSection === 'general'    && <GeneralPanel    {...panelProps} />}
+      {activeSection === 'general'    && <GeneralPanel    {...panelProps} onSignOut={onSignOut} />}
       {activeSection === 'appearance' && <AppearancePanel {...panelProps} onOpenCustomizer={onOpenCustomizer} onOpenFontCustomizer={onOpenFontCustomizer} switchTheme={switchTheme} />}
       {activeSection === 'writing'    && <WritingGoalPanel {...panelProps} />}
       {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
       {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
       {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onSignOut={onSignOut} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
@@ -1807,7 +1955,23 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                       {items.map((item) => navButton(item))}
                     </div>
                   ))}
-                  <div style={{ marginTop: 'auto', padding: '8px 8px 2px', fontSize: 10.5, color: 'var(--text-5)' }}>AuthNo v{APP_META.version}</div>
+                  <button
+                    type="button"
+                    onClick={onVersionTap}
+                    title={devUnlocked ? 'Developer options are on' : undefined}
+                    style={{
+                      marginTop: 'auto', padding: '8px 8px 2px', fontSize: 10.5,
+                      color: 'var(--text-5)', background: 'none', border: 'none',
+                      textAlign: 'left', cursor: 'default', fontFamily: 'inherit',
+                    }}
+                  >
+                    AuthNo v{APP_META.version}
+                    {/* Silent for the first four taps, so a stray double-tap
+                        never produces a mysterious countdown. */}
+                    {!devUnlocked && tapHint(tapState) && (
+                      <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>· {tapHint(tapState)}</span>
+                    )}
+                  </button>
                 </>
               )}
             </div>

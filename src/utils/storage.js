@@ -16,6 +16,7 @@
 import { isElectron, isAndroid } from './platform';
 import { logError } from './ErrorLogger';
 import { hasUnhydratedChapters, hydrateAll } from './largeBooks';
+import { defangChapters, defangHtml } from './editorFormat';
 import {
   packSession, unpackSession, bookToSession, sessionToBook,
   detectFormat, fromLegacySession, base64ToBytes, bytesToBase64,
@@ -105,6 +106,16 @@ async function decodeBytes(bytes, filePath) {
     if (fmt === 'vchs') {
       const book    = await unpackSession(bytes);
       const session = bookToSession(book);
+      // Every .authbook enters here — the ones on this device and the ones
+      // somebody sent. Chapters go straight into a contentEditable, so
+      // anything executable in one would run with the app's own reach. See
+      // defangHtml: it removes only what can run, never formatting, because
+      // this door cannot tell a stranger's file from the writer's own.
+      session.chapters = defangChapters(session.chapters);
+      // bookToSession mirrors chapter 1 into `content`, and the editor renders
+      // that mirror — defanging only the array would leave the one chapter
+      // most likely to be opened untouched.
+      session.content = defangHtml(session.content);
       if (book.warnings?.length) console.warn('[authbook]', book.warnings);
       // Surface recovery events to the UI: the app toasts when a file needed
       // repair so silent-looking recoveries are visible to the user.
@@ -116,6 +127,8 @@ async function decodeBytes(bytes, filePath) {
     if (fmt === 'legacy-json') {
       const raw     = JSON.parse(new TextDecoder().decode(bytes));
       const session = bookToSession(fromLegacySession(raw));
+      session.chapters = defangChapters(session.chapters);
+      session.content = defangHtml(session.content);
       return { ...session, filePath, _legacy: true };
     }
     throw new Error('Not a valid .authbook file (unrecognised format)');
@@ -368,6 +381,23 @@ export async function autoSaveBook(session) {
     logError('autoSaveBook', new Error('refused to autosave a book with no chapters or content'), { sessionTitle: session?.title });
     return { success: false, skippedEmpty: true };
   }
+  // The same refusal saveBook makes, and for a worse case.
+  //
+  // isContentless above only asks whether there are CHAPTERS — a book opened
+  // in preview has all of them, each with `content: null`, so it sails past.
+  // Packing that writes the right chapter list with nothing inside it, over
+  // the app-folder copy, which is the only copy a book nobody has placed by
+  // hand has. Structurally intact afterwards, which is what makes it so hard
+  // to notice.
+  //
+  // And this is the door that needs the guard most: saveBook and every export
+  // run because somebody asked, while this runs four seconds after a book is
+  // opened, with nobody watching. Refusing is enough — the next autosave after
+  // the chapters load writes the whole thing.
+  if (hasUnhydratedChapters(session)) {
+    logError('autoSaveBook', new Error('refused to autosave a book whose chapters are not all loaded'), { sessionTitle: session?.title });
+    return { success: false, needsHydration: true };
+  }
   try {
     const bytes = await encodeSession(session);
     const loc = await writeToAppDir(autosaveName(session), bytes);
@@ -500,6 +530,20 @@ export async function saveBook(session) {
 
 export async function saveAsBook(session) {
   try {
+    // Load the rest of the book before writing a copy of it.
+    //
+    // This one destroys rather than merely truncating: on Android it deletes
+    // the app-folder autosave once the copy is written, on the reasoning that
+    // the book has been promoted out of the app folder. With unloaded chapters
+    // that means a copy with empty chapters is written to wherever the writer
+    // chose AND the only complete copy is deleted behind it.
+    //
+    // Hydrating rather than refusing, because Save As is a deliberate act with
+    // somebody waiting on it. withAllChapters throws if the file cannot be
+    // read back, and the catch below surfaces that — a refused save is
+    // recoverable in a way that a silently emptied manuscript is not.
+    session = await withAllChapters(session);
+
     if (isElectron()) {
       const b64 = bytesToBase64(await encodeSession(session));
       return window.electron.saveAsBytesBook({ base64: b64, defaultName: safeName(session) });

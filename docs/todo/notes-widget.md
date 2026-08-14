@@ -82,14 +82,34 @@ on the go" is not literal: something has to open.
 3. **Voice capture via `RecognizerIntent`.** Genuinely hands-free, but a fourth
    path into the same store; it should wait until 2 is proven.
 
-## Not verifiable from here
+## What is verified, and what is not
 
-No native code in this project has ever executed on hardware — there is no
-Android SDK in the build environment, so `NotesWidgetProvider` has never been
-compiled, let alone rendered. What *is* checked: `NotesText` compiles and its
-tests pass on the JVM, every `R.*` reference in the provider resolves to a
-declared id, drawable, colour or string, and the payload crossing the bridge is
-covered on the JS side.
+**It compiles and ships in an APK.** The `Build Android` CI job runs
+`./gradlew assembleRelease` and `bundleRelease` on a runner with a real Android
+SDK, and it went green with the widget in place. That is worth more than it
+sounds, because the toolchain fails closed on most of what could be wrong here:
+
+- `NotesWidgetProvider.java` and `NotesText.java` compile against the platform.
+- Every `R.id`, `R.layout`, `R.drawable` and `R.string` reference resolves —
+  aapt2 fails the build on an unresolved resource, so a typo in an id or a
+  missing string could not have got this far.
+- `notes_widget.xml` and `notes_widget_info.xml` are valid resource XML, and
+  the `<receiver>` merges into the manifest.
+
+**It has never run.** No CI runner and no dev container has an Android
+*runtime* — see `docs/known-issues/on-device-file-read.md`, which is the same
+gap. So the widget has never been inflated by a launcher, and everything below
+compiling is still unproven:
+
+- `RemoteViews` accepting the layout at runtime. Low risk — FrameLayout,
+  LinearLayout, TextView and ImageView are all in the supported set — but the
+  supported set is a runtime check, not a compile-time one.
+- The per-row `PendingIntent`s landing on the right notes.
+- `setColorFilter` tinting the card as intended in each theme.
+- Anything about tap targets, sizing or how it looks at 4×2.
+
+`NotesText`'s 13 tests do run, on the JVM, because it imports nothing from
+`android` — that is why it exists as a separate file.
 
 The first device run should confirm, in this order: the widget appears in the
 picker; it renders in a non-Dark theme; the New note button lands in an empty

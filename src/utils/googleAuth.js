@@ -2,18 +2,28 @@
  * googleAuth.js — sign in, sign up and connect with Google, from the app.
  *
  * ── The shape of it ────────────────────────────────────────────────────────
- * Android cannot host the OAuth redirect, so the round trip leaves the app:
+ * Neither Android nor a desktop window can host the OAuth redirect, so the
+ * round trip leaves the app on both:
  *
  *   1. POST /v1/auth/google/start { client: 'app' } → the consent URL.
- *   2. Open it in a Custom Tab. NOT a WebView — Google refuses to sign anybody
- *      in inside an embedded browser, and a WebView would also mean this app
- *      could read the password being typed into it, which is the reason they
- *      refuse.
+ *   2. Open it OUTSIDE the app. A Custom Tab on Android, the real browser on
+ *      desktop. NOT a WebView or a BrowserWindow — Google refuses to sign
+ *      anybody in inside an embedded browser, and an embedded browser would
+ *      also mean this app could read the password being typed into it, which
+ *      is the reason they refuse.
  *   3. The gate's callback 302s to authno://auth/google?google=<handoff>.
- *   4. Android hands that deep link to us; we exchange the handoff for a key.
+ *   4. The OS hands that deep link back to us; we exchange the handoff.
+ *
+ * Step 3 is why desktop needed no Worker change: `client: 'app'` already
+ * selects that redirect, and it has been serving Android in production since
+ * sign-in shipped. Desktop only had to claim the scheme — see deepLink.js and
+ * the protocols block in package.json.
  *
  * The handoff is single-use and lives about a minute. It is what travels in
- * the URL so the thing that opens the app is not itself a credential.
+ * the URL so the thing that opens the app is not itself a credential. That
+ * matters more on desktop than on Android: any local program can also register
+ * `authno://`, so the URL has to be worth as little as possible to whoever
+ * else might catch it.
  *
  * ── What it does NOT change ────────────────────────────────────────────────
  * Nothing here makes AuthNo need a network. This is another way to FETCH a
@@ -26,6 +36,8 @@
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { GATE_API, gateConfigured, GateError } from './gateApi';
+import { isElectron } from './platform';
+import { onDeepLink } from './deepLinkBus';
 
 /** The scheme registered in AndroidManifest.xml. Both halves must agree. */
 export const APP_REDIRECT = 'authno://auth/google';
@@ -73,6 +85,53 @@ async function post(path, body, token) {
   return data;
 }
 
+/** The consent screen, in a browser this app cannot see into. */
+async function openConsent(url) {
+  if (isElectron() && window.electron?.openExternal) {
+    const r = await window.electron.openExternal(url);
+    // main.js refuses anything that is not https. A refusal here means the
+    // gate handed back something unexpected, which is worth failing on rather
+    // than leaving a button spinning at a browser that never opened.
+    if (r && r.ok === false) throw new GateError('gate-unreachable');
+    return;
+  }
+  await Browser.open({ url, presentationStyle: 'popover' });
+}
+
+/**
+ * Whether the OS will actually deliver `authno://` to us.
+ *
+ * Normally true: Linux packages claim it in their .desktop entry and Windows
+ * claims it at first run. It is false when a managed machine refused the
+ * registry write, when another program already holds `authno://`, or when the
+ * binary is running out of a checkout with no installed entry behind it. The caller offers a manual path instead of
+ * opening a browser and waiting for a link that is never coming.
+ */
+export async function deepLinkReady() {
+  if (!isElectron()) return true;              // Android registers in its manifest
+  if (!window.electron?.isDeepLinkRegistered) return false;
+  try { return !!(await window.electron.isDeepLinkRegistered()); } catch { return false; }
+}
+
+/**
+ * Finish a flow from a URL the writer pasted in by hand.
+ *
+ * The fallback for the case above. It is the same exchange the deep link
+ * performs — the URL is not a credential, the handoff inside it is, and that
+ * handoff is refused if it is stale or already spent.
+ */
+export async function finishFromPastedUrl(raw) {
+  let params;
+  try { params = new URL(String(raw).trim()).searchParams; }
+  catch { throw new GateError('bad-token'); }
+  const failed = params.get('google_error');
+  if (failed) throw new GateError(failed);
+  const handoff = params.get('google');
+  if (!handoff) throw new GateError('bad-token');
+  const d = await post('/v1/auth/google/finish', { handoff });
+  return d.redeemed ? d.redeemed : d;
+}
+
 /**
  * Run a whole flow and resolve with what the gate handed back.
  *
@@ -86,17 +145,20 @@ async function post(path, body, token) {
 export function googleFlow(mode, { code, username, token, accessKey } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let urlSub = null;
-    let stateSub = null;
+    let urlSub = null;     // an unsubscribe function on both platforms now
+    let stateSub = null;   // Android only
+    let deadline = null;   // desktop only
 
     const done = (fn, value) => {
       if (settled) return;
       settled = true;
-      // Remove both listeners before resolving. Capacitor's remove() is async
+      // Drop both listeners before resolving. Capacitor's remove() is async
       // and a second deep link arriving mid-teardown would otherwise land in a
       // promise that has already settled.
-      Promise.all([urlSub?.remove?.(), stateSub?.remove?.()]).catch(() => {});
-      Browser.close().catch(() => {});   // no-op if it is already gone
+      try { urlSub?.(); } catch { /* already gone */ }
+      Promise.resolve(stateSub?.remove?.()).catch(() => {});
+      clearTimeout(deadline);
+      if (!isElectron()) Browser.close().catch(() => {});  // no tab of ours on desktop
       fn(value);
     };
 
@@ -104,9 +166,10 @@ export function googleFlow(mode, { code, username, token, accessKey } = {}) {
       try {
         // Listen BEFORE opening. A fast flow — an already-signed-in Google
         // account with consent granted — can bounce back before an await
-        // scheduled after the open would have run.
-        urlSub = await App.addListener('appUrlOpen', ({ url }) => {
-          if (!url || !url.startsWith(APP_REDIRECT)) return;   // some other deep link
+        // scheduled after the open would have run. On desktop the same await
+        // would also miss a URL that launched the app in the first place.
+        urlSub = await onDeepLink((url) => {
+          if (!url || !url.toLowerCase().startsWith(APP_REDIRECT)) return;  // another deep link
           let params;
           try { params = new URL(url).searchParams; }
           catch { return done(reject, new GateError('bad-token')); }
@@ -122,15 +185,26 @@ export function googleFlow(mode, { code, username, token, accessKey } = {}) {
             .catch((e) => done(reject, e));
         });
 
-        // Coming back to the app with no deep link at all means the tab was
-        // dismissed. Without this the promise would hang forever and the
-        // button would spin until the app was killed.
-        stateSub = await App.addListener('appStateChange', ({ isActive }) => {
-          if (!isActive || settled) return;
-          setTimeout(() => {
-            if (!settled) done(reject, new GateError('cancelled'));
-          }, 900);   // long enough for a deep link already in flight to win
-        });
+        if (isElectron()) {
+          // Desktop has no equivalent of "the app came back to the
+          // foreground": the window never left it, and the browser is another
+          // program entirely. So the only way to know a flow was abandoned is
+          // that it stopped happening — and the wait has to outlast a real
+          // person picking an account and reading a consent screen. Ten
+          // minutes matches the gate's own state TTL, past which the flow
+          // cannot succeed anyway.
+          deadline = setTimeout(() => done(reject, new GateError('cancelled')), 10 * 60 * 1000);
+        } else {
+          // Coming back to the app with no deep link at all means the tab was
+          // dismissed. Without this the promise would hang forever and the
+          // button would spin until the app was killed.
+          stateSub = await App.addListener('appStateChange', ({ isActive }) => {
+            if (!isActive || settled) return;
+            setTimeout(() => {
+              if (!settled) done(reject, new GateError('cancelled'));
+            }, 900);   // long enough for a deep link already in flight to win
+          });
+        }
 
         const { url } = await post('/v1/auth/google/start',
           {
@@ -142,7 +216,7 @@ export function googleFlow(mode, { code, username, token, accessKey } = {}) {
             ...(accessKey ? { accessKey } : {}),
           },
           token);
-        await Browser.open({ url, presentationStyle: 'popover' });
+        await openConsent(url);
       } catch (e) {
         done(reject, e instanceof GateError ? e : new GateError('gate-unreachable'));
       }

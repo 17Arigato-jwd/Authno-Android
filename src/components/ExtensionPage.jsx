@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DSIcons } from '../DesignSystem';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
+import { readExtensionTree } from '../utils/extensionSandbox';
+import { planModuleGraph, rewriteSpecifiers } from '../utils/moduleGraph';
 import { isAndroid } from '../utils/platform';
 
 // ── Inject spin keyframe once at module load ────────────────────────────────
@@ -159,60 +161,17 @@ function StatusBox({ icon, title, subtitle }) {
 // Message protocol (parent → iframe):
 //   { type: 'api-result', id, result?, error? }      — response to api-call
 
-// Assembled from two pieces so the literal sequence never appears in this
-// module's source. It is written into an iframe srcdoc, but if a build step
-// ever inlines this chunk into an HTML document the parser would treat the
-// sequence as the end of the surrounding script. A backslash escape does the
-// same job and reads to eslint as a useless escape, which it is not.
-// eslint-disable-next-line no-useless-concat
-const CLOSE_SCRIPT = '<' + '/script>';
+// EXT_BASE ('https://localhost/extensions') lived here. Nothing loads from it
+// any more — that URL was only ever served by Android's MainActivity, which is
+// why extensions did not run on desktop at all. Both halves now link their
+// modules into blob URLs inside the frame instead.
 
-/**
- * Bridge tracing, off in a shipped build.
- *
- * These fire per CALL, not per session — every provider method an extension
- * invokes announced itself in the console, naming the provider and the method.
- * That is useful while writing an extension and is noise in a writer's console,
- * where the only things worth interrupting for are warnings and errors. Same
- * gate widgetBridge uses; install and uninstall still log unconditionally
- * because those happen once and are the first thing worth knowing when an
- * install goes wrong.
- */
-const bridgeTrace = (...args) => {
-  if (process.env.NODE_ENV === 'development') console.debug('[ext-bridge]', ...args);
-};
-
-/**
- * Read one file out of an installed extension.
- *
- * No platform check. It used to return null off Android, which meant that on
- * desktop a UI page could only ever render its "could not read" error — and
- * since installExtbkBytes writes through this same `Filesystem`, whose web
- * implementation is backed by IndexedDB, the file it was refusing to read was
- * sitting right there.
- */
-async function readExtensionFile(extId, relPath) {
-  const { Filesystem, Directory } = await import('@capacitor/filesystem');
-  const r = await Filesystem.readFile({
-    path: `AuthNo/extensions/${extId}/${relPath}`,
-    directory: Directory.Data,
-    encoding: 'utf8',
-  });
-  return r.data;
-}
 
 function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
   const [srcdoc, setSrcdoc]     = useState(null);
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(true);
   const iframeRef               = useRef(null);
-
-  // Held in a ref so the message listener below always reaches the current
-  // handler. Listing onBack as a dependency would tear the listener down and
-  // rebuild it on every parent render that produces a fresh closure; leaving
-  // it out entirely would let the listener call a stale one.
-  const onBackRef               = useRef(onBack);
-  useEffect(() => { onBackRef.current = onBack; }, [onBack]);
 
   // ── Build srcdoc ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -221,13 +180,45 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
       setLoading(true);
       setError(null);
       try {
-        const fileCode = await readExtensionFile(extension.id, pageDef.file);
+        // The whole tree, not just the entry file.
+        //
+        // This used to read one file and inline it as a single
+        // <script type="module">. A module in a srcdoc document has no base URL
+        // to resolve `./helper.js` against, so any UI split across files failed
+        // at load with a bare-specifier error — and every extension author who
+        // hit it concluded, reasonably, that UI pages had to be one file.
+        //
+        // The background sandbox already solved this: hand the frame every
+        // module and let it build blob URLs, leaves first. Same two functions,
+        // same ordering, so the two halves of an extension now load the same
+        // way.
+        const files = await readExtensionTree(extension.id);
         if (cancelled) return;
 
-        if (!fileCode) {
-          setError(`Could not read ${pageDef.file} — make sure the extension is properly installed.`);
+        const entry = pageDef.file;
+        if (!files[entry]) {
+          setError(`Could not read ${entry} — make sure the extension is properly installed.`);
           return;
         }
+
+        const { order, missing, cycle } = planModuleGraph(files, entry);
+        if (cycle) {
+          setError(`${entry} has a circular import: ${cycle.join(' → ')}`);
+          return;
+        }
+        if (missing.length) {
+          // Named rather than left to the browser, which would report a blob
+          // URL this code invented instead of the path the author wrote.
+          setError(`${missing[0].from} imports ${missing[0].spec}, which the extension does not ship.`);
+          return;
+        }
+
+        const placeholders = {};
+        order.forEach((path, i) => { placeholders[path] = `__authno_mod_${i}__`; });
+        const modules = order.map((path) => ({
+          path,
+          source: rewriteSpecifiers(path, files[path], files, (t) => placeholders[t]),
+        }));
 
         // The bridge shim is injected as an inline <script> that runs BEFORE
         // the extension script. It sets up window.CloudBackupAPI (and any future
@@ -364,6 +355,16 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
 })();
         `;
 
+        // As a JSON block rather than interpolated into the loader's source:
+        // extension code is arbitrary text, and the only character that can end
+        // a script element early is `<`. Escaping it here means nothing in a
+        // chapter of somebody's extension can close the tag around it.
+        const modulesJson = JSON.stringify(modules).replace(/</g, '\\u003c');
+
+        // The closing tag, assembled rather than written, so nothing that
+        // scans this source treats it as the end of a script block.
+        const close = `</${'script'}>`;
+
         const doc = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -372,12 +373,32 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
   <style>
     html, body { margin: 0; padding: 0; background: transparent; }
   </style>
-  <script>${bridgeShim}${CLOSE_SCRIPT}
+  <script>${bridgeShim}${close}
 </head>
 <body>
-  <script type="module">
-${fileCode}
-  ${CLOSE_SCRIPT}
+  <script type="application/json" id="authno-modules">${modulesJson}${close}
+  <script>
+    // Leaves first: a blob URL cannot be referenced before its content exists,
+    // and each module's source already names the ones it imports.
+    (function () {
+      var mods = JSON.parse(document.getElementById('authno-modules').textContent);
+      var urls = [];
+      try {
+        for (var i = 0; i < mods.length; i++) {
+          var src = mods[i].source;
+          for (var j = 0; j < urls.length; j++) {
+            src = src.split('__authno_mod_' + j + '__').join(urls[j]);
+          }
+          urls.push(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        }
+        import(urls[urls.length - 1]).catch(function (err) {
+          parent.postMessage({ type: 'ext-page-error', error: String(err && err.message ? err.message : err) }, '*');
+        });
+      } catch (err) {
+        parent.postMessage({ type: 'ext-page-error', error: String(err && err.message ? err.message : err) }, '*');
+      }
+    })();
+  ${close}
 </body>
 </html>`;
 
@@ -408,7 +429,7 @@ ${fileCode}
       const msg = e.data;
       // ext-close: ConflictResolution (or any iframe page) signals a back navigation
       if (msg?.type === 'ext-close' && e.source === iframeRef.current?.contentWindow) {
-        onBackRef.current?.();
+        onBack?.();
         return;
       }
       if (!msg || msg.type !== 'api-call' || e.source !== iframeRef.current?.contentWindow) return;
@@ -525,10 +546,10 @@ ${fileCode}
             'syncNow not available on CloudBackupAPI. ' +
             'The extension may not be fully activated yet — try reopening Cloud Backup.'
           );
-          bridgeTrace('syncNow started');
+          console.log('[ext-bridge] syncNow started');
           try {
             await api.syncNow();
-            bridgeTrace('syncNow finished');
+            console.log('[ext-bridge] syncNow finished');
           } catch (err) {
             throw new Error(`syncNow failed: ${err.message}`);
           }
@@ -549,7 +570,7 @@ ${fileCode}
             `Provider '${providerKey}' has no method '${providerMethod}'. ` +
             `Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(provider)).filter(k => k !== 'constructor').join(', ')}`
           );
-          bridgeTrace(`provider.${providerMethod}(${providerKey}, ...)`);
+          console.log(`[ext-bridge] provider.${providerMethod}(${providerKey}, ...)`);
           try {
             result = await provider[providerMethod](...methodArgs);
           } catch (err) {
@@ -576,6 +597,10 @@ ${fileCode}
 
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
+  // onBack is reached through onBackRef, which is kept current by the effect
+  // above. Listing it here would rebuild this listener on every parent render
+  // that produces a fresh closure.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extension, session]);
 
   if (loading) {

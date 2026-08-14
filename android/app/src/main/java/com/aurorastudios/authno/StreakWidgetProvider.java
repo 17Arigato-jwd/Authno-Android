@@ -47,6 +47,9 @@ public class StreakWidgetProvider extends AppWidgetProvider {
     // Quick-capture notes, for NotesWidgetProvider. The array is only the few
     // rows a widget can show; the total is stored separately so the header can
     // say how many there really are rather than how many fit.
+    // Today's deadline, computed in JS so the app and every widget agree on
+    // when a writing day ends — see utils/streakWindow.js.
+    static final String KEY_COUNTDOWN_JSON   = "authno_countdown";
     static final String KEY_NOTES_JSON       = "authno_notes";
     static final String KEY_NOTES_TOTAL      = "authno_notes_total";
 
@@ -297,6 +300,31 @@ public class StreakWidgetProvider extends AppWidgetProvider {
             }
         } catch (Exception ignored) {}
         return prefs.getString(KEY_BOOKS_JSON, "[]");
+    }
+
+    /**
+     * The day currently being counted, from the last sync's countdown payload.
+     *
+     * Here rather than in WritingDay because this class owns the preferences
+     * file and the key; WritingDay stays free of android and org.json so the
+     * decision it makes can be tested off-device.
+     */
+    static String writingDayKey(Context ctx) {
+        return writingDayKey(ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE));
+    }
+
+    static String writingDayKey(SharedPreferences prefs) {
+        long deadline = 0L;
+        String day = "";
+        try {
+            String raw = prefs == null ? "" : prefs.getString(KEY_COUNTDOWN_JSON, "");
+            if (raw != null && !raw.trim().isEmpty()) {
+                JSONObject o = new JSONObject(raw);
+                deadline = o.optLong("deadline", 0L);
+                day = o.optString("dayKey", "");
+            }
+        } catch (Exception ignored) { /* the device's date, below */ }
+        return WritingDay.pick(deadline, day, System.currentTimeMillis(), WritingDay.deviceToday());
     }
 
     /** Is this specific book one the writer switched streaks off for? */

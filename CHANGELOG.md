@@ -3,6 +3,81 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.19-beta.3
+
+_A day that ends when you stop writing rather than when the clock says so, a
+countdown on the home screen, and reminders worth reading._
+
+### The writing day
+
+- **Finish the sentence.** If you are still writing when midnight arrives, the
+  day stays open — an hour at a time, up to 4am. Stop before midnight and
+  midnight is the deadline, as it always was. Nothing is granted for waiting;
+  it follows the writing.
+- **What you write at 00:40 counts for the night you were in**, not for a day
+  that is forty minutes old. The flame, the calendar, the widgets and the
+  reminder all agree on which day that is.
+
+### A countdown widget
+
+- **How long is left of today, on your home screen.** Pick the book when you
+  place it. It shows the clock, the words you have written, how many are left
+  to your goal, and your streak.
+- The clock is drawn by the system, so it ticks every second without AuthNo
+  running and without costing battery.
+
+### Reminders
+
+- **Twice a day, if you want.** A morning nudge, an evening one, or both, each
+  at a time you pick. Set them to the same minute and you get one.
+- **They stopped repeating themselves.** The wording now varies by the time of
+  day, how long your run is, how close you are to your goal, and which book you
+  were last in — and it will not pretend a first day is a hundredth.
+- **Send one now**, from Settings → Writing Goal, to see exactly what will
+  arrive. It uses your real goal, your real streak and your real book.
+- **AuthNo asks for permission when you switch reminders on**, not at launch,
+  and tells you if the answer was no. If your phone is one of the ones that
+  stops background alarms, there is a row that says so and a button that opens
+  the right settings screen.
+- **Reminders on Windows and Linux too**, not only Android.
+
+### Fixed
+
+- **The countdown and streak widgets showed 0 words and no streak.** They were
+  reading numbers the app has never sent, on every device they were placed on.
+- **The test notification announced a goal nobody had set** — it always said
+  300 — and reported a first day to writers a month into a run.
+- **Deleting the book you were last writing in blanked the resume widget**
+  instead of falling back to the next one.
+- **Word counts were wrong for Chinese, Japanese, Thai and Korean** in four
+  more places, including the export screen you reach when you are locked out —
+  the one that most needs to tell you the truth about what it is holding.
+- **Installing a `.extbk` extension on Windows, macOS and Linux** put the files
+  somewhere the app never looked, so nothing you installed appeared.
+- **A blank new book no longer stacks up.** Opening the app repeatedly without
+  writing produced a shelf of Untitled Books.
+
+### Desktop
+
+- **Sign in with Google works on Windows and Linux.** It leaves the app for
+  your real browser, the same as it does on Android, and comes back when you
+  are done. If your system cannot hand the app the address back, there is a box
+  to paste it into rather than a button that waits forever.
+- **Extensions run on desktop.** Installing one has worked for a while;
+  activating it did not, on any desktop build. Extensions split across several
+  files work too, both their background half and their pages.
+- **No more AppImage.** Linux is `.deb` and `.rpm`. The AppImage could not
+  register the app for the links Google sign-in comes back on, and shipping a
+  build where a feature quietly does not work is worse than shipping one fewer
+  build.
+
+### Elsewhere
+
+- **Your account details now look like the rest of the app** — the same card
+  the About screen uses, in Settings where you would look for them.
+- **Tap the version number seven times** for the developer tools, rather than
+  hunting for the row.
+
 ## 1.1.19-beta.1
 
 _Streaks become optional, the widgets get buttons that work, and there is

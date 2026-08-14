@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Metadata for the countdown widget.
+
+  android:configure is the point of difference from the other two: this widget
+  is about ONE book, so it cannot render anything meaningful until somebody has
+  said which. The launcher runs the config activity before placing it.
+
+  Sized 2x2. It carries a clock, a caption, a word count and a remainder, which
+  a 2x1 cannot hold without the clock shrinking to the size of the caption and
+  losing the reason anybody placed it.
+
+  updatePeriodMillis is 30 minutes, and that is NOT how the clock ticks — the
+  system chronometer does that with nothing awake. This is only to refresh the
+  word count and to re-base the countdown after the app has been used.
+-->
+<appwidget-provider
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:minWidth="160dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+
+    android:updatePeriodMillis="1800000"
+
+    android:initialLayout="@layout/countdown_widget"
+    android:configure="com.aurorastudios.authno.StreakWidgetConfigActivity"
+
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+
+    android:previewImage="@mipmap/ic_launcher"
+
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="220dp"
+    android:previewLayout="@layout/countdown_widget"
+
+    android:description="@string/countdown_widget_description" />

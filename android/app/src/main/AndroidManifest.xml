@@ -304,6 +304,21 @@
                 android:resource="@xml/notes_widget_info" />
         </receiver>
 
+        <!-- ── Countdown widget ──
+             Uses the shared config activity below: it is about one book, so
+             it cannot render until somebody has said which. -->
+        <receiver
+            android:name=".CountdownWidgetProvider"
+            android:label="@string/countdown_widget_label"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/countdown_widget_info" />
+        </receiver>
+
         <!-- ── Widget config ── -->
         <activity
             android:name=".StreakWidgetConfigActivity"

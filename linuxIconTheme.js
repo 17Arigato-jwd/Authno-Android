@@ -12,8 +12,10 @@
 // removes the override so the packaged entry (and its icon) return.
 //
 // Caveats that are inherent to Linux, not bugs:
-//   • A bare AppImage that was never integrated has no system .desktop to copy,
-//     so there's nothing to override — we return {skipped:'no-system-desktop'}.
+//   • A build that was never installed — a raw tarball, or a binary run from a
+//     checkout — has no system .desktop to copy, so there is nothing to
+//     override and we return {skipped:'no-system-desktop'}. The .deb and .rpm
+//     both install one.
 //   • GNOME Wayland reads the icon from this .desktop (good — that's exactly
 //     what we rewrite); some environments cache aggressively and only refresh
 //     the dash on next login.

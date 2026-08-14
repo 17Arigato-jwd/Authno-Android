@@ -16,12 +16,25 @@ import { Flame } from 'lucide-react';
 import { hapticGoalMet } from '../utils/haptics';
 import { MinimalButton, COLORS, DSIcons, CloseButton } from '../DesignSystem';
 import { countWords } from '../utils/wordCount';
+import { currentWritingDay, markWrote } from '../utils/writeClock';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
+/**
+ * The day the words being written right now belong to.
+ *
+ * Usually the date on the calendar. Between midnight and 4am it can still be
+ * yesterday: a session that was still running when midnight arrived holds the
+ * day open an hour at a time, so a chapter finished at 00:40 counts for the
+ * night it was part of rather than for a day that is forty minutes old. See
+ * streakWindow.js for the rule.
+ *
+ * Every caller of this means "the day currently being counted" — the log key,
+ * the baseline, the calendar's highlighted cell, the reminder's idea of
+ * whether the goal is met — so all of them follow the window together.
+ */
 export function getTodayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return currentWritingDay();
 }
 
 // The fallback must agree with the cached word_count it stands in for, or the
@@ -63,11 +76,45 @@ function normalizeLog(rawLog, fallbackGoal) {
 function isEntryMet(entry) { return !!(entry && entry.words >= entry.goal); }
 function isKeyMet(log, key) { return isEntryMet(log[key] ?? null); }
 
+/**
+ * A book's live streak and today's words, for anywhere outside FlameButton
+ * that needs to say them.
+ *
+ * There is no `streak.current` or `streak.wordsToday` on a session — the
+ * persisted object holds `log`, `dailyBaseline` and `goalWords` and nothing
+ * else — so reading either field gets a zero that looks like an answer. This
+ * derives both from the log, through the same normalisation and the same walk
+ * the flame uses, which is the only way two surfaces can be made to agree.
+ */
+export function bookStreakStats(book, fallbackGoal = 0) {
+  const streak = book?.streak ?? {};
+  const goal = streak.goalWords ?? fallbackGoal;
+  const log = normalizeLog(streak.log, goal);
+  const key = getTodayKey();
+  const entry = log[key] ?? null;
+  return {
+    streakDays: computeStreak(log),
+    wordsToday: entry?.words ?? 0,
+    goalWords: entry?.goal ?? goal,
+    dayKey: key,
+  };
+}
+
+/** "2026-08-14" → local midnight on that date. */
+function keyToDate(key) {
+  const [y, m, d] = String(key).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
 export function computeStreak(log) {
   if (!log) return 0;
   let streak = 0;
   const todayKey = getTodayKey();
-  const cursor = new Date();
+  // Walk back from the day being counted rather than from the date on the
+  // clock. Inside an extension those are two different days, and starting from
+  // the calendar would test a day that has not begun, find nothing, and report
+  // a live streak as already broken.
+  const cursor = keyToDate(todayKey);
   if (!isKeyMet(log, todayKey)) cursor.setDate(cursor.getDate() - 1);
   while (true) {
     const key = makeDateKey(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
@@ -413,6 +460,12 @@ export function FlameButton({ current, accentHex = '#3b82f6', goalWords = 300, o
     // per-book goal set, comparing to the global goalWords made needsWrite
     // permanently true and rewrote the log on every effect run.
     const needsWrite = !existing || existing.words !== wordsToday || existing.goal !== effectiveGoal;
+    // The count going up is the only honest record that somebody is writing,
+    // and the deadline rule needs one: a session still running at midnight
+    // holds the day open. Stamped here rather than from a keypress handler so
+    // deleting a paragraph, scrolling, or merely having the book open cannot
+    // be mistaken for it.
+    if (wordsToday > (existing?.words ?? 0)) markWrote();
     if (needsWrite) {
       const updatedLog    = { ...rawLog, [todayKey]: { words: wordsToday, goal: effectiveGoal } };
       const updatedStreak = { ...streak, log: updatedLog };

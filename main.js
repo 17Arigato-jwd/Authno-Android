@@ -1,5 +1,12 @@
 // main.js
-const { app, BrowserWindow, Menu, ipcMain, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, nativeImage, Notification } = require("electron");
+
+// Windows shows nothing at all for a notification from an app with no
+// AppUserModelId — no error, no toast, no entry in the Action Center. It must
+// match the installer's appId (package.json → build.appId) or the toast is
+// attributed to an app the shell has never heard of and is dropped. Harmless
+// on macOS and Linux, which ignore it.
+if (process.platform === "win32") app.setAppUserModelId("com.aurorastudios.authno");
 const path = require("path");
 const fs = require("fs");
 const { applyLinuxLauncherIcon } = require("./linuxIconTheme");
@@ -7,8 +14,20 @@ const { applyLinuxLauncherIcon } = require("./linuxIconTheme");
 let DESKTOP_NAME = "authno.desktop";
 try { DESKTOP_NAME = require("./package.json").desktopName || DESKTOP_NAME; } catch { /* keep default */ }
 
+const { SCHEMES, deepLinkFromArgv, isAuthnoLink } = require("./deepLink");
+
 let mainWindow;
 let openFilePath = null;
+
+// A deep link that arrived before there was a window to hand it to.
+//
+// This is the cold-start case and it is the common one: clicking "Open AuthNo?"
+// in a browser when the app is not running LAUNCHES it, so the URL is in argv
+// before `ready` has fired, let alone before the renderer has mounted a
+// listener. Dropping it there would mean the flow that works when the app is
+// already open silently fails when it is not — which is exactly the state
+// somebody signing in for the first time is in.
+let pendingDeepLink = null;   // { url, at }
 
 const isLinux = process.platform === "linux";
 
@@ -56,6 +75,101 @@ function authbookFromArgv(argv) {
   ) || null;
 }
 if (!openFilePath) openFilePath = authbookFromArgv(process.argv.slice(1));
+
+// ── authno:// — the desktop half of Google sign-in ───────────────────────────
+//
+// The gate already ends that round trip by redirecting to
+// authno://auth/google?google=<handoff>; that branch has been live since
+// Android shipped and needs no change to serve desktop as well. All this side
+// has to do is claim the scheme and find the URL again afterwards.
+//
+// Unpackaged, Electron must be told what to launch or it registers ITSELF as
+// the handler — clicking the link then opens a bare Electron with no app in it,
+// which looks like the scheme is broken rather than like a dev-mode quirk.
+try {
+  for (const scheme of SCHEMES) {
+    if (process.defaultApp && process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1])]);
+    } else {
+      app.setAsDefaultProtocolClient(scheme);
+    }
+  }
+} catch (e) {
+  // A locked-down machine can refuse the registry write. The flow degrades to
+  // the paste-the-address fallback rather than failing at the moment of use.
+  console.error("[deep link] could not register the authno:// scheme", e);
+}
+
+/**
+ * Hand a deep link to the renderer, or hold it until there is one.
+ *
+ * `did-finish-load` is not enough on its own: the window can exist and have
+ * loaded while React has not yet mounted the listener. The renderer asks for
+ * anything outstanding once it is ready (see the deep-link-ready channel), so
+ * a URL is delivered by whichever of the two happens second.
+ */
+function deliverDeepLink(url) {
+  if (!isAuthnoLink(url)) return;
+  pendingDeepLink = { url, at: Date.now() };
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("deep-link", url);
+}
+
+// Cold start: the URL is in our own argv.
+{
+  const initial = deepLinkFromArgv(process.argv.slice(1));
+  if (initial) pendingDeepLink = { url: initial, at: Date.now() };
+}
+
+// macOS never uses argv for this. Harmless to register on the other two, and
+// it is one line against the day a mac build exists.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  deliverDeepLink(url);
+});
+
+// The renderer asks once it is listening, which closes the cold-start race
+// from the other end: whichever of the two arrives second delivers the URL.
+ipcMain.handle("deep-link-ready", () => {
+  const held = pendingDeepLink;
+  pendingDeepLink = null;
+  if (!held) return null;
+  // Anything older than the handoff inside it is worse than nothing: a second
+  // sign-in attempt would claim the FIRST attempt's URL, exchange a handoff
+  // that is already spent, and fail instantly — while the link it was actually
+  // waiting for was still on its way. Sixty seconds is the handoff's own life,
+  // so a link this stale could not have worked anyway.
+  if (Date.now() - held.at > 60 * 1000) return null;
+  return held.url;
+});
+
+// Whether the OS actually accepted the registration.
+//
+// Worth knowing which half did the accepting, because the two platforms do it
+// differently and the difference is not symmetric:
+//
+//   Linux    the .deb and .rpm write MimeType=x-scheme-handler/<scheme> into
+//            the .desktop entry — electron-builder's `protocols` block does
+//            this — AND setAsDefaultProtocolClient runs above. Belt and braces.
+//   Windows  the installer does NOTHING. electron-builder has no NSIS path for
+//            protocols at all; the schema even calls the option macOS-only.
+//            The registry keys under HKCU\Software\Classes come from the
+//            setAsDefaultProtocolClient call above and from nowhere else, so
+//            deleting it as redundant would take Windows deep links with it.
+//
+// It can still fail: a managed machine can refuse the registry write, another
+// program can already hold the scheme, and a binary run out of a checkout has
+// no installed entry behind it. When it did not take, the sign-in screen
+// offers "paste the address you were sent to" rather than waiting for a link
+// that is never coming.
+ipcMain.handle("deep-link-registered", () => {
+  // The app's own scheme is the one sign-in needs. The OAuth scheme is asked
+  // for separately, because an extension can want one without the other.
+  try { return app.isDefaultProtocolClient(SCHEMES[0]); } catch { return false; }
+});
 
 // 🟢 Handle file open (macOS — fired before app is ready)
 app.on("open-file", (event, filePath) => {
@@ -105,6 +219,12 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", (event, argv) => {
+    // Warm start. Windows and Linux launch a second process holding the URL
+    // and single-instance forwards its argv here; this is the same hook the
+    // .authbook file association already uses, and one argv can carry both.
+    const link = deepLinkFromArgv(argv);
+    if (link) deliverDeepLink(link);
+
     const filePath = authbookFromArgv(argv);
     if (filePath && mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -166,6 +286,33 @@ if (!gotTheLock) {
   // Open a URL in the OS browser. Renderer-supplied URLs are untrusted, so this
   // hard-refuses anything that isn't https — shell.openExternal on a file:// or
   // custom-scheme URL can launch local programs.
+  // ── Desktop notification ──────────────────────────────────────────────────
+  // Windows needs an AppUserModelId set before a notification will show at
+  // all (see app.setAppUserModelId near startup); Linux needs a running
+  // notification daemon, which most desktops have and a bare WM may not.
+  // isSupported() answers both, and answering "unsupported" honestly is more
+  // use to the settings screen than a silent no-op.
+  ipcMain.handle("notify", (_e, msg) => {
+    try {
+      if (!Notification.isSupported()) return { ok: false, reason: "unsupported" };
+      const title = String(msg?.title || "AuthNo");
+      const body = String(msg?.body || "");
+      const n = new Notification({ title, body, silent: false });
+      // Clicking it should bring the app back — a reminder you cannot act on
+      // from the notification is a reminder that costs you the trip anyway.
+      n.on("click", () => {
+        if (!mainWindow) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      });
+      n.show();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: String(e?.message || e) };
+    }
+  });
+
   ipcMain.handle("open-external", async (_e, url) => {
     try {
       const u = new URL(String(url));

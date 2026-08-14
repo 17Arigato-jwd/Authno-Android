@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  countdown_widget.xml — time left in today's writing day, for one book.
+
+  Same construction as the other widgets, for the same reasons: the background
+  is a tintable ImageView because RemoteViews cannot recolour a drawable set
+  with setBackgroundResource, which is why the older widgets rendered Sepia,
+  Paper and OLED as plain Dark.
+
+  Two clocks, one visible. Chronometer counts down on API 24+ with the system
+  ticking it; on API 22-23 setChronometerCountDown does not exist and the same
+  view would count upward, so the provider hides it and shows the static
+  TextView instead. A clock running the wrong way is worse than one that does
+  not move.
+
+  Nothing here is an emoji.
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/countdown_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clickable="true"
+    android:focusable="true">
+
+    <ImageView
+        android:id="@+id/countdown_card_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_card_shape"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/countdown_book"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="@color/ds_text_subtle" />
+
+            <TextView
+                android:id="@+id/countdown_streak"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:visibility="gone"
+                android:textColor="@color/ds_text_secondary" />
+        </LinearLayout>
+
+        <!-- The clock. One of these two is visible; see the note above. -->
+        <Chronometer
+            android:id="@+id/countdown_clock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="30sp"
+            android:textStyle="bold"
+            android:includeFontPadding="false"
+            android:textColor="@color/ds_text_primary" />
+
+        <TextView
+            android:id="@+id/countdown_static"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textSize="30sp"
+            android:textStyle="bold"
+            android:includeFontPadding="false"
+            android:visibility="gone"
+            android:textColor="@color/ds_text_primary" />
+
+        <TextView
+            android:id="@+id/countdown_caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/ds_text_subtle" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/countdown_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/ds_text_secondary" />
+
+        <TextView
+            android:id="@+id/countdown_remaining"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="10.5sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:visibility="gone"
+            android:textColor="@color/ds_text_subtle" />
+
+    </LinearLayout>
+</FrameLayout>
