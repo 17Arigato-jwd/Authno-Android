@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main, master]
+    # `labeled` is here so the desktop jobs can be switched on for one pull
+    # request without pushing an empty commit to wake them. See their `if:`.
+    types: [opened, synchronize, reopened, labeled]
   # release_version exists because this repo's automation credentials can push
   # branches but NOT tags (GitHub App scope). Dispatching with a version cuts a
   # full release from the selected ref: the version is stamped everywhere and
@@ -630,25 +633,38 @@ jobs:
   # These jobs restore the desktop build to CI. Previously only Android was
   # built here, which is exactly why `npm run dist:win` / `dist:linux` had
   # silently rotted. Both reuse the shared React artifact.
-  # Tags and dispatched releases only.
   #
-  # These two built an installer on EVERY push and every pull request, and
-  # nothing consumed it unless the ref was a tag — the artifacts were uploaded,
-  # kept, and thrown away. Measured on one push: Windows 5m57s billed at the
-  # 2x rate = 12 minutes, Linux 6m15s = 7, against 6 for everything else. So
-  # ~19 of ~25 minutes per push bought nothing.
+  # ── When they run ───────────────────────────────────────────────────────────
+  # Tags, dispatched releases, and any pull request carrying the
+  # `build-desktop` label.
   #
-  # Public repos get unlimited minutes, which is why this went unnoticed. A
-  # private one does not.
+  # They used to run on EVERY push and pull request, and nothing consumed the
+  # result unless the ref was a tag — the installers were built, uploaded, kept
+  # and thrown away. Measured on one push: Windows 5m57s billed at the 2x rate
+  # = 12 minutes, Linux 6m15s = 7, against 6 for everything else. So ~19 of ~25
+  # minutes per push bought nothing. Public repos get unlimited minutes, which
+  # is why it went unnoticed; a private one does not.
+  #
+  # The label is the middle setting between that and never. Packaging changes
+  # are the one thing no other job can catch — electron-builder's config is not
+  # exercised by `Build React` or by anything in the jest suite, so a broken
+  # `protocols` block or a target that no longer exists first shows up at the
+  # moment you cut a release. Label the pull request that touches packaging;
+  # leave the rest alone.
   #
   # The release job `needs:` both of these. A skipped `needs` dependency skips
   # the dependant too — which is correct here, because release is itself
   # tag-gated, so the two conditions agree. Loosening one without the other
-  # produces a release with no desktop installers in it.
+  # produces a release with no desktop installers in it: this change loosens
+  # the DESKTOP side only, which is the safe direction — a tag still satisfies
+  # both conditions, and a labelled pull request skips release as it should.
   build-desktop-windows:
     name: Build Desktop (Windows)
     needs: build-react
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || inputs.release_version != ''
+      || contains(github.event.pull_request.labels.*.name, 'build-desktop')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -684,11 +700,14 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  # Tags and dispatched releases only — see the note on the Windows job.
+  # Same conditions as the Windows job — see the note above it.
   build-desktop-linux:
     name: Build Desktop (Linux)
     needs: build-react
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_version != ''
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || inputs.release_version != ''
+      || contains(github.event.pull_request.labels.*.name, 'build-desktop')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
