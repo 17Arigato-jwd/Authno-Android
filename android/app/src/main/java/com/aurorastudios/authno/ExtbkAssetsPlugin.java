@@ -95,15 +95,17 @@ public class ExtbkAssetsPlugin extends Plugin {
 
         try {
             AssetManager am = getContext().getAssets();
-            InputStream is  = am.open(ASSETS_DIR + "/" + filename);
-
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int n;
-            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
-            is.close();
-
-            String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+            // try-with-resources: a read that throws part way used to skip the
+            // close() below it and leak the descriptor. See MainActivity for
+            // the same fix at the three sites that read a content:// uri.
+            String base64;
+            try (InputStream is = am.open(ASSETS_DIR + "/" + filename)) {
+                ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                byte[] chunk = new byte[8192];
+                int n;
+                while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+                base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
+            }
 
             JSObject result = new JSObject();
             result.put("base64", base64);

@@ -5,8 +5,13 @@
   categories). Installed to /usr/share/metainfo/ by the deb/rpm (see the
   fpm mapping in package.json > build.deb/rpm).
 
-  The component id MUST match the .desktop file basename
-  (com.aurorastudios.authno.desktop) so the two are linked.
+  The id does NOT have to match the .desktop basename, and here it does not:
+  the file that installs is `authno.desktop` (package.json > desktopName).
+  What links them is the <launchable> element below, which is exactly what
+  AppStream requires when the component id is not itself a .desktop name.
+
+  This comment used to claim the opposite and name a file that has never
+  shipped, which is the sort of note that gets a working file "fixed".
 -->
 <component type="desktop-application">
   <id>com.aurorastudios.authno</id>

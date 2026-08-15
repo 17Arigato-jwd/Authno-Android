@@ -3,8 +3,9 @@
 Everything open against the app and the site as of 1.1.19-beta.3, ordered by
 what would hurt most if it were still true on release day.
 
-Fixed things are not listed — the changelog has those — except at the bottom,
-where the shape of two of them is worth remembering.
+Fixed things are not listed — the changelog has those — except where the shape
+of one is worth remembering: the two site-side entries below, and the three
+mistakes at the bottom.
 
 ---
 
@@ -47,25 +48,64 @@ into a browser address bar. The app should come up and the gate should reject
 it as a bad handoff — which means the whole chain worked except the part that
 is supposed to fail.
 
+Worth saying because it cuts the other way too: everything else the Electron
+build does *was* measured this round, by driving a real Electron under Xvfb
+rather than reasoning about it — what `window.open` does, what a top-level
+navigation does, and what a `file://` iframe can reach. All three answers were
+the unwelcome one, and none of them was guessable from the source. The same
+treatment has still never been applied to the OS half above, which is the whole
+of what keeps this open.
+
 ---
 
-## Should be fixed before release
+## Was "should be fixed before release" — both now done
 
-### 4. `ALLOWED_ORIGIN` defaults to `*` — SITE · SECURITY
+Nothing is left in this tier. Both entries are on the site's
+`claude/audit-followups`, and they are kept here rather than deleted because
+one of them was wrong about itself in a way worth not repeating.
 
-`worker/src/index.js` falls back to `*` when the variable is unset. Sessions
-are Bearer tokens rather than cookies, so this is not credential exposure — a
-browser will not attach anything automatically. It should still be pinned in
-production: leaving it open means any page anywhere can drive the gate API with
-a token it has somehow obtained, and narrowing it later is the kind of change
-that breaks a deploy nobody is watching.
+### 4. `ALLOWED_ORIGIN` defaulted to `*` — SITE · SECURITY
 
-### 5. CSP `connect-src` is wider than it needs to be — SITE · SECURITY
+**Fixed.** The fallback is an explicit list now, in `worker/src/lib/cors.js`,
+and the `"*"` that `wrangler.jsonc` also set is gone.
 
-`https://*.workers.dev` rather than the one gate host, because the exact
-hostname is a per-deploy build variable (`VITE_GATE_API`) the site Worker
-cannot see at runtime. Tightenable by threading it through as a Worker env var
-and templating the header.
+This entry called it "not credential exposure, but pin it anyway", which was
+right about the risk and wrong about the cost. Pinning it to the site's origins
+would have taken sign-in down on both app platforms, because the app is not
+exempt from CORS and nothing here said so:
+
+- Android runs under `androidScheme: "https"`, so the WebView's origin is
+  `https://localhost` and every gate call is cross-origin.
+- The desktop renderer is loaded with `loadFile`, so it is a `file://` page and
+  sends `Origin: null`.
+
+Measured in Chromium rather than assumed: with no matching allow-origin the
+fetch fails outright, preflight included, and `*` and `null` are the only two
+values that let it through. So `null` is on the allowlist, it is the weakest
+entry on it — any sandboxed iframe anywhere serialises to `null` — and what
+removes it is giving the desktop renderer a real origin instead of `file://`.
+That is an app change, not a gate change, and it is the residue this leaves
+behind.
+
+Found on the way: `siteUrl()` fell back to `ALLOWED_ORIGIN`, which was `*`,
+which its own guard rejected — so the real fallback was `""` and a finished
+Google sign-in on the website redirected *relative to the gate*, landing on the
+API's own host.
+
+### 5. CSP `connect-src` was wider than it needed to be — SITE · SECURITY
+
+**Fixed.** It names the one gate origin. `worker-site/securityHeaders.js` is
+the only copy of the policy: the Worker half reads `GATE_ORIGIN` at runtime, a
+vite plugin writes `dist/_headers` at build time from `VITE_GATE_API`, and
+`public/_headers` is gone rather than kept alongside — two copies with a
+comment on each asking whoever edits one to remember the other is how they
+drift, and that pair already had.
+
+`npm run check:csp` drives both directions in a real browser now: an unrelated
+`*.workers.dev` origin must be refused, and the gate the build names must not
+be. CI treats `dist/_headers` as a required build output, because missing it
+means a public site with no CSP, no HSTS and no frame-ancestors, deployed
+green.
 
 ---
 
@@ -73,28 +113,40 @@ and templating the header.
 
 ### 6. Extension UI pages have no `oauth` — APP
 
-The background half can call `host.oauth({ authUrl, redirect })`; a `ui-file`
-page's bridge is the older surface and cannot. An extension that wants to
-authorise from a settings page has to hand the request to its background half
-first. Fixable by adding the one method to that bridge.
+**Fixed.** Both bridges call one shared `oauthRoundTrip`, so the redirect-scheme
+guard travels with the function rather than being written twice.
 
-### 7. Two host calls are Android-only — APP · won't fix
+### 7. Two host calls were Android-only — APP
 
-`googleSignIn` and `requestDriveToken` are Play Services APIs, and everything
-that makes them worth calling is the part that does not exist off Android: no
-client id, no redirect, no browser, and silent refresh handled by the OS.
-`requestDriveToken` goes through `Identity.authorize()`, which derives the
-caller from the package name and signing certificate. There is nothing on a
-laptop to derive.
+**Fixed, properly rather than by pointing at `oauth`.**
 
-`host.oauth({ authUrl, redirect })` replaces them — a browser round trip that
-comes home on `com.aurorastudios.authno://`, the same on both platforms. The
-two native calls throw with a message pointing at it.
+`googleSignIn` and `requestDriveToken` threw off Android with a message
+suggesting the caller build the flow themselves. That was honest about the
+platform and unhelpful about the task: every extension wanting Drive on a
+laptop would have implemented PKCE, the token exchange and the error handling
+again, slightly differently each time.
 
-Worth knowing if you write an extension: Google will not accept a bare
-`authno://` as a `redirect_uri`. The reverse-DNS form is what it takes, which
-is why that is the scheme `oauth` insists on — and why an extension cannot name
-`authno://auth/` as its redirect and be woken by the app's own sign-in.
+Android is unchanged and still the better path — Play Services derives the
+caller from the package name and signing certificate, and handles consent and
+silent refresh. Everywhere else now takes the route Google documents for
+installed apps: RFC 7636 with an S256 challenge and the reverse-DNS redirect
+the app already claims. No client secret, because a secret inside a desktop
+binary is not one. `src/utils/pkce.js`, 20 tests including the RFC's own S256
+vector.
+
+The one difference an author has to know: desktop cannot derive a client id
+from a package name, so `{ clientId }` is required there. The error says that
+in as many words rather than "unsupported". `requestDriveToken` defaults to
+`drive.file` — the narrow scope, covering only files the app created or the
+user explicitly opened.
+
+Found while wiring it: the sandbox bootstrap declared
+`requestDriveToken: function ()` and passed no arguments through, so options
+could never have reached the host at all.
+
+Still worth knowing: Google will not accept a bare `authno://` as a
+`redirect_uri`. The reverse-DNS form is what it takes, which is why that is the
+scheme both `oauth` and this insist on.
 
 ### 8. `authno://` can still fail to register — APP
 
@@ -132,6 +184,19 @@ If the Cyrillic range is ever widened past Russian, `CYRILLIC_LOOKALIKE` needs
 the new letters in the same commit. Ukrainian `і`, `ј` and `ѕ` are the
 sharpest lookalikes of all and are currently out of range rather than folded.
 
+### 9b. Extension UI pages cannot use `alert()` or submit a form — APP
+
+The consequence of narrowing both frames to `allow-scripts` and nothing else.
+`allow-forms` and `allow-modals` were the UI half's own additions and went with
+`allow-same-origin` when that was removed.
+
+Neither is likely to be missed, which is why they went rather than being kept
+as exceptions: a `submit` handler that calls `preventDefault` still works
+without `allow-forms` — only the navigation is blocked — and an `alert()` from
+an extension is indistinguishable from one of the app's own dialogs, which is
+an argument against it rather than for it. Listed because it is a real
+behaviour change for anybody who had written one.
+
 ### 10. The reminder falls back to generic wording — APP
 
 `ReminderText` answers whenever the stored line is from another day — correct,
@@ -152,20 +217,50 @@ the word count and the streak underneath it are only as fresh as the last sync
 or the last half hour. Nothing is wrong; it is the ceiling on how live a widget
 can look.
 
+### 13. The desktop renderer has no origin of its own — APP · SECURITY
+
+Left behind by the fix to issue 4, and the reason `null` is on the gate's CORS
+allowlist. `main.js` loads the built page with `loadFile`, so the renderer is a
+`file://` document and sends `Origin: null` on every call to the gate. The gate
+has to allow `null` for desktop sign-in to work at all, and `null` is what any
+sandboxed iframe anywhere serialises to — so that one entry is close to
+allowing everything, and it is there because there is nothing better to name.
+
+What fixes it is on this side: register a `standard` + `secure` custom scheme
+and load the app from it, so the renderer has a real origin the gate can
+allowlist by name. It is not a one-liner — asset paths, the deep-link handling
+and the packaged/dev split all run through how the window is loaded — and it
+wants the same hardware pass issue 3 does, which is why it is here rather than
+above.
+
+Worth keeping in proportion: sessions are Bearer tokens, never cookies, so no
+browser attaches a credential on its own and a hostile page can already call
+the gate from its own server. This is defence in depth that is currently one
+layer thinner than it reads.
+
 ---
 
 ## Verifying it
 
-The jest suite covers what jsdom can reach. Five things it cannot, each with a
+The jest suite covers what jsdom can reach. Six things it cannot, each with a
 script, and every one of them has caught something real:
 
 | | what it is for |
 |---|---|
 | `npm run check:timezones` | the writing day on days that are 23 or 25 hours long. A zone is fixed before the first `Date` exists, so setting `TZ` inside a test file does nothing — measured, not assumed. |
-| `npm run check:sandbox` | that an extension frame really cannot reach the app. jsdom has no origin model, so a unit test of this passes against a sandbox with a hole in it. |
+| `npm run check:sandbox` | that an extension frame really cannot reach the app. jsdom has no origin model, so a unit test of this passes against a sandbox with a hole in it. It reads the `sandbox` attribute out of the source rather than restating it, and refuses any srcdoc frame carrying `allow-same-origin` — see the third mistake below for why that distinction is the whole check. |
 | `npm run check:extensions` | the extension protocol end to end. jsdom cannot execute a frame's scripts, so the bootstrap was a string nothing had ever run. |
 | `npm run stress:extensions` | twenty at once, churn, floods, and extensions that misbehave. The bar is not that one cannot be bad — it is that one bad one cannot take its neighbours with it. |
-| `npm run check:csp` (site) | the shipped Content-Security-Policy, parsed out of `_headers` and driven over nine routes. A CSP has no compiler behind it. |
+| `npm run check:csp` (site) | the shipped Content-Security-Policy, parsed out of the `dist/_headers` the build just wrote and driven over nine routes. Both directions: an unrelated origin has to be refused, and the gate the build names has to not be. A CSP has no compiler behind it. |
+| `npm run check:headers` (site) | that the site's two deployments serve the same headers. Pages reads a file, the Worker sets them in code, and they were two hand-maintained copies until they came from one module. |
+
+**All of these now run in CI**, on every push and pull request, along with the
+whole jest suite. Until this release none of them did: the workflow ran
+`rs.test.js` and nothing else, the browser checks needed an environment
+variable that was documented nowhere, and `playwright-core` — which all four
+import — was not in `package.json` at all, so a clean `npm ci` could not have
+run them even if something had asked. Three separate ways for a check to be
+green by not existing.
 
 The desktop installers are built by CI on a tag, a dispatched release, or a
 pull request labelled `build-desktop`. Packaging is the one thing no other job
@@ -175,9 +270,9 @@ release.
 
 ---
 
-## Two mistakes worth remembering
+## Three mistakes worth remembering
 
-Neither is open. Both are here because the *shape* of them will recur.
+None is open. They are here because the *shape* of each will recur.
 
 **A sandbox that was not one.** Extension UI ran in an iframe carrying
 `sandbox="allow-scripts allow-same-origin"`. Those two flags together are not a
@@ -186,6 +281,27 @@ so the second flag handed extension code the app's own. The careful postMessage
 bridge underneath was decoration that extension code could step around without
 trying. What let it stand was that the isolation was asserted in a comment and
 never executed anywhere.
+
+**A fix recorded as done, in one of the two places that needed it.** The
+sandbox above was narrowed in `extensionSandbox.js`, which builds the
+*background* frame. `ExtensionPage.jsx` renders the *UI* frame — the one a
+reader actually opens — and it still carried
+`allow-scripts allow-same-origin allow-forms allow-modals` a release later,
+with this document recording the hole as closed.
+
+What let that stand is the more useful half. `check:sandbox` exists precisely
+to prove the boundary in a real browser, and it passed throughout, because it
+built its own iframe with its own hard-coded `allow-scripts` instead of the
+attribute the app ships. A check that writes down the answer it expects is
+checking its fixture. It could also not launch a browser at all without an
+undocumented environment variable, and nothing in CI ran it — so it was failing
+to run and failing to test the right thing at the same time, and neither was
+visible.
+
+Both frames now read one exported `FRAME_SANDBOX`, the check reads it out of
+the source and refuses any srcdoc frame that carries `allow-same-origin`, and
+the whole set runs in CI. When a fix has two call sites, the check has to name
+the artefact rather than restate the answer.
 
 **Three doors, two guards.** A book opened in preview has every chapter with
 `content: null`. `saveBook` refused to write one — its comment even called
@@ -202,11 +318,29 @@ backstop, count the doors.
 
 ## Notes on things that look like issues and are not
 
-- **The JS suite has failed 4 tests twice, unreproducibly.** Both times a
-  re-run — including `--json`, which reports per-test results — came back
-  clean, and every run since has been green. No cause found and none invented.
-  If it recurs, capture the whole output rather than the summary line: the
-  failing suite names are the only thing that was missing.
+- **The JS suite fails 4 tests roughly once in ten runs.** Caught a third time
+  and the output captured, so this is no longer "somewhere". It is always the
+  same four, always in `src/utils/crossPlatformInstall.test.js`, and they are
+  exactly the four tests that call `discoverExtensions()`:
+
+  > `and the app then finds it` · `an update replaces rather than duplicates` ·
+  > `sits alongside an installed extension rather than hiding it` ·
+  > `loses to an installed extension of the same id`
+
+  The symptom is precise: `discoverExtensions()` returns `[]` after an install
+  that returned a manifest without throwing. Nothing is logged from its own
+  catch, so the dynamic `import('@capacitor/filesystem')` resolved and
+  `readdir` genuinely saw an empty directory — meaning the mock's `mockFiles`
+  map was empty at that moment, after an awaited write that could not have
+  failed silently. The file passes 19/19 in isolation, every time.
+
+  No cause found, and still none invented. What the next person should NOT
+  spend time on, because it has been ruled out: the two `EXTENSIONS_DIR`
+  constants agree; nothing shares state across test files, since the mock map
+  and jsdom's localStorage are both per-file; the install throws rather than
+  returning quietly, so a silent failure would surface on the install line and
+  does not. Eleven consecutive full runs after the capture were green, so
+  reproducing it costs a loop rather than a run.
 - **`console.debug` about `WidgetData` off-device.** Expected, and only ever as
   a caught error. If it returns as an uncaught page error, that is the
   Capacitor thenable bug back — see the comment on `getPlugin`.

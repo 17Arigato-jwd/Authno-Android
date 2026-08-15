@@ -48,8 +48,17 @@ if (process.env.AUTHNO_DISABLE_GPU === "1") app.disableHardwareAcceleration();
 // Maps the icon ids used by the renderer to the on-disk assets. Persisted in
 // userData so the choice survives restarts (a desktop analogue of Android's
 // activity-alias switcher).
+// The `default` entry used to be authno-512.png — the "authno" WORDMARK, which
+// is a different picture from the one the picker previews for it and from the
+// one Windows ships in authno.ico. Every other id already maps to the same file
+// as its preview tile; this was the only one that did not, so on desktop the
+// tile you pressed and the icon you got were different designs.
+//
+// ic_launcher_default_512.png is rendered from public/AuthNo.svg, the app's own
+// vector source for that mark, so this is the existing artwork at a size Linux
+// packaging accepts rather than anything new.
 const ICON_ASSETS = {
-  default: "authno-512.png",
+  default: "app-icons/ic_launcher_default_512.png",
   light:   "app-icons/ic_launcher_light.png",
   retro:   "app-icons/ic_launcher_retro.png",
   gold:    "app-icons/ic_launcher_gold.png",
@@ -69,6 +78,76 @@ function writeIconPref(id) {
 // The old code never inspected process.argv on first launch, so double-clicking
 // a .authbook while the app was closed opened an empty window (v1 A1). Skip the
 // Electron flags and the app path; take the first real .authbook argument.
+/**
+ * Keep the app window showing the app, and keep the web on the web.
+ *
+ * Electron's defaults are the opposite of what an app wants, and both halves
+ * were measured here rather than assumed:
+ *
+ *   - `window.open('https://…')` does not open a browser. It creates a second
+ *     BrowserWindow loading that URL inside AuthNo — no address bar, no
+ *     padlock, the app's own icon on it. The renderer calls window.open in
+ *     three places, one of them the extension `openBrowser` capability that an
+ *     OAuth flow depends on. Providers refuse embedded user agents (Google
+ *     answers `disallowed_useragent`), and a `com.aurorastudios.authno://`
+ *     redirect fired inside that window never reaches the app — so the promise
+ *     waiting on it sits there for its full five-minute timeout and the writer
+ *     is looking at a consent screen that cannot finish.
+ *
+ *   - `location.href = 'https://…'` navigates the app window away from the
+ *     app. Measured: the window was left on the remote page, with no way back
+ *     short of restarting, and no chrome to tell you where you are.
+ *
+ * So: deny both, and hand https to the real browser through the same
+ * `shell.openExternal` policy the `open-external` IPC handler uses. Anything
+ * that is not https is dropped — openExternal on a `file://` or a custom
+ * scheme can launch a local program.
+ *
+ * Same-page navigation (the SPA's own routing, hash changes, reloads) is
+ * untouched: `will-navigate` does not fire for those.
+ */
+function openInRealBrowser(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== "https:") return false;
+    const { shell } = require("electron");
+    shell.openExternal(u.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True for the app's own document — the dev server, or the packaged bundle. */
+function isAppUrl(url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol === "file:") return true;
+    return process.env.NODE_ENV === "development"
+      && u.origin === "http://localhost:3000";
+  } catch {
+    return false;
+  }
+}
+
+function guardNavigation(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    openInRealBrowser(url);
+    return { action: "deny" };
+  });
+
+  contents.on("will-navigate", (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    openInRealBrowser(url);
+  });
+
+  // Extension UI runs in an iframe, and a frame is a webContents of its own
+  // the moment one is created. Without this the guards above cover the top
+  // document only, which is the half that was never the risk.
+  contents.on("did-attach-webview", (_e, attached) => guardNavigation(attached));
+}
+
 function authbookFromArgv(argv) {
   return (argv || []).find(
     (a) => typeof a === "string" && a.toLowerCase().endsWith(".authbook") && fs.existsSync(a)
@@ -410,6 +489,8 @@ if (!gotTheLock) {
     // (The chosen icon is baked in via the `icon` option above — no post-create
     // setIcon needed, which also avoids the flaky Windows taskbar refresh.)
 
+    guardNavigation(mainWindow.webContents);
+
     // Notify the renderer's title bar when the maximise state changes so it can
     // swap the maximise/restore glyph.
     mainWindow.on("maximize",   () => { if (!mainWindow?.isDestroyed()) mainWindow.webContents.send("window-maximized", true); });
@@ -450,6 +531,31 @@ if (!gotTheLock) {
     console.log("🟢 App ready — loading fileManager...");
     require("./fileManager"); // register handlers now
     console.log("✅ FileManager registered handlers.");
+
+    // Rebuild the Linux launcher override from the CURRENT system entry, every
+    // launch, not only when the icon changes.
+    //
+    // The override is a whole copy of the installed .desktop with one line
+    // repointed, and a user-level file of that name shadows the system one
+    // completely — Exec, MimeType and all. It used to be written once, when
+    // somebody picked an icon, and never touched again, so it froze whatever
+    // the installed entry said that day and kept winning after every update.
+    //
+    // That is not theoretical here. `com.aurorastudios.authno` was added to
+    // the protocols block for the extension OAuth work; anyone who had chosen
+    // a non-default icon before that update would still be running a .desktop
+    // that registers `x-scheme-handler/authno` alone, so an extension's
+    // redirect would have no handler to come home to — permanently, silently,
+    // and only for the users who touched the icon picker.
+    //
+    // Re-applying at startup costs one file copy and keeps Exec and MimeType
+    // tracking the installed entry. Picking "default" still removes it, and
+    // that path returns early without needing a system entry to copy.
+    if (isLinux) {
+      try { syncLinuxLauncherIcon(readIconPref()); }
+      catch (e) { console.error("[linux launcher icon] startup refresh", e); }
+    }
+
     createWindow();
   });
 }

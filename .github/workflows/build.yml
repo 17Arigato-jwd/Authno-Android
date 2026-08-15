@@ -31,8 +31,60 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
-# ── 1. Build React once, reuse across all platform jobs ──────────────────────
 jobs:
+  # ── 0. The checks that jsdom cannot make ────────────────────────────────────
+  #
+  # None of these ran here until now, which is not a small omission: the whole
+  # jest suite ran nowhere in CI either — only rs.test.js, in the build job —
+  # and the four browser-driven checks ran only when somebody remembered to,
+  # with an environment variable that was not documented in the scripts.
+  #
+  # That is how `ExtensionPage.jsx` kept `allow-same-origin` on its srcdoc
+  # frame for a whole release while `docs/known-issues.md` recorded the hole as
+  # closed. check:sandbox is the check that proves an extension cannot read the
+  # books or the access key out of the app's localStorage, and it was both
+  # unable to launch a browser AND asserting a frame it built itself rather
+  # than the one the app ships. Two ways of not being run at once.
+  #
+  # Chromium comes from the runner's own install; scripts/chromium.mjs finds it
+  # without an env var. This job is fast and gates nothing expensive, so it is
+  # separate rather than bolted onto build-react.
+  verify:
+    name: Tests and browser checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      - name: Unit tests
+        run: npx react-scripts test --watchAll=false
+        env: { CI: true }
+
+      # The writing day on the two days a year that are 23 and 25 hours long.
+      # Pure node, no browser.
+      - name: The writing day in every timezone
+        run: npm run check:timezones
+
+      - name: Extension sandbox
+        run: npm run check:sandbox
+
+      - name: Extension protocol, end to end
+        run: npm run check:extensions
+
+      - name: Extensions under load and under abuse
+        run: npm run stress:extensions
+
+      # The .extbk format has two implementations and they had never been
+      # pointed at each other: the CLI's own round-trip is CLI-writes then
+      # CLI-reads, so a shared misreading would be invisible to it while
+      # extension authors shipped files no app could open.
+      - name: The app reads what the extbk CLI writes
+        run: npm run check:extbk
+
+# ── 1. Build React once, reuse across all platform jobs ──────────────────────
   build-react:
     name: Build React
     runs-on: ubuntu-latest

@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { V, T } from "../utils/motion";
 
-import { saveBook, saveAsBook, openBook } from "../utils/storage";
+import { saveBook, saveAsBook, openBook, saveOutcome } from "../utils/storage";
 import { useError } from "../utils/ErrorContext";
 import { isAndroid } from "../utils/platform";
 import { isSpeechSupported } from "../utils/readAloud";
@@ -109,8 +109,30 @@ export default function BurgerMenu({
     setBusy(true);
     setStatus("saving");
     try {
-      const result = await saveBook(current);
-      if (result?.cancelled) { setStatus("idle"); return; }
+      // This used to read `result.cancelled` and nothing else, so every other
+      // refusal — a book whose chapters are not all loaded, a contentless one,
+      // a SAF uri that has gone dead — fell through to the green tick below,
+      // with the haptic and the tour step behind it. saveOutcome is the shared
+      // reading of the contract; see the note on it.
+      let result = await saveBook(current);
+      let outcome = saveOutcome(result);
+
+      if (outcome === "stale-path") {
+        // The file this book pointed at is gone. Forget the path and go
+        // straight back through Save, which now has nothing to overwrite and
+        // so opens the picker. Recovering here rather than only reporting is
+        // the point: the autosave loop clears the same flag, but it has no way
+        // to ask where the book should live instead.
+        setSessions((prev) =>
+          prev.map((s) => (s.id === current.id ? { ...s, filePath: null } : s))
+        );
+        result = await saveBook({ ...current, filePath: null });
+        outcome = saveOutcome(result);
+      }
+
+      if (outcome === "cancelled") { setStatus("idle"); return; }
+      if (outcome !== "saved") { setStatus("error"); return; }
+
       if (result?.filePath && result.filePath !== current.filePath) {
         setSessions((prev) =>
           prev.map((s) => (s.id === current.id ? { ...s, filePath: result.filePath } : s))

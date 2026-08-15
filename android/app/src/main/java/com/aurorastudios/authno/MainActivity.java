@@ -246,15 +246,23 @@ public class MainActivity extends BridgeActivity {
         if (uriLower.endsWith(".thmbk") || uriLower.contains(".thmbk?")
                 || "application/x-thmbk".equals(mime)) return; // themes go to handleThmbkIntent
 
-        try {
-            InputStream is = getContentResolver().openInputStream(uri);
+        // try-with-resources, not a bare close() after the loop.
+        //
+        // A read that throws part way — a provider that died, a file removed
+        // mid-import, a truncated stream — used to skip the close() below it
+        // and leak the descriptor. Opening books repeatedly in one session
+        // accumulates them until the process hits its fd limit and every
+        // subsequent open fails for a reason that names none of this.
+        //
+        // FilePickerPlugin.readAllBytes already did it this way; these three
+        // sites did not get the same treatment.
+        try (InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) return;
 
             ByteArrayOutputStream buf = new ByteArrayOutputStream();
             byte[] chunk = new byte[8192];
             int n;
             while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
-            is.close();
 
             String base64  = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
             String uriStr  = uri.toString();
@@ -296,15 +304,13 @@ public class MainActivity extends BridgeActivity {
             if (mime == null || !mime.equals("application/x-extbk")) return;
         }
 
-        try {
-            java.io.InputStream is = getContentResolver().openInputStream(uri);
+        try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) { dispatchExtbkError("Could not open file stream"); return; }
 
             java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
             byte[] chunk = new byte[8192];
             int n;
             while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
-            is.close();
 
             String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
             FilePickerPlugin.pendingExtbkBase64 = base64;
@@ -339,15 +345,13 @@ public class MainActivity extends BridgeActivity {
             if (mime == null || !mime.equals("application/x-thmbk")) return;
         }
 
-        try {
-            java.io.InputStream is = getContentResolver().openInputStream(uri);
+        try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) { dispatchExtbkError("Could not open theme file stream"); return; }
 
             java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
             byte[] chunk = new byte[8192];
             int n;
             while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
-            is.close();
 
             String base64 = Base64.encodeToString(buf.toByteArray(), Base64.NO_WRAP);
             FilePickerPlugin.pendingExtbkBase64 = base64;

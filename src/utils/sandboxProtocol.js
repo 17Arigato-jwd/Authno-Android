@@ -29,6 +29,34 @@
  * safe because each side only ever looks up ids it issued.
  */
 
+/**
+ * The sandbox attribute every extension frame carries. One string, exported,
+ * because there are two of those frames and they drifted.
+ *
+ * `extensionSandbox.js` builds the background frame and `ExtensionPage.jsx`
+ * renders the UI one. They run the same bootstrap and need the same boundary,
+ * but each spelled its own attribute — and the UI half kept
+ * `allow-same-origin allow-forms allow-modals` long after the background half
+ * was narrowed. `allow-same-origin` on a *srcdoc* document is the whole
+ * boundary: srcdoc content inherits the embedder's origin, so extension UI was
+ * running with the app's, one property access from `parent.localStorage` and
+ * the books and access key inside it.
+ *
+ * What made that survivable for so long is worse than the flag itself.
+ * `check:sandbox` asserts this exact property in a real browser — and passed,
+ * because it built its own frame with its own hard-coded `allow-scripts`
+ * rather than the one the app ships. A check that writes down the answer it
+ * expects is checking the fixture. It reads this constant now, and so does
+ * every frame.
+ *
+ * Nothing else goes in it. `allow-forms` and `allow-modals` were the UI half's
+ * additions and neither is needed: a `submit` handler that calls
+ * `preventDefault` works without `allow-forms` (only the navigation is
+ * blocked), and `alert()` from an extension is indistinguishable from the
+ * app's own dialogs, which is a good enough reason on its own.
+ */
+export const FRAME_SANDBOX = 'allow-scripts';
+
 export const BOOTSTRAP = `
 (function () {
   'use strict';
@@ -73,7 +101,9 @@ export const BOOTSTRAP = `
     toast: function (m, o) { return call('toast', [String(m == null ? '' : m), o || {}]); },
     openBrowser: function (url) { return call('openBrowser', [url]); },
     closeBrowser: function () { return call('closeBrowser', []); },
-    googleSignIn: function (clientId) { return call('googleSignIn', [clientId]); },
+    // Accepts a bare client id (what Android has always taken) or an options
+    // object, so one call works on both platforms.
+    googleSignIn: function (opts) { return call('googleSignIn', [opts]); },
     // The portable round trip. Opens authUrl in a browser this app cannot see
     // into, waits for the redirect to come home on one of the app's schemes,
     // and resolves with its query parameters. Works the same on a phone and a
@@ -84,7 +114,12 @@ export const BOOTSTRAP = `
     importSession: function (b64) { return call('importSession', [b64]); },
     replaceSession: function (id, b64) { return call('replaceSession', [id, b64]); },
     exportSessionAs: function (s, fmt) { return call('exportSessionAs', [s, fmt]); },
-    requestDriveToken: function () { return call('native.GoogleDrive.requestDriveToken', []); },
+    // Takes no arguments on Android — Play Services derives the caller from the
+    // package name and signing certificate. Off Android there is nothing to
+    // derive from, so it takes { clientId }, and the options have to actually
+    // reach the host: this used to drop them on the floor, which would have
+    // made the desktop path impossible to call correctly.
+    requestDriveToken: function (opts) { return call('native.GoogleDrive.requestDriveToken', [opts]); },
     // Registering is local; the host only needs to know the name so it can
     // subscribe on the bus and forward. The handler itself never leaves here.
     registerHook: function (name, handler) {

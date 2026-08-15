@@ -1,6 +1,6 @@
 {
   "name": "authno",
-  "version": "1.1.19-beta.3",
+  "version": "1.1.19-beta.5",
   "description": "AuthNo — offline story editor",
   "author": {
     "name": "VCHS Studios",
@@ -62,7 +62,8 @@
     "check:sandbox": "node scripts/check-extension-sandbox.mjs",
     "check:extensions": "node scripts/check-extensions.mjs",
     "check:timezones": "node scripts/check-timezones.mjs",
-    "stress:extensions": "node scripts/stress-extensions.mjs"
+    "stress:extensions": "node scripts/stress-extensions.mjs",
+    "check:extbk": "node scripts/check-extbk-crossread.mjs"
   },
   "eslintConfig": {
     "extends": [
@@ -89,6 +90,7 @@
     "cross-env": "^7.0.3",
     "electron": "^39.1.1",
     "electron-builder": "^26.0.12",
+    "playwright-core": "^1.62.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18"
   },
@@ -170,7 +172,7 @@
       "maintainer": "VCHS Studios <varchas.mishra@gmail.com>",
       "vendor": "VCHS Studios",
       "category": "Office;WordProcessor;",
-      "icon": "public/authno-512.png",
+      "icon": "public/app-icons/ic_launcher_default_512.png",
       "synopsis": "Offline story editor",
       "description": "AuthNo is a private, offline-first editor for books and long-form stories. Your work stays on your device in the resilient .authbook format — no account, no cloud lock-in. Includes a distraction-free chapter editor, plot/character Threads, writing streaks, multi-format import (TXT, Markdown, HTML, RTF, DOCX, ODT, EPUB, PDF) and export.",
       "desktop": {
