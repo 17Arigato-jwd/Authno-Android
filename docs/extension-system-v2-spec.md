@@ -7,8 +7,9 @@ Written under the standing rule in `CLAUDE.md`: there are no users, so where v1
 has the wrong shape it is replaced rather than kept alongside. Every break is
 listed in §12.
 
-Legend: **[1.1.20]** builds now · **[later]** specified, deferred · **[open]**
-needs your decision.
+Legend: **[1.1.20]** builds now · **[later]** specified, deferred. Nothing is
+marked open any more — the three questions left are in §13, and every other
+decision is recorded in §13a.
 
 ---
 
@@ -233,7 +234,7 @@ or is on a short explicit free-list. Capability seventeen cannot ship ungated.
   "homescreen":    [{ "id": "…", "label": "…", "page": "…", "when": "…" }],
   "bookActions":   [{ "id": "…", "label": "…", "command": "sync.now" }],
   "chapterActions":[{ "id": "…", "label": "…", "command": "…" }],
-  "editorToolbar": [{ "id": "…", "label": "…", "panel": "stats" }],   // [open]
+  "editorToolbar": [{ "id": "…", "label": "…", "panel": "stats" }],
   "widgets":       [{ "id": "…", "label": "…", "size": "2x2" }]       // [later]
 }
 ```
@@ -244,10 +245,94 @@ Every contribution has exactly **one** target:
 |---|---|
 | `page` | opens a full page from `pages` |
 | `command` | calls a registered function — no UI |
-| `panel` | docks a small surface beside the editor **[open]** |
+| `panel` | docks a small surface beside the editor **[1.1.20]** — see §4a |
 
 **This is the original bug.** v1 had only `page`, so "Back up now" opened
 settings, and two of Cloud Backup's three pages were unreachable.
+
+### 4a. Panels **[1.1.20]**
+
+A panel is a small extension surface docked next to the editor: live word count,
+a pace tracker, a scene list. It is the one contribution that shares the screen
+with writing rather than replacing it, which is why it gets its own section.
+
+**The governing constraint is that the editor wins every conflict.** A panel that
+costs a writer measure, focus or a frame of typing latency has failed regardless
+of what it displays.
+
+#### 4a.1 Where it docks
+
+| platform | dock | size |
+|---|---|---|
+| Desktop | right edge of the editor pane | resizable 280–480 px, persisted per extension |
+| Tablet ≥ 720 dp wide | right edge | fixed 320 dp |
+| Phone | **bottom sheet, never a side dock** | two detents: peek 120 dp, half 50% |
+
+No phone is wide enough to dock a panel beside a text column and leave either
+usable, so on a phone the panel is a sheet over the bottom of the editor. Same
+frame, same API, different presentation — the extension does not choose and does
+not need to know.
+
+#### 4a.2 The measure floor
+
+**The editor's text column never drops below 45 characters.** Below that, line
+length stops being comfortable prose and the panel has made the app worse at its
+only job.
+
+So the panel yields, not the editor. When the window is too narrow for the panel
+at its minimum width *and* the editor at 45 characters, the panel collapses to
+its dot (§8b) and a toolbar button to reopen it. It does not shrink further, and
+it never overlays the text column on a surface where it was docked.
+
+#### 4a.3 Focus, which is the part that loses words
+
+**Opening a panel does not move the caret.** The panel is inert until the user
+puts focus in it deliberately, and `Esc` inside a panel returns focus to the
+editor at the position it left.
+
+A panel frame cannot call `focus()` on itself, cannot open a `ui.prompt` while
+the editor has focus, and cannot be opened by the extension at all — only by the
+user, through its toolbar button. An extension that could raise a panel mid-
+sentence would eat the keystrokes typed into it.
+
+This is the same instinct as the rule that signing out must not cost words: the
+editor's input path is not something a feature gets to interrupt.
+
+#### 4a.4 Update rate, and the `activity` connection
+
+The canonical panel is live statistics, and the naive implementation subscribes
+to every keystroke — which puts an extension's render on the typing path.
+
+So: **panels never receive a per-keystroke hook.** Live data arrives on the
+`activity` channel, already bucketed to 1 Hz (§2.2a), and a panel's own re-render
+is throttled host-side to 4 Hz whatever it asks for. A panel that wants exact
+counts calls `library.get` on an idle edge, not on every character.
+
+| | |
+|---|---|
+| Fastest data feed | 1 Hz (`activity`) |
+| Fastest re-render | 4 Hz, host-throttled |
+| While the panel is collapsed or hidden | **no updates at all** — the frame is paused |
+
+#### 4a.5 Lifecycle
+
+A panel is a sandboxed frame exactly like a page, with the same CSP and the same
+`dispatch` door. It is created when first opened, kept alive while docked so
+switching chapters does not reset it, paused when collapsed, and destroyed when
+closed or when the extension is disabled.
+
+Only **one panel is visible at a time**. Several extensions may contribute
+toolbar buttons; pressing one swaps the panel rather than stacking. Panels do not
+tab, tile or float, and the last-open panel is restored on next launch.
+
+#### 4a.6 Panels and overlay dots are one system
+
+Both live in editor chrome, so they are specified together rather than colliding:
+
+- A collapsed panel **is** a dot. Same colour, same position, same tap-to-expand.
+- When a panel is open, that extension's dot is **suppressed** — one indicator
+  per extension, never two saying the same thing.
+- An extension with an overlay but no panel keeps the plain dot behaviour of §8b.
 
 ### 4.1 `when` clauses
 
@@ -531,15 +616,13 @@ argument for doing this in one break rather than three.
 
 ## 13. Still open
 
-1. **`panel` in 1.1.20 or 1.1.21?** It touches the editor layout, the most
-   delicate surface in the app.
-2. **Ship `background` as a declarable-but-unhonoured permission in 1.1.20**, so
+1. **Ship `background` as a declarable-but-unhonoured permission in 1.1.20**, so
    the no-DOM rule binds before anyone writes background code? The API shape has
    to be frozen before the feature ships, or the first background extension
    defines it by accident.
-3. **Which font delivery path survives Binder?** §8a.1 — needs an on-device
+2. **Which font delivery path survives Binder?** §8a.1 — needs an on-device
    check, and it gates how every template is generated.
-4. **Does the update channel support pinning a version**, or is it always latest?
+3. **Does the update channel support pinning a version**, or is it always latest?
 
 ### 13a. Decided, recorded so they are not reopened
 
@@ -553,6 +636,7 @@ argument for doing this in one break rather than three.
 | Writing-activity permission | **`activity`**, bucketed to 1 Hz (§2.2a) |
 | Prompt API | **`ui.prompt` / `ui.confirm`**, host-drawn, no permission (§2.2b) |
 | Editor overlay | **a dot**, Android-privacy-indicator style, expanding on tap (§8b) |
+| `panel` | **in 1.1.20** (§4a) — side dock on desktop, bottom sheet on phone, behind a 45-character measure floor |
 | Widget fonts | **22 curated faces** in the APK, since RemoteViews cannot take a font from a package (§8a.2) |
 | Extension size cap | **1 GB** policy, 4 GiB format ceiling |
 | Disabled extensions | greyed out, including the icon — never hidden |

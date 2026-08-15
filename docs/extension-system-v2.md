@@ -392,6 +392,7 @@ Three kinds of target, and the distinction is the fix:
   `host.registerCommand('sync.now', fn)`. No UI at all. "Back up now" should
   back up, not open a settings screen.
 - **`panel`** — a small surface docked beside the editor rather than a page.
+  Ships in 1.1.20; the editor wins every layout conflict with it (spec §4a).
 
 Plus **`when`** clauses, so a contribution appears only where it makes sense:
 
@@ -584,9 +585,12 @@ add.
    *these three* books" is friendlier and materially more work.
 3. **How strict is the onboarding cap?** I suggest a hard refusal above five
    steps.
-4. **Do we ship `panel` in 1.1.20**, or land `page` + `command` + `when` first
-   and add panels in 1.1.21? Panels touch the editor layout, which is the most
-   delicate surface in the app.
+4. ~~**Do we ship `panel` in 1.1.20**, or land `page` + `command` + `when` first
+   and add panels in 1.1.21?~~ **Decided: 1.1.20.** Panels do touch the editor
+   layout, which is the most delicate surface in the app — so the spec constrains
+   them from the editor's side rather than the extension's. A 45-character
+   measure floor the panel yields to, no focus movement on open, no per-keystroke
+   hook, and a bottom sheet instead of a side dock on phones. See spec §4a.
 5. **Does `background` ship in 1.1.20 at all, or only the permission?** The
    argument for declaring it now and honouring it later: extensions written
    against it keep working, and §12.3's no-DOM rule only helps if it lands
