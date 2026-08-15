@@ -2,6 +2,10 @@
 
 Status: **proposal, for decision.** Nothing here is built yet.
 
+**Start at §0.** It scopes everything below to the fact that there is one
+extension, written by us, and no public release — which cuts the 1.1.20 build
+list to four items and defers the rest with reasons.
+
 §11 records the runtime alternatives and why the isolated-process manager is
 the destination rather than the starting point. §12 specifies background
 extensions, which are a confirmed requirement and which constrain what v2 must
@@ -13,6 +17,94 @@ has to be settled before any of the features on top of it are worth building.
 
 Where a claim is marked **measured**, it was run in Chromium in this repo and
 the result is quoted. Everything else is argument, and is labelled as such.
+
+
+---
+
+## 0. Scope: there is one extension and no public release
+
+This section was added after the rest and outranks it. Read it first.
+
+**The threat model most of this document assumes does not exist yet.** AuthNo
+is not publicly released, and Cloud Backup is the only extension — written by
+the same people who write AuthNo. There is no untrusted author, so a permission
+system defending against one is defending against nobody.
+
+That is not an argument for building it later badly. It is an argument for
+building much less of it now, and being honest about why the rest is deferred.
+
+### What actually stops being true
+
+Almost nothing here is a one-way door **while there is one first-party
+extension**, because we control the only consumer. `apiVersion`, the manifest
+shape, the capability names, even the wire format can all change with a commit
+to a repository we own. The usual argument for settling an API early — that
+breaking it strands third parties — has no force yet.
+
+So the honest ranking is not "what is architecturally important" but "what is
+cheaper today than it will ever be again".
+
+### The 1.1.20 scope
+
+**Build, because it fixes what is actually broken:**
+
+1. **`page` / `command` / `panel` contributions and `when` clauses** (§5). This
+   is the original complaint: every button opens the same page, and two of
+   Cloud Backup's three pages are unreachable. Nothing about it is
+   speculative.
+2. **The declarative settings schema** (§6). It deletes `Settings.js` outright
+   and makes the settings page look like the app. Pure subtraction for the one
+   extension that exists.
+3. **`apiVersion` in the manifest.** One line. Not because it is
+   irreversible — it is not — but because it costs nothing and removes a
+   guessing game later.
+
+**Build, on one narrow argument:**
+
+4. **Permissions declared in the manifest, and the CSP generated from them**
+   (§3.2, §4). Not because there is an attacker. Because *enforcing a boundary
+   is free when there is one extension to fix and never free again.* When the
+   network permission lands, every extension whose host list is wrong breaks.
+   Today that is one extension, written by us, with a test. At twenty
+   extensions by twenty authors it is a migration with a support queue.
+
+   The permission *prompts* can come later. The declaration and the CSP are the
+   half that gets more expensive with time.
+
+**Defer, and say so rather than half-building:**
+
+- Onboarding flows (§7) — a tutorial for one first-party extension nobody has
+  installed yet.
+- Permission prompt UI (§7) — needs a second author to mean anything.
+- Budgets, the hosts-contacted panel (§3.3, §12.4) — real, and worth nothing
+  until there is something to audit.
+- The isolated-process manager (§11.2) — the two-engine cost is only worth
+  paying for a problem we do not have.
+- Background execution (§12) — **but see below.**
+
+### The one thing worth deciding early anyway
+
+§12.3's rule — the background entry point gets no DOM — is the exception,
+because it is the only item here whose cost genuinely grows with *extensions
+written*, not with *extensions published*. It is one lint rule now. If
+background work ships without it and three extensions come to rely on
+`document`, the process-manager migration acquires a reason to never happen.
+
+Cheap enough to take on a maybe.
+
+### The argument that survives having one extension
+
+Worth separating from the security case, because it is a different argument and
+a better one for this app.
+
+AuthNo's whole pitch is that your work stays on your device. An extension that
+uploads every manuscript to Dropbox is a reasonable thing to want and a
+reasonable thing to install — and the writer should be able to see that it does
+that, in words, whether or not the author is trustworthy.
+
+That is a transparency feature, not a security feature. It is worth building
+for a first-party extension precisely because we cannot claim the app keeps
+your work local and then ship an extension that does not, without saying so.
 
 ---
 
