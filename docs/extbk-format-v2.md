@@ -1,6 +1,13 @@
 # VCHS-EPK — the extension package format
 
-Status: **proposal.** Nothing is built. Supersedes VCHS-ECS for `.extbk` files.
+Status: **the JS reader and writer are built and green** —
+`src/utils/epkFormat.js`, with the §8a conformance corpus in
+`src/utils/epkCorpus.js` and 46 tests in `src/utils/epkFormat.test.js`. The
+native Android unpacker and the Electron reader are not. Supersedes VCHS-ECS for
+`.extbk` files.
+
+Sections marked **[build finding]** changed because writing the implementation
+proved the earlier text wrong; they are not revisions of opinion.
 
 The file extension stays `.extbk` — one file type for the reader, one magic number
 for the parser to tell the versions apart. `apiVersion: 2` extensions ship in
@@ -125,7 +132,7 @@ that cannot be re-downloaded.**
 ├─────────────────────────────────────────────────────────────┤
 │ SIGNATURE BLOCK                   Ed25519, appendable       │
 ├─────────────────────────────────────────────────────────────┤
-│ TAIL                                            96 bytes    │
+│ TAIL                                           128 bytes    │
 │   magic \x89EPK_END\r\n · dirOff/dirLen/count/parityLen     │
 │   · package hash · verbatim copy of the front header        │
 └─────────────────────────────────────────────────────────────┘
@@ -194,7 +201,15 @@ unrecoverable. When the directory verifies against the signed package hash,
 preambles are never read at all, so a package cannot smuggle different metadata
 into them.
 
-### 3.2b Integrity: one hash per entry, and why that is now enough
+### 3.2b Integrity: one hash per entry, and why that is now enough **[build finding]**
+
+> **The core's parity block is a fixed 8-byte trailer, not a section in the
+> stream.** This one is a build finding worth stating loudly, because getting it
+> wrong is subtle and fatal: if the parity is located by walking sections until
+> an `RSPX` tag turns up, that walk trusts a length field the damage may have
+> hit — and then the parity needed to repair the damage is exactly what cannot
+> be found. The last eight bytes of the core are `RSPX` + parity length, always,
+> and the parity sits immediately before them.
 
 An earlier draft carried a per-entry Merkle tree — first hand-rolled as a chunk
 table, then as BLAKE3, whose internal binary tree over 1 KiB chunks gives slice
@@ -231,9 +246,22 @@ survives intact.
 | **Blob recovery** | **re-fetch the entry** | Not parity. RS over the blob region would add 20% to every download to avoid re-fetching an asset that is re-downloadable by definition. |
 | **Signing** | **Ed25519 over the package hash** | 64 bytes signs the package transitively. Fast to verify on a phone, and the hash is already computed. |
 
-Everything hangs off one value: **the SHA-256 of the package** covers the core,
-every blob entry and the directory. The tail carries it, the signature signs it,
-and the directory cannot be trusted until it verifies against it.
+Everything hangs off one value: **the SHA-256 of the package**. What it covers
+directly is the header, the core, the directory and the directory's parity —
+**not the blob bytes**, which are covered *transitively* because the directory
+holds a SHA-256 per entry and the directory is hashed.
+
+That indirection was found while building the reader, and it buys two things the
+direct version cannot:
+
+- **Verifying a signature costs O(core + directory), not O(package).** A 1 GB
+  extension verifies in milliseconds instead of by re-reading a gigabyte. At the
+  policy cap that is the difference between a check and a wait.
+- **It separates the two failure modes §8 already treats differently.** Bit rot
+  in one PNG fails that entry's own digest and is dropped at rung 8; any edit to
+  the *map* fails the package hash and is refused. An attacker who flips bytes
+  in an asset can therefore **destroy it but never substitute it** — denial, not
+  deception — because the digest naming it lives inside the signed directory.
 
 ### 3.2d What the smaller ceiling bought here
 
@@ -254,11 +282,18 @@ If the policy cap ever moves far past 1 GB, this is the decision to revisit
 first — the codec byte and the reserved header space are laid out so that adding
 Zstandard as codec `2` is a version bump, not a format break.
 
-### 3.3 Tail — 96 bytes
+### 3.3 Tail — 128 bytes
 
-Magic `\x89EPK_END\r\n`, then `dirOffset` (4), `dirLength` (4), `entryCount` (4),
-`dirParityLength` (4), and the **package SHA-256** (32) — then a **verbatim copy
-of the 64-byte front header**.
+| off | size | field |
+|---|---|---|
+| 0 | 10 | magic `\x89EPK_END\r\n` |
+| 10 | 4 | dirOffset |
+| 14 | 4 | dirLength |
+| 18 | 4 | entryCount |
+| 22 | 4 | dirParityLength |
+| 26 | 6 | reserved |
+| 32 | 32 | **package SHA-256** — over header ‖ core ‖ directory ‖ directory parity |
+| 64 | 64 | **verbatim copy of the front header** |
 
 The hash is the anchor: read it once, and every subsequent read verifies against
 it. A directory that has been tampered with fails before a single offset in it is
@@ -425,7 +460,7 @@ Independent of package size.
 ### 6.2 Reading
 
 ```
-read tail (last 96 B)            → dirOffset, dirLength, entryCount, package hash
+read tail (last 128 B)           → dirOffset, dirLength, entryCount, package hash
 read directory, verify against the package hash, build path → record map
 read core, verify RS, inflate    → manifest + code   (this is all JS ever sees)
 find one asset:
@@ -471,7 +506,7 @@ with a partially-recoverable book.
 | 3 | **file shorter than the tail says** | **not corruption — an unfinished download.** Reported as *incomplete*, with the byte to resume from | resume only |
 | 4 | core damaged | Reed–Solomon, 20% | no |
 | 5 | directory damaged | Reed–Solomon over the directory (§4a) | no |
-| 6 | directory *and* its parity gone | rebuild by scanning entry preambles (§3.2a) | no |
+| 6 | directory *and* its parity gone | rebuild by scanning entry preambles (§3.2a), then write the rebuilt directory and fresh parity back | no |
 | 7 | `kind = code` entry damaged | that entry's own `RSPX` block | no |
 | 8 | asset entry damaged | dropped; the extension is told it is missing, and it is re-fetched if a channel is configured | to repair |
 | 9 | package hash still wrong after all of the above | **refused** — the ladder is out | — |
@@ -488,6 +523,14 @@ A correction that stays in memory lets the same damage recur, and bit rot
 accumulates — repair it on every open and one day it exceeds RS tolerance and the
 package dies anyway. So when the reader repairs a package it **rewrites the
 corrected bytes in place**, if the file is writable, and logs what it fixed.
+
+This is also what makes rungs 1, 5 and 6 verifiable rather than merely
+plausible. A recovered header, a Reed-Solomon-corrected directory and a
+directory rebuilt from preambles are all written back *before* the package hash
+is recomputed — so the hash check in §6a.4 is testing the repaired package, and
+a repair that was wrong fails it. Records serialise identically in every writer,
+which is why a directory rebuilt from intact preambles is byte-for-byte the one
+that was lost.
 
 Repairs are idempotent and touch only the damaged range. A read-only package
 (on a read-only mount, or a `content://` URI with no write grant) is repaired in
@@ -536,8 +579,10 @@ move a package back toward the bytes its author signed.
 **Ed25519, and it ships in 1.1.20.** Earlier drafts deferred it; §7.2 is why that
 was wrong.
 
-The signature block sits between the directory and the tail, and covers
-**everything before it** via the package SHA-256. Because the directory is
+The signature block sits between the directory and the tail, and covers the
+package SHA-256 — so it authenticates the header, the core and the directory
+directly, and every entry's content transitively through the per-entry digests
+the directory carries (§3.2b). Because the directory is
 already written by then, a package can be signed *after* it is built without
 rewriting a byte — the zip property that makes APK signing possible.
 
@@ -583,6 +628,29 @@ path unauthenticated.
 Covered in §6a.4: the signature is what makes automatic repair safe, because it
 independently confirms a repair restored the author's bytes rather than something
 merely well-formed.
+
+---
+
+## 7a. One structural rule the reader must get right **[build finding]**
+
+**The directory's records must consume `dirLength` exactly.**
+
+This looks like a nicety and is load-bearing: it is what separates *this
+directory is destroyed* from *this directory contains something hostile*, and
+those need opposite handling — destroyed means rebuild from preambles, hostile
+means refuse immediately.
+
+Without the check, a zeroed directory parses as `entryCount` records with empty
+paths and zero offsets. Structurally valid, semantically nothing. The reader
+then refuses it as an attack instead of repairing it, and a recoverable package
+is thrown away. With the check, the byte count does not add up, the reader falls
+through to rung 6, and the package comes back.
+
+Conversely a hostile directory — one record edited, everything else intact —
+consumes exactly `dirLength`, parses cleanly, and hits the path and range checks
+in §8 as it should. An attacker cannot use the rebuild path to launder a bad
+record, because reaching it requires the directory to be the wrong *size*, and
+the preamble scan then recovers the author's original records anyway.
 
 ---
 

@@ -11,3 +11,10 @@ import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';
 if (typeof global.TextEncoder === 'undefined') global.TextEncoder = TextEncoder;
 if (typeof global.TextDecoder === 'undefined') global.TextDecoder = TextDecoder;
+
+// jsdom also ships no WebCrypto. epkFormat.js needs SHA-256 for every entry and
+// Ed25519 for signatures, and pkce.js needs getRandomValues — all of which exist
+// in Node's crypto.webcrypto. Without this, anything importing the EPK reader
+// fails with "WebCrypto unavailable" rather than a real assertion.
+import { webcrypto } from 'crypto';
+if (!global.crypto?.subtle) global.crypto = webcrypto;
