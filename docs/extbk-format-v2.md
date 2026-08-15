@@ -70,7 +70,7 @@ the first write.
 | **zip / apk** | central directory **at the end**; per-entry independence; append-a-signature without rewriting; alignment for mmap | the 4 GB and 65535-entry ceilings; the `local header` duplication |
 | **tar.gz** | pure streaming write | solid stream — reaching the last file means decompressing all of it |
 | **7z** | per-entry codec choice | solid blocks — great ratio, hostile to random access |
-| **VCHS-ECS** | three-point header arbitration; CRC32 per entry; RS parity | RS over *everything*; index at the front |
+| **VCHS-ECS** | three-point header arbitration; per-entry integrity; RS parity on what cannot be re-fetched | RS over *everything*; index at the front; CRC32 as the only check |
 
 The one-line summary: **zip's shape, ECS's paranoia, applied only to the part
 that cannot be re-downloaded.**
@@ -98,12 +98,12 @@ that cannot be re-downloaded.**
 │   entry N bytes                                             │
 ├─────────────────────────────────────────────────────────────┤
 │ CENTRAL DIRECTORY                 one record per entry      │
-│   path · offset · sizes · crc32 · codec · flags             │
+│   path · offset · sizes · blake3 · codec · flags            │
 ├─────────────────────────────────────────────────────────────┤
 │ SIGNATURE BLOCK                   optional, appendable      │
 ├─────────────────────────────────────────────────────────────┤
 │ TAIL                                            64 bytes    │
-│   magic \x89EPK_END\r\n · dirOff · dirCRC                   │
+│   magic \x89EPK_END\r\n · dirOff · BLAKE3 root              │
 │   + a verbatim copy of the front header                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -133,59 +133,89 @@ pair detects a transfer that mangled line endings.
 
 ### 3.2 Central directory record — 64 bytes + path
 
+No CRC anywhere: a BLAKE3 subtree root replaces it, and does more.
+
 | off | size | field |
 |---|---|---|
 | 0 | 8 | entryOffset — absolute, from file start |
 | 8 | 8 | storedSize — bytes on disk |
 | 16 | 8 | originalSize — after decoding |
-| 24 | 8 | chunkTableOffset — 0 when the entry is a single chunk |
-| 32 | 4 | chunkCount |
-| 36 | 4 | crc32c — over the **original** bytes, whole entry |
-| 40 | 1 | codec — `0` store · `1` deflate-raw · `2–255` reserved |
-| 41 | 1 | kind — `0` asset · `1` rasterised-from-SVG · `2` font · `3` widget resource · `4` code |
-| 42 | 2 | flags — bit 0 host-renderable · bit 1 aligned · bit 2 lazy |
-| 44 | 2 | pathLength |
-| 46 | 18 | reserved |
+| 24 | 32 | blake3 — root of this entry's **original** bytes |
+| 56 | 1 | codec — `0` store · `1` zstd · `2` deflate-raw (legacy) · `3–255` reserved |
+| 57 | 1 | kind — `0` asset · `1` rasterised-from-SVG · `2` font · `3` widget resource · `4` code |
+| 58 | 2 | flags — bit 0 host-renderable · bit 1 aligned · bit 2 lazy |
+| 60 | 2 | pathLength |
+| 62 | 2 | reserved |
 | 64 | n | path — UTF-8, `/`-separated, no `.` or `..` segments |
 
-### 3.2a Chunk tables — the change that scale forces
+### 3.2a Integrity: BLAKE3, and why it deletes the chunk table
 
-A single CRC32 over a 40 GB entry is close to useless, and this is the one
-place where the earlier draft was actually wrong rather than merely
-conservative. Three reasons, all of which bite above a few gigabytes:
+The earlier draft hand-rolled a chunk table — an array of `(crc32c, hash)` pairs,
+one per 8 MB, so a big entry could be verified and repaired piecewise. That
+structure was right about the requirement and wrong to invent, because
+**BLAKE3 already is that structure.**
 
-- **Detection weakens.** CRC32's guarantees are stated for inputs far smaller
-  than this; past its burst-length bounds it degrades to roughly a 1-in-4-billion
-  residual, which is not the number you want on the thing carrying somebody's
-  fonts across a flaky mobile download.
-- **Verification is all-or-nothing.** To check one byte you must hash 40 GB.
-  A reader that wants to serve a single image ends up reading the whole entry.
-- **Repair is all-or-nothing.** One flipped bit condemns the entire entry, so a
-  1 TB package fails on a re-download of 1 TB.
+BLAKE3 is internally a binary Merkle tree over 1 KiB chunks. The single 32-byte
+root hash transitively covers every byte beneath it, and any subrange can be
+verified against that root by carrying the sibling hashes along the path — which
+is exactly what the Bao verified-streaming construction does. So:
 
-So any entry above **8 MB** carries a **chunk table**: a flat array of
-`(crc32c, blake3_128)` pairs, one per 8 MB chunk, stored contiguously at
-`chunkTableOffset`. At 1 TB that is 131,072 chunks — a 3 MB table, itself
-CRC-covered.
-
-What it buys, in order of how much it matters:
-
-| | |
+| what the hand-rolled table bought | how BLAKE3 gives it |
 |---|---|
-| **Verify on read** | reading one image verifies the chunks it touches, not the entry |
-| **Resumable transfer** | a download that dies at 700 GB resumes at the chunk boundary |
-| **Targeted repair** | one bad chunk means re-fetching 8 MB, not the entry |
-| **Parallel verification** | chunks hash independently, across cores |
+| verify one region without the whole entry | slice verification against the root |
+| resumable transfer | verify what has landed, resume at any boundary |
+| repair the smallest possible unit | walk the tree to the bad subtree |
+| parallel verification | the tree is inherently parallel; that is BLAKE3's whole design |
 
-`crc32c` rather than plain CRC32 throughout: it is the same cost in software and
-a single instruction on every ARMv8 and x86-64 chip this will ever run on, which
-matters when the job is hashing a terabyte.
+**One 32-byte value per entry replaces a 3 MB table.** No custom format, no
+custom verifier, and a construction that has had far more scrutiny than anything
+invented here would get.
+
+### 3.2b The primitive set
+
+ECS's paranoia is kept. What changes is that each job now uses the best tool for
+it rather than CRC32 for everything.
+
+| job | choice | why this and not the obvious alternative |
+|---|---|---|
+| **Integrity, every scale** | **BLAKE3-256** | Merkle by construction, so streaming and slice verification are free rather than bolted on. Several times faster than SHA-256 on both ARMv8 and x86-64, and parallel across cores — which is the difference between minutes and hours on a terabyte. |
+| **Compression** | **Zstandard** | Beats deflate on ratio *and* speed simultaneously, which deflate cannot answer. Long-range matching finds redundancy across gigabytes that deflate's 32 KB window cannot see. Dictionaries available if the widget-template case ever justifies one. |
+| **Core recovery** | **Reed–Solomon, unchanged** | Still the right tool for a small blob that must survive bit rot in place, already implemented in this repo, already tested. Nothing about scale argues against it at 4 MB. |
+| **Blob recovery** | **re-fetch the subtree** | Not parity. 20% over 1 TB is 200 GB carried to avoid re-fetching a few MB. |
+| **Signing** | **Ed25519 over the BLAKE3 root** | 64 bytes signs the entire package transitively, however large. Fast to verify on a phone, and the root is already computed. |
+
+Everything hangs off one value: **the BLAKE3 root of the package** covers the
+core, every blob entry, the directory and the index. The tail carries it, the
+signature signs it, and every partial read verifies against it. A single 32-byte
+number is the integrity story for a terabyte.
+
+### 3.2c The cost of choosing these, stated plainly
+
+Neither BLAKE3 nor Zstandard is in WebCrypto or in Node's standard library, and
+Android ships neither. Both mean a bundled implementation on three platforms —
+a native lib for Android, a Node binding for desktop, and WASM for the web build
+and the CLI. That is real work and a real supply-chain surface, and it is the
+honest argument against them.
+
+The fallback, if that cost is judged too high: **SHA-256 with a hand-built
+Merkle tree.** SHA-256 is in WebCrypto, in Node, and in Android's standard
+library, so it costs no dependency at all — and a Merkle tree over it gives the
+same slice verification, just slower and hand-rolled. Compression would stay
+deflate, which is everywhere.
+
+My recommendation is BLAKE3 + Zstandard. Verifying a terabyte with SHA-256 in
+JavaScript is not a thing that finishes, and the whole point of the format is
+that the largest packages stay usable.
 
 ### 3.3 Tail — 128 bytes
 
 Magic `\x89EPK_END\r\n`, then `dirOffset` (8), `dirLength` (8), `entryCount`
-(8), `dirIndexOffset` (8), `dirCRC32C` (4) — then a **verbatim copy of the
-64-byte front header**.
+(8), `dirIndexOffset` (8), and the **BLAKE3 root** (32) — then a **verbatim copy
+of the 64-byte front header**.
+
+The root is the anchor: read it once, and every subsequent read of any region
+verifies against it. A directory that has been tampered with fails before a
+single offset in it is trusted.
 
 `entryCount` is 64-bit. It costs four bytes to not have zip's 65,535-entry
 problem, and a package that ships a tile set can pass that in one directory.
@@ -236,7 +266,7 @@ this codebase to keep manuscripts alive through bit rot. An asset that fails its
 check is re-obtainable, and 20% parity over 1 TB would add **200 GB** to every
 download to avoid re-fetching one 8 MB chunk. The chunk table in §3.2a gives the
 blob region something better than parity anyway: not "repair it in place", but
-"know exactly which 8 MB to fetch again".
+"walk the tree and know exactly which subtree to fetch again".
 
 ---
 
@@ -282,15 +312,14 @@ write placeholder header (64 B)
 build core in memory  (bounded: ≤ 4 MB)  → RS-encode → write, note offset/len
 for each asset:
     open source, pick codec, stream through encoder to output
-    hash each 8 MB chunk as it passes; append to the chunk table
-    accumulate the whole-entry crc32c and sizes
+    hash through BLAKE3 as bytes pass — the tree builds itself
+    keep the entry root; sizes accumulate alongside
     push a directory record (sorted insert, or sort at the end)
     pad to 4096 if stored
-write chunk tables
 write central directory, sorted by path; then the sparse index
-note offsets, length, entryCount, crc32c
+finalise the package BLAKE3 root over everything written so far
 write signature block if signing
-write tail (dirOffset, dirCRC, copy of header)
+write tail (dirOffset, package root, copy of header)
 seek 0, rewrite the real header
 ```
 
@@ -301,12 +330,13 @@ is spilled to a temp file and merged, since it is written last.
 ### 6.2 Reading
 
 ```
-read tail (last 128 B)           → dirOffset, entryCount, dirIndexOffset
+read tail (last 128 B)           → dirOffset, entryCount, index, BLAKE3 root
 read core, verify RS, inflate    → manifest + code   (this is all JS ever sees)
 find one asset:
     binary-search the sparse index      (a few KB)
     scan ≤ 64 directory records         (a few KB)
-    seek entryOffset, read only the chunks needed, verify each as it lands
+    seek entryOffset, read only the range needed,
+        verify that slice against the entry root — no full read, ever
 ```
 
 ### 6.3 The part that decides whether any of this works
@@ -348,7 +378,7 @@ The reader refuses, with the reason named, when:
 
 - neither header validates
 - `formatVersion` is unknown
-- the directory CRC fails — the map itself cannot be trusted
+- the directory does not verify against the package root — the map cannot be trusted
 - the core fails RS beyond correction
 - any path is absolute, contains `..`, or is not valid UTF-8
 - the core exceeds 4 MB, or the package exceeds the configured cap
@@ -358,7 +388,7 @@ The reader refuses, with the reason named, when:
 The last three are the ones that matter for a hostile package: an overlapping
 range is how an archive gets a reader to hand out the wrong bytes.
 
-A **single failed asset CRC is not a refusal.** It is dropped, logged, and the
+A **single failed asset hash is not a refusal.** It is dropped, logged, and the
 extension is told the asset is missing — the same graceful-degradation stance
 the app already takes with a partially-recoverable book.
 
@@ -381,10 +411,11 @@ app reads EPK, and an ECS file is refused with a message saying to rebuild.
    is the invariant everything else rests on. Alternative: a blob entry with
    `kind = code`, chunk-hashed but not RS-protected, so a corrupt `.wasm` is a
    re-fetch of 8 MB rather than a dead package. **I lean to the blob.**
-2. **Is 8 MB the right chunk?** Smaller means finer repair and a bigger table
-   (4 MB chunks at 1 TB is a 6 MB table); larger means the opposite. 8 MB puts a
-   1 TB package at 131,072 chunks and a 3 MB table, which fits the constant-memory
-   rule comfortably.
+2. **BLAKE3 + Zstandard, or SHA-256 + deflate?** The first is markedly faster and
+   gives slice verification for free; the second needs no new dependency on any
+   of the three platforms. §3.2c argues both sides. I recommend the first, and
+   the deciding question is whether bundling two native libraries across Android,
+   Node and WASM is acceptable supply-chain surface.
 3. **Does the policy cap sit at 1 TB, or lower for 1.1.20?** The format does not
    care. But the native unpackers, the resumable-download path and the free-space
    UX are all real work, and shipping a 1 TB *capability* with a 40 GB *tested*
