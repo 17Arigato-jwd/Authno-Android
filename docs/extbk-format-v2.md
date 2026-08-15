@@ -6,27 +6,62 @@ The file extension stays `.extbk` — one file type for the reader, one magic nu
 for the parser to tell the versions apart. `apiVersion: 2` extensions ship in
 EPK; ECS files are refused, not adapted.
 
+**Design target: 4 GB minimum, 1 TB maximum.** Every structural decision below
+is made against the top of that range, not the bottom. Where the format has a
+ceiling it is stated; where the *device* is the ceiling, that is stated too,
+because at a terabyte the device usually is.
+
 ---
 
 ## 1. Why a new container at all
 
 ECS is a good format for the thing it was designed for, and the wrong shape for
-a 1 GB extension. Three properties, each deliberate, each now in the way:
+a multi-gigabyte extension. Three properties, each deliberate, each now in the way:
 
 | ECS property | why it exists | why it blocks us |
 |---|---|---|
-| **Section index at the front** | one seek to know the whole file | every section's length must be known before a byte is written — you cannot stream a 1 GB asset into it |
-| **Reed–Solomon over every section** | a manuscript must survive bit rot | 20% parity over 1 GB is 200 MB of parity protecting a PNG that could just be re-downloaded |
+| **Section index at the front** | one seek to know the whole file | every section's length must be known before a byte is written — you cannot stream a 40 GB asset into it |
+| **Reed–Solomon over every section** | a manuscript must survive bit rot | 20% parity over 1 TB is **200 GB of parity** protecting a PNG that could just be re-downloaded |
 | **Everything is a section** | uniform parsing | an asset cannot be read without walking the index and inflating around it |
 
 And the practical wall, measured in the app as it stands: an install today is
 whole-file base64 → whole-file `Uint8Array` → inflate. `MainActivity` already
 sidesteps the bridge above **2 MB** of base64, with the comment *"don't shove
-multi-MB base64 through evaluateJavascript"*. A 1 GB package is five hundred
-times past a limit the app already works around.
+multi-MB base64 through evaluateJavascript"*. A 4 GB package is two thousand
+times past a limit the app already works around; a 1 TB one is half a million.
 
 So EPK keeps ECS's recovery instincts exactly where they earn their cost, and
 takes the archive-format lessons everywhere else.
+
+## 1a. Where the ceilings actually are
+
+Nothing in the layout below is allowed to be the limit. Every size and offset
+field is 64-bit, which puts the format's own ceiling at 2^64 bytes — sixteen
+exabytes — and leaves the real constraints where they belong:
+
+| ceiling | value | who imposes it |
+|---|---|---|
+| Format | 16 EB | the 64-bit fields; never the binding constraint |
+| **Policy** | **1 TB** | us, in the manifest validator |
+| Single file on FAT32 | **4 GB** | the filesystem — an SD card formatted FAT32 **cannot hold a 4 GB+ package at all** |
+| Single file on exFAT / ext4 / f2fs / NTFS | ≥ 16 TB | fine |
+| Practical, on a phone | free space | see below |
+
+Two consequences worth building for rather than discovering:
+
+**FAT32 is a hard wall at 4 GB, and it is the format on a lot of removable
+storage.** A package at or above the design *minimum* cannot even be written to
+one. The installer must therefore check the target filesystem before it starts,
+and say so plainly — "this extension is 6 GB and this card cannot hold a file
+that large" — rather than failing 4 GB into a copy.
+
+**Free space is checked before a byte is written**, against the *unpacked* size
+in the directory, not the package size. A 40 GB package of `store`-coded PNGs
+unpacks to roughly 40 GB; one of `deflate`-coded JSON might triple. The
+directory carries `originalSize` per entry precisely so this sum is known before
+the first write.
+
+---
 
 ## 2. What was taken from where
 
@@ -96,30 +131,84 @@ The `\x1a\n` in the magic is the PNG trick: `\x1a` is DOS end-of-file, so a
 package `type`d on a terminal stops rather than spraying binary, and the `\r\n`
 pair detects a transfer that mangled line endings.
 
-### 3.2 Central directory record — 48 bytes + path
+### 3.2 Central directory record — 64 bytes + path
 
 | off | size | field |
 |---|---|---|
 | 0 | 8 | entryOffset — absolute, from file start |
 | 8 | 8 | storedSize — bytes on disk |
 | 16 | 8 | originalSize — after decoding |
-| 24 | 4 | crc32 — over the **original** bytes |
-| 28 | 1 | codec — `0` store · `1` deflate-raw · `2–255` reserved |
-| 29 | 1 | kind — `0` asset · `1` rasterised-from-SVG · `2` font · `3` widget resource |
-| 30 | 2 | flags — bit 0 host-renderable · bit 1 aligned |
-| 32 | 2 | pathLength |
-| 34 | 14 | reserved |
-| 48 | n | path — UTF-8, `/`-separated, no `.` or `..` segments |
+| 24 | 8 | chunkTableOffset — 0 when the entry is a single chunk |
+| 32 | 4 | chunkCount |
+| 36 | 4 | crc32c — over the **original** bytes, whole entry |
+| 40 | 1 | codec — `0` store · `1` deflate-raw · `2–255` reserved |
+| 41 | 1 | kind — `0` asset · `1` rasterised-from-SVG · `2` font · `3` widget resource · `4` code |
+| 42 | 2 | flags — bit 0 host-renderable · bit 1 aligned · bit 2 lazy |
+| 44 | 2 | pathLength |
+| 46 | 18 | reserved |
+| 64 | n | path — UTF-8, `/`-separated, no `.` or `..` segments |
 
-### 3.3 Tail — 64 bytes
+### 3.2a Chunk tables — the change that scale forces
 
-Magic `\x89EPK_END\r\n`, then `dirOffset`, `dirLength`, `entryCount`,
-`dirCRC32`, then a **verbatim copy of the front header**.
+A single CRC32 over a 40 GB entry is close to useless, and this is the one
+place where the earlier draft was actually wrong rather than merely
+conservative. Three reasons, all of which bite above a few gigabytes:
+
+- **Detection weakens.** CRC32's guarantees are stated for inputs far smaller
+  than this; past its burst-length bounds it degrades to roughly a 1-in-4-billion
+  residual, which is not the number you want on the thing carrying somebody's
+  fonts across a flaky mobile download.
+- **Verification is all-or-nothing.** To check one byte you must hash 40 GB.
+  A reader that wants to serve a single image ends up reading the whole entry.
+- **Repair is all-or-nothing.** One flipped bit condemns the entire entry, so a
+  1 TB package fails on a re-download of 1 TB.
+
+So any entry above **8 MB** carries a **chunk table**: a flat array of
+`(crc32c, blake3_128)` pairs, one per 8 MB chunk, stored contiguously at
+`chunkTableOffset`. At 1 TB that is 131,072 chunks — a 3 MB table, itself
+CRC-covered.
+
+What it buys, in order of how much it matters:
+
+| | |
+|---|---|
+| **Verify on read** | reading one image verifies the chunks it touches, not the entry |
+| **Resumable transfer** | a download that dies at 700 GB resumes at the chunk boundary |
+| **Targeted repair** | one bad chunk means re-fetching 8 MB, not the entry |
+| **Parallel verification** | chunks hash independently, across cores |
+
+`crc32c` rather than plain CRC32 throughout: it is the same cost in software and
+a single instruction on every ARMv8 and x86-64 chip this will ever run on, which
+matters when the job is hashing a terabyte.
+
+### 3.3 Tail — 128 bytes
+
+Magic `\x89EPK_END\r\n`, then `dirOffset` (8), `dirLength` (8), `entryCount`
+(8), `dirIndexOffset` (8), `dirCRC32C` (4) — then a **verbatim copy of the
+64-byte front header**.
+
+`entryCount` is 64-bit. It costs four bytes to not have zip's 65,535-entry
+problem, and a package that ships a tile set can pass that in one directory.
 
 This is ECS's three-point arbitration, kept: a package whose first 64 bytes are
-damaged is still fully parseable from the tail, and a package whose tail is
-truncated is parseable from the front as far as the blob region. The reader
-compares both and reports which one it used.
+damaged is still fully parseable from the tail, and one whose tail is truncated
+is parseable from the front as far as the blob region. The reader compares both
+and reports which it used.
+
+### 3.4 The directory index — needed once the directory itself is large
+
+At a terabyte the central directory stops being small. A million entries is
+~70 MB of records, and "read the directory, then look up a path" would mean
+holding 70 MB to fetch one icon.
+
+So the directory is written **sorted by path**, and `dirIndexOffset` points at a
+sparse index: every 64th record's path hash and byte offset. A lookup is a
+binary search over the sparse index — a few KB — then one bounded scan of at
+most 64 records. **Constant memory, two seeks, whatever the package weighs.**
+
+Below 4,096 entries the index is omitted (`dirIndexOffset = 0`) and the reader
+simply loads the directory, because at that size the machinery costs more than
+it saves.
 
 ---
 
@@ -134,17 +223,38 @@ image.
 | Holds | manifest, all `.js` | images, fonts, rasters, widget resources |
 | Reed–Solomon | **yes**, 20% as now | **no** |
 | Held whole in memory | yes | **never** |
-| Size ceiling | **4 MB**, enforced at build | 1 GB policy cap |
+| Size ceiling | **4 MB**, enforced at build | **1 TB** policy cap |
 | Corrupt ⇒ | package refused | that one asset is dropped, with a warning |
 
 A 4 MB core ceiling is generous — Cloud Backup's entire JS is under 200 KB —
 and it is what guarantees the memory story: **the only thing ever fully resident
-is bounded and small**, whatever the package weighs.
+is bounded and small** — 4 MB, whether the package is 40 MB or a terabyte. That
+invariant is the reason the rest of the format can be as large as it likes.
 
 Dropping RS from the blob region is not a lowering of standards. RS exists in
 this codebase to keep manuscripts alive through bit rot. An asset that fails its
-CRC is re-obtainable by reinstalling, and 20% parity over 1 GB would add 200 MB
-to every download to avoid a reinstall.
+check is re-obtainable, and 20% parity over 1 TB would add **200 GB** to every
+download to avoid re-fetching one 8 MB chunk. The chunk table in §3.2a gives the
+blob region something better than parity anyway: not "repair it in place", but
+"know exactly which 8 MB to fetch again".
+
+---
+
+## 4a. Not everything has to land on disk
+
+At 40 GB and up, "unpack the package" and "install the extension" stop being the
+same event. An entry may be flagged **lazy** (directory flags bit 2): it stays in
+the package and is extracted on first use, or streamed straight from its byte
+range without ever being copied out.
+
+This is what keeps a large extension usable on a device that could not hold it
+twice. The package occupies its size once; the unpacked working set is whatever
+has actually been touched. `originalSize` in the directory is still summed at
+install for the free-space check, but lazy entries are counted against a
+*reserve*, not a requirement.
+
+The manifest declares which paths are lazy, so the decision is the author's and
+is visible in review, rather than a heuristic the installer guesses at.
 
 ---
 
@@ -172,25 +282,31 @@ write placeholder header (64 B)
 build core in memory  (bounded: ≤ 4 MB)  → RS-encode → write, note offset/len
 for each asset:
     open source, pick codec, stream through encoder to output
-    accumulate crc32 and sizes as bytes pass
-    push a directory record
+    hash each 8 MB chunk as it passes; append to the chunk table
+    accumulate the whole-entry crc32c and sizes
+    push a directory record (sorted insert, or sort at the end)
     pad to 4096 if stored
-write central directory, note offset/len/crc
+write chunk tables
+write central directory, sorted by path; then the sparse index
+note offsets, length, entryCount, crc32c
 write signature block if signing
 write tail (dirOffset, dirCRC, copy of header)
 seek 0, rewrite the real header
 ```
 
-Peak memory: the core plus one streaming buffer. Independent of package size.
+Peak memory: the core (≤ 4 MB), one streaming buffer, and the growing directory.
+Independent of package size — and if the directory itself grows past comfort it
+is spilled to a temp file and merged, since it is written last.
 
 ### 6.2 Reading
 
 ```
-read tail (last 64 B)            → dirOffset, entryCount, dirCRC
-read central directory            → the map, without touching a single asset
-read core, verify RS, inflate     → manifest + code   (this is all JS ever sees)
-per asset, on demand:
-    seek entryOffset, read storedSize, decode, verify crc32
+read tail (last 128 B)           → dirOffset, entryCount, dirIndexOffset
+read core, verify RS, inflate    → manifest + code   (this is all JS ever sees)
+find one asset:
+    binary-search the sparse index      (a few KB)
+    scan ≤ 64 directory records         (a few KB)
+    seek entryOffset, read only the chunks needed, verify each as it lands
 ```
 
 ### 6.3 The part that decides whether any of this works
@@ -260,14 +376,23 @@ app reads EPK, and an ECS file is refused with a message saying to rebuild.
 
 ## 10. Open
 
-1. **Is 4 MB the right core ceiling?** It is the number that bounds memory. Cloud
-   Backup is ~200 KB, so it is 20× headroom — but a WASM-heavy extension could
-   want more, and WASM belongs in the core (it is code, and RS-worthy).
-   Alternative: WASM is a blob entry with `kind = code`, CRC-checked but not
-   RS-protected.
-2. **Does the blob region need its own compression dictionary?** Fifty widget
-   template PNGs share a lot of bytes. A shared zstd dictionary would shrink
-   them meaningfully — at the cost of the per-entry independence this whole
-   format is built on. Probably no; worth recording that it was considered.
-3. **Should `uuid` be content-addressed** (a hash of the core) rather than
-   random? It would make "is this the same build" answerable without unpacking.
+1. **Where does WASM live?** It is code, so instinct says the RS-protected core —
+   but a WASM-heavy extension blows a 4 MB core immediately, and the core ceiling
+   is the invariant everything else rests on. Alternative: a blob entry with
+   `kind = code`, chunk-hashed but not RS-protected, so a corrupt `.wasm` is a
+   re-fetch of 8 MB rather than a dead package. **I lean to the blob.**
+2. **Is 8 MB the right chunk?** Smaller means finer repair and a bigger table
+   (4 MB chunks at 1 TB is a 6 MB table); larger means the opposite. 8 MB puts a
+   1 TB package at 131,072 chunks and a 3 MB table, which fits the constant-memory
+   rule comfortably.
+3. **Does the policy cap sit at 1 TB, or lower for 1.1.20?** The format does not
+   care. But the native unpackers, the resumable-download path and the free-space
+   UX are all real work, and shipping a 1 TB *capability* with a 40 GB *tested*
+   range is how a format acquires a reputation it does not deserve.
+4. **Should `uuid` be content-addressed** — a hash of the core — rather than
+   random? It would make "is this the same build" answerable without unpacking,
+   which matters more when unpacking costs a terabyte of I/O.
+5. **Shared compression dictionary for the blob region?** Fifty widget PNGs share
+   a lot of bytes and a zstd dictionary would shrink them — at the cost of the
+   per-entry independence the whole format is built on. Recorded as considered
+   and declined.
