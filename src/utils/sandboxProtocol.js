@@ -101,7 +101,9 @@ export const BOOTSTRAP = `
     toast: function (m, o) { return call('toast', [String(m == null ? '' : m), o || {}]); },
     openBrowser: function (url) { return call('openBrowser', [url]); },
     closeBrowser: function () { return call('closeBrowser', []); },
-    googleSignIn: function (clientId) { return call('googleSignIn', [clientId]); },
+    // Accepts a bare client id (what Android has always taken) or an options
+    // object, so one call works on both platforms.
+    googleSignIn: function (opts) { return call('googleSignIn', [opts]); },
     // The portable round trip. Opens authUrl in a browser this app cannot see
     // into, waits for the redirect to come home on one of the app's schemes,
     // and resolves with its query parameters. Works the same on a phone and a
@@ -112,7 +114,12 @@ export const BOOTSTRAP = `
     importSession: function (b64) { return call('importSession', [b64]); },
     replaceSession: function (id, b64) { return call('replaceSession', [id, b64]); },
     exportSessionAs: function (s, fmt) { return call('exportSessionAs', [s, fmt]); },
-    requestDriveToken: function () { return call('native.GoogleDrive.requestDriveToken', []); },
+    // Takes no arguments on Android — Play Services derives the caller from the
+    // package name and signing certificate. Off Android there is nothing to
+    // derive from, so it takes { clientId }, and the options have to actually
+    // reach the host: this used to drop them on the floor, which would have
+    // made the desktop path impossible to call correctly.
+    requestDriveToken: function (opts) { return call('native.GoogleDrive.requestDriveToken', [opts]); },
     // Registering is local; the host only needs to know the name so it can
     // subscribe on the bus and forward. The handler itself never leaves here.
     registerHook: function (name, handler) {

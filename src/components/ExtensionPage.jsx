@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DSIcons } from '../DesignSystem';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
-import { readExtensionTree, oauthRoundTrip } from '../utils/extensionSandbox';
+import { readExtensionTree, oauthRoundTrip, desktopGoogleAuth } from '../utils/extensionSandbox';
 import { FRAME_SANDBOX } from '../utils/sandboxProtocol';
 import { planModuleGraph, rewriteSpecifiers } from '../utils/moduleGraph';
 import { isAndroid } from '../utils/platform';
@@ -328,6 +328,9 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     // com.aurorastudios.authno://, resolve with its query parameters. Same
     // call, same rules, as the background half's host.oauth.
     oauth:        function(opts) { return call('oauth', [opts]); },
+    // Play Services on Android, PKCE everywhere else. Same call either way.
+    googleSignIn:      function(opts) { return call('googleSignIn', [opts]); },
+    requestDriveToken: function(opts) { return call('native.GoogleDrive.requestDriveToken', [opts]); },
     toast:        function(message, opts) { return call('host.toast', [message, opts || {}]); },
 
     // ── Books ───────────────────────────────────────────────────────────────
@@ -600,13 +603,43 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
           }
         }
         else if (method === 'native.GoogleDrive.requestDriveToken') {
-          // Bridge to the native GoogleDrivePlugin in the parent frame.
-          const plugin = window.Capacitor?.Plugins?.GoogleDrive;
-          if (!plugin?.requestDriveToken) throw new Error(
-            'GoogleDrive native plugin not available in parent frame. ' +
-            'Ensure GoogleDrivePlugin is registered in MainActivity.java and the app is rebuilt.'
-          );
-          result = await plugin.requestDriveToken();
+          // Android: the native plugin, which derives the caller from the
+          // package name and signing certificate and needs no client id.
+          //
+          // Everywhere else: the same PKCE flow the background half uses.
+          // This branch used to be the native call unconditionally, so on a
+          // laptop it failed with "ensure GoogleDrivePlugin is registered in
+          // MainActivity.java and the app is rebuilt" — advice about a file
+          // that does not exist on the platform the reader is standing on.
+          if (isAndroid()) {
+            const plugin = window.Capacitor?.Plugins?.GoogleDrive;
+            if (!plugin?.requestDriveToken) throw new Error(
+              'GoogleDrive native plugin not available in parent frame. ' +
+              'Ensure GoogleDrivePlugin is registered in MainActivity.java and the app is rebuilt.'
+            );
+            result = await plugin.requestDriveToken();
+          } else {
+            const o = args[0] && typeof args[0] === 'object' ? args[0] : {};
+            result = await desktopGoogleAuth({
+              clientId: o.clientId,
+              scopes: o.scopes ?? ['https://www.googleapis.com/auth/drive.file'],
+              what: 'requestDriveToken',
+            });
+          }
+        }
+        else if (method === 'googleSignIn') {
+          const o = (args[0] && typeof args[0] === 'object') ? args[0] : { clientId: args[0] };
+          if (isAndroid()) {
+            const plugin = window.Capacitor?.Plugins?.GoogleSignIn;
+            if (!plugin?.signIn) throw new Error('GoogleSignIn native plugin not available');
+            result = await plugin.signIn({ clientId: o.clientId });
+          } else {
+            result = await desktopGoogleAuth({
+              clientId: o.clientId,
+              scopes: o.scopes ?? ['openid', 'email', 'profile'],
+              what: 'googleSignIn',
+            });
+          }
         }
         else throw new Error(`Unknown bridge method: ${method}`);
 

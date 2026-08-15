@@ -48,8 +48,17 @@ if (process.env.AUTHNO_DISABLE_GPU === "1") app.disableHardwareAcceleration();
 // Maps the icon ids used by the renderer to the on-disk assets. Persisted in
 // userData so the choice survives restarts (a desktop analogue of Android's
 // activity-alias switcher).
+// The `default` entry used to be authno-512.png — the "authno" WORDMARK, which
+// is a different picture from the one the picker previews for it and from the
+// one Windows ships in authno.ico. Every other id already maps to the same file
+// as its preview tile; this was the only one that did not, so on desktop the
+// tile you pressed and the icon you got were different designs.
+//
+// ic_launcher_default_512.png is rendered from public/AuthNo.svg, the app's own
+// vector source for that mark, so this is the existing artwork at a size Linux
+// packaging accepts rather than anything new.
 const ICON_ASSETS = {
-  default: "authno-512.png",
+  default: "app-icons/ic_launcher_default_512.png",
   light:   "app-icons/ic_launcher_light.png",
   retro:   "app-icons/ic_launcher_retro.png",
   gold:    "app-icons/ic_launcher_gold.png",

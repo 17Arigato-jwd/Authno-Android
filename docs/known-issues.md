@@ -113,28 +113,40 @@ green.
 
 ### 6. Extension UI pages have no `oauth` — APP
 
-The background half can call `host.oauth({ authUrl, redirect })`; a `ui-file`
-page's bridge is the older surface and cannot. An extension that wants to
-authorise from a settings page has to hand the request to its background half
-first. Fixable by adding the one method to that bridge.
+**Fixed.** Both bridges call one shared `oauthRoundTrip`, so the redirect-scheme
+guard travels with the function rather than being written twice.
 
-### 7. Two host calls are Android-only — APP · won't fix
+### 7. Two host calls were Android-only — APP
 
-`googleSignIn` and `requestDriveToken` are Play Services APIs, and everything
-that makes them worth calling is the part that does not exist off Android: no
-client id, no redirect, no browser, and silent refresh handled by the OS.
-`requestDriveToken` goes through `Identity.authorize()`, which derives the
-caller from the package name and signing certificate. There is nothing on a
-laptop to derive.
+**Fixed, properly rather than by pointing at `oauth`.**
 
-`host.oauth({ authUrl, redirect })` replaces them — a browser round trip that
-comes home on `com.aurorastudios.authno://`, the same on both platforms. The
-two native calls throw with a message pointing at it.
+`googleSignIn` and `requestDriveToken` threw off Android with a message
+suggesting the caller build the flow themselves. That was honest about the
+platform and unhelpful about the task: every extension wanting Drive on a
+laptop would have implemented PKCE, the token exchange and the error handling
+again, slightly differently each time.
 
-Worth knowing if you write an extension: Google will not accept a bare
-`authno://` as a `redirect_uri`. The reverse-DNS form is what it takes, which
-is why that is the scheme `oauth` insists on — and why an extension cannot name
-`authno://auth/` as its redirect and be woken by the app's own sign-in.
+Android is unchanged and still the better path — Play Services derives the
+caller from the package name and signing certificate, and handles consent and
+silent refresh. Everywhere else now takes the route Google documents for
+installed apps: RFC 7636 with an S256 challenge and the reverse-DNS redirect
+the app already claims. No client secret, because a secret inside a desktop
+binary is not one. `src/utils/pkce.js`, 20 tests including the RFC's own S256
+vector.
+
+The one difference an author has to know: desktop cannot derive a client id
+from a package name, so `{ clientId }` is required there. The error says that
+in as many words rather than "unsupported". `requestDriveToken` defaults to
+`drive.file` — the narrow scope, covering only files the app created or the
+user explicitly opened.
+
+Found while wiring it: the sandbox bootstrap declared
+`requestDriveToken: function ()` and passed no arguments through, so options
+could never have reached the host at all.
+
+Still worth knowing: Google will not accept a bare `authno://` as a
+`redirect_uri`. The reverse-DNS form is what it takes, which is why that is the
+scheme both `oauth` and this insist on.
 
 ### 8. `authno://` can still fail to register — APP
 

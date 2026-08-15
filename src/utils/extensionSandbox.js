@@ -200,6 +200,52 @@ export async function oauthRoundTrip(opts, open) {
   return landing;
 }
 
+/**
+ * Sign in to Google from a desktop or web build, with PKCE.
+ *
+ * Reuses the same browser round trip `oauth` does — including its refusal to
+ * accept a redirect on the app's own sign-in scheme — so there is one place
+ * that opens a browser and one place that decides which redirects are ours.
+ *
+ * `state` is generated and checked. Without it, any redirect landing on the
+ * app's scheme while a flow is open would be taken as this flow's answer.
+ */
+export async function desktopGoogleAuth({ clientId, scopes, what }) {
+  if (!clientId) {
+    throw new Error(
+      `${what} needs a clientId on this platform. Android derives one from the `
+      + 'package name and signing certificate; a desktop build has neither, so '
+      + 'create an OAuth "Desktop app" client and pass its id. No client secret '
+      + 'is needed — the flow uses PKCE.',
+    );
+  }
+
+  const { createVerifier, challengeFor, createState, buildAuthUrl, exchangeCode } =
+    await import('./pkce');
+
+  const verifier = createVerifier();
+  const state = createState();
+  const redirect = `${OAUTH_SCHEME}oauth2/google`;
+
+  const authUrl = buildAuthUrl({
+    clientId,
+    redirect,
+    scopes,
+    challenge: await challengeFor(verifier),
+    state,
+  });
+
+  const landing = await oauthRoundTrip({ authUrl, redirect }, (url) => dispatch('openBrowser', [url], {}));
+
+  // A provider refusal is an answer, and it arrives in the query string rather
+  // than as a rejection. Saying "access_denied" beats timing out.
+  if (landing?.error) throw new Error(`Google refused: ${landing.error}`);
+  if (landing?.state !== state) throw new Error('the redirect did not match this sign-in (state mismatch)');
+  if (!landing?.code) throw new Error('Google sent no authorization code back');
+
+  return exchangeCode({ clientId, code: landing.code, verifier, redirect });
+}
+
 async function dispatch(method, args, ctx) {
   const { extId, manifest, handlers } = ctx;
   const store = extStorage(extId);
@@ -274,20 +320,58 @@ async function dispatch(method, args, ctx) {
       return oauthRoundTrip(args[0], (url) => dispatch('openBrowser', [url], ctx));
     }
 
+    /**
+     * Both of these used to throw off Android and point at `oauth`.
+     *
+     * That was honest about the platform and unhelpful about the task: an
+     * extension author wanting Drive on a laptop was handed a raw redirect
+     * primitive and left to implement PKCE, the exchange and the error
+     * handling themselves — the same three things, slightly differently, in
+     * every extension.
+     *
+     * They are the same three things here now. Android still goes through
+     * Play Services, which does it better than anyone can from JavaScript:
+     * consent, silent refresh, and an identity derived from the signing
+     * certificate rather than from a client id anybody can copy. Everywhere
+     * else takes the route Google documents for installed apps — RFC 7636
+     * with an S256 challenge and the reverse-DNS redirect this app already
+     * claims — which needs no client secret, because a secret inside a
+     * desktop binary is not one.
+     *
+     * The cost of the difference is one argument: desktop cannot derive a
+     * client id from a package name, so the extension has to supply one. The
+     * error below says exactly that rather than "unsupported".
+     */
     case 'googleSignIn': {
-      if (!isAndroid()) {
-        throw new Error('googleSignIn is Android only — it uses Credential Manager, which has no client id, redirect or browser to port. Use host.oauth({ authUrl, redirect }) with your own client instead.');
+      // Android's plugin takes the id positionally; desktop takes an object.
+      // Accept either shape on both, so one call site works on both platforms.
+      const opts = (args[0] && typeof args[0] === 'object') ? args[0] : { clientId: args[0] };
+      if (isAndroid()) {
+        const { registerPlugin } = await import('@capacitor/core');
+        return registerPlugin('GoogleSignIn').signIn({ clientId: opts.clientId });
       }
-      const { registerPlugin } = await import('@capacitor/core');
-      return registerPlugin('GoogleSignIn').signIn({ clientId: args[0] });
+      return desktopGoogleAuth({
+        clientId: opts.clientId,
+        scopes: opts.scopes ?? ['openid', 'email', 'profile'],
+        what: 'googleSignIn',
+      });
     }
 
     case 'native.GoogleDrive.requestDriveToken': {
-      if (!isAndroid()) {
-        throw new Error('requestDriveToken is Android only — it uses Play Services, which handles consent and silent refresh with no client id. Use host.oauth({ authUrl, redirect }) with the drive.file scope instead.');
+      const opts = args[0] && typeof args[0] === 'object' ? args[0] : {};
+      if (isAndroid()) {
+        // Unchanged: Identity.authorize() derives the caller from the package
+        // name and signing certificate, and takes no client id at all.
+        const { registerPlugin } = await import('@capacitor/core');
+        return registerPlugin('GoogleDrive').requestDriveToken();
       }
-      const { registerPlugin } = await import('@capacitor/core');
-      return registerPlugin('GoogleDrive').requestDriveToken();
+      return desktopGoogleAuth({
+        clientId: opts.clientId,
+        // drive.file rather than drive: the narrow one, which grants access
+        // only to files this app created or the user explicitly opened.
+        scopes: opts.scopes ?? ['https://www.googleapis.com/auth/drive.file'],
+        what: 'requestDriveToken',
+      });
     }
 
     case 'getSessions': return handlers.getSessions?.() ?? [];

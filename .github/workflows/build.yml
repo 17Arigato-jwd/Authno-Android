@@ -77,6 +77,13 @@ jobs:
       - name: Extensions under load and under abuse
         run: npm run stress:extensions
 
+      # The .extbk format has two implementations and they had never been
+      # pointed at each other: the CLI's own round-trip is CLI-writes then
+      # CLI-reads, so a shared misreading would be invisible to it while
+      # extension authors shipped files no app could open.
+      - name: The app reads what the extbk CLI writes
+        run: npm run check:extbk
+
 # ── 1. Build React once, reuse across all platform jobs ──────────────────────
   build-react:
     name: Build React

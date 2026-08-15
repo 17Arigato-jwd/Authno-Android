@@ -104,7 +104,29 @@ export default function Sidebar({
   };
 
   // ── Long-press context menu (Android) ────────────────────────────────────
+  //
+  // The touchmove listener lives on `document`, so whoever adds it owns
+  // removing it. Two ways that used to be skipped, both leaving a listener
+  // holding a closure over this render for the life of the page:
+  //
+  //   - The component unmounts mid-press. The long-press opens a menu that can
+  //     navigate, and then onTouchEnd never arrives.
+  //   - A second touch starts before the first ends. The second onTouchStart
+  //     overwrote longPressCleanup.current, and the first listener had nothing
+  //     left pointing at it.
+  //
+  // So: clear before arming, and clear again on unmount. Both are one line and
+  // neither depends on the gesture ending the way it is supposed to.
+  useEffect(() => () => {
+    clearTimeout(longPressTimer.current);
+    longPressCleanup.current?.();
+  }, []);
+
   const onTouchStart = (e, sessionId) => {
+    // Whatever the last press left behind, before this one adds its own.
+    clearTimeout(longPressTimer.current);
+    longPressCleanup.current?.();
+
     const t = e.touches[0];
     const startX = t.clientX, startY = t.clientY;
     longPressTimer.current = setTimeout(() => {
