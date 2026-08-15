@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DSIcons } from '../DesignSystem';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
-import { readExtensionTree } from '../utils/extensionSandbox';
+import { readExtensionTree, oauthRoundTrip } from '../utils/extensionSandbox';
 import { FRAME_SANDBOX } from '../utils/sandboxProtocol';
 import { planModuleGraph, rewriteSpecifiers } from '../utils/moduleGraph';
 import { isAndroid } from '../utils/platform';
@@ -257,6 +257,7 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     // a sandboxed srcdoc iframe. The host app (webpack bundle) has it; proxy here.
     openBrowser:        function(url)       { return call('openBrowser', [url]); },
     closeBrowser:       function()          { return call('closeBrowser', []); },
+    oauth:              function(opts)      { return call('oauth', [opts]); },
     storage: {
       get: function(k)    { return call('storage.get', [k]); },
       set: function(k, v) { return call('storage.set', [k, v]); },
@@ -323,6 +324,10 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
     close:        function() { window.parent.postMessage({ type: 'ext-close' }, '*'); },
     openBrowser:  function(url)  { return call('openBrowser', [url]); },
     closeBrowser: function()     { return call('closeBrowser', []); },
+    // Open a provider, wait for the redirect to come home on
+    // com.aurorastudios.authno://, resolve with its query parameters. Same
+    // call, same rules, as the background half's host.oauth.
+    oauth:        function(opts) { return call('oauth', [opts]); },
     toast:        function(message, opts) { return call('host.toast', [message, opts || {}]); },
 
     // ── Books ───────────────────────────────────────────────────────────────
@@ -521,6 +526,13 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
         else if (method === 'openBrowser') {
           await openInAppBrowser(args[0]);
           result = null;
+        }
+        // The same round trip the background half gets through host.oauth.
+        // Shared rather than reimplemented: the redirect-scheme check inside it
+        // is what stops an extension asking to be woken by the app's own
+        // sign-in and reading the handoff that trades for an account.
+        else if (method === 'oauth') {
+          result = await oauthRoundTrip(args[0], (url) => openInAppBrowser(url));
         }
         else if (method === 'closeBrowser') {
           await closeInAppBrowser();

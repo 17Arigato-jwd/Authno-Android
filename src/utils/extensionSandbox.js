@@ -165,6 +165,41 @@ function extStorage(extId) {
  * refused by default, which is the property the old runtime could not have: it
  * handed over the app's context and hoped.
  */
+/**
+ * The portable OAuth round trip: open a URL, wait for the redirect to come
+ * home, hand back its parameters.
+ *
+ * Exported because there are two extension surfaces and only one of them had
+ * this. The background half reaches it through `host.oauth`; a `ui-file` page
+ * talks to an older postMessage bridge that proxied `openBrowser` and stopped
+ * there, so an extension wanting to authorise from its settings page had to
+ * hand the request to its background half first.
+ *
+ * Shared as a function rather than copied into the second bridge, because the
+ * redirect check below is the load-bearing part and a second copy of a
+ * security check is a second chance to write it slightly differently. An
+ * extension that could name any prefix could ask to be woken by
+ * `authno://auth/google` — the app's own sign-in coming home — and read the
+ * handoff that trades for an account.
+ *
+ * @param opts    {{ authUrl: string, redirect: string }} from the extension
+ * @param open    how this surface opens a browser; both end at the same place
+ */
+export async function oauthRoundTrip(opts, open) {
+  const authUrl = String(opts?.authUrl ?? '');
+  const redirect = String(opts?.redirect ?? '');
+  if (!/^https:\/\//i.test(authUrl)) throw new Error('oauth needs an https authUrl');
+  if (!redirect.toLowerCase().startsWith(OAUTH_SCHEME)) {
+    throw new Error(`oauth redirect must start with ${OAUTH_SCHEME}`);
+  }
+  const { awaitDeepLink } = await import('./deepLinkBus');
+  // Listen before opening. A provider that has already granted consent can
+  // bounce back before an await scheduled after the open would have run.
+  const landing = awaitDeepLink(redirect, { timeoutMs: 5 * 60 * 1000 });
+  await open(authUrl);
+  return landing;
+}
+
 async function dispatch(method, args, ctx) {
   const { extId, manifest, handlers } = ctx;
   const store = extStorage(extId);
@@ -236,18 +271,7 @@ async function dispatch(method, args, ctx) {
      * woken by a link meant for the app's own sign-in, and read the handoff.
      */
     case 'oauth': {
-      const authUrl = String(args[0]?.authUrl ?? '');
-      const redirect = String(args[0]?.redirect ?? '');
-      if (!/^https:\/\//i.test(authUrl)) throw new Error('oauth needs an https authUrl');
-      if (!redirect.toLowerCase().startsWith(OAUTH_SCHEME)) {
-        throw new Error(`oauth redirect must start with ${OAUTH_SCHEME}`);
-      }
-      const { awaitDeepLink } = await import('./deepLinkBus');
-      // Listen before opening. A provider that has already granted consent can
-      // bounce back before an await scheduled after the open would have run.
-      const landing = awaitDeepLink(redirect, { timeoutMs: 5 * 60 * 1000 });
-      await dispatch('openBrowser', [authUrl], ctx);
-      return landing;
+      return oauthRoundTrip(args[0], (url) => dispatch('openBrowser', [url], ctx));
     }
 
     case 'googleSignIn': {

@@ -23,6 +23,13 @@ sourcemaps/
 # 🔹 ELECTRON BUILD OUTPUT (NEVER COMMIT)
 # =========================================
 dist/
+# electron-builder's output, which is `directories.output` in package.json and
+# is NOT `dist/`. Only `dist/` was listed here, so a desktop build left 775 MB
+# of unpacked Electron sitting untracked in the working tree — and a routine
+# `git add -A` swept it in, including a 251 MB app.asar that GitHub refuses
+# outright. The push failed with "remote end hung up", which names neither the
+# file nor the reason.
+dist-electron/
 out/
 *.exe
 *.AppImage

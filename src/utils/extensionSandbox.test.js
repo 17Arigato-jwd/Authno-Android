@@ -249,3 +249,61 @@ describe('what an extension may ask oauth for', () => {
     expect(e.message).toMatch(/https authUrl/);
   });
 });
+
+/**
+ * The same rules from the other surface.
+ *
+ * There are two extension bridges — the background half's `host.oauth` and a
+ * `ui-file` page's postMessage bridge — and only the first had this call at
+ * all. Adding it to the second meant either copying the redirect check or
+ * sharing it, and a second copy of a security check is a second chance to
+ * write it slightly differently. `oauthRoundTrip` is the shared one; these
+ * assert the guard travels with it rather than living at the call site.
+ */
+describe('the round trip both bridges share', () => {
+  const { oauthRoundTrip } = require('./extensionSandbox');
+
+  /** Records what it was asked to open, and never actually opens anything. */
+  const opener = () => {
+    const opened = [];
+    return [opened, async (url) => { opened.push(url); }];
+  };
+
+  test('a refused redirect never opens a browser', async () => {
+    const [opened, open] = opener();
+    await expect(oauthRoundTrip(
+      { authUrl: 'https://accounts.google.com/o/oauth2/v2/auth', redirect: 'authno://auth/google' },
+      open,
+    )).rejects.toThrow(/redirect must start with/);
+    // The order matters as much as the refusal. Opening first and checking
+    // second would still send the writer to a consent screen.
+    expect(opened).toEqual([]);
+  });
+
+  test('a refused authUrl never opens one either', async () => {
+    const [opened, open] = opener();
+    await expect(oauthRoundTrip(
+      { authUrl: 'http://accounts.google.com/', redirect: 'com.aurorastudios.authno://oauth2/x' },
+      open,
+    )).rejects.toThrow(/https authUrl/);
+    expect(opened).toEqual([]);
+  });
+
+  test('every shape the dispatch case refused, the shared function refuses', async () => {
+    const [, open] = opener();
+    for (const redirect of [
+      'authno://auth/google',
+      'https://evil.example/steal',
+      'com.evil.app://oauth2/x',
+      'com.aurorastudios.authnotes://oauth2/x',
+      '',
+    ]) {
+      await expect(oauthRoundTrip(
+        { authUrl: 'https://accounts.google.com/o/oauth2/v2/auth', redirect },
+        open,
+      )).rejects.toThrow(/redirect must start with/);
+    }
+    await expect(oauthRoundTrip(undefined, open)).rejects.toThrow(/https authUrl/);
+  });
+
+});

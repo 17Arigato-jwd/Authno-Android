@@ -522,6 +522,31 @@ if (!gotTheLock) {
     console.log("🟢 App ready — loading fileManager...");
     require("./fileManager"); // register handlers now
     console.log("✅ FileManager registered handlers.");
+
+    // Rebuild the Linux launcher override from the CURRENT system entry, every
+    // launch, not only when the icon changes.
+    //
+    // The override is a whole copy of the installed .desktop with one line
+    // repointed, and a user-level file of that name shadows the system one
+    // completely — Exec, MimeType and all. It used to be written once, when
+    // somebody picked an icon, and never touched again, so it froze whatever
+    // the installed entry said that day and kept winning after every update.
+    //
+    // That is not theoretical here. `com.aurorastudios.authno` was added to
+    // the protocols block for the extension OAuth work; anyone who had chosen
+    // a non-default icon before that update would still be running a .desktop
+    // that registers `x-scheme-handler/authno` alone, so an extension's
+    // redirect would have no handler to come home to — permanently, silently,
+    // and only for the users who touched the icon picker.
+    //
+    // Re-applying at startup costs one file copy and keeps Exec and MimeType
+    // tracking the installed entry. Picking "default" still removes it, and
+    // that path returns early without needing a system entry to copy.
+    if (isLinux) {
+      try { syncLinuxLauncherIcon(readIconPref()); }
+      catch (e) { console.error("[linux launcher icon] startup refresh", e); }
+    }
+
     createWindow();
   });
 }
