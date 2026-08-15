@@ -15,7 +15,7 @@ import {
 } from './epkFormat.js';
 
 import {
-  wellFormed, damage, hostile, locate, damageEntry, reparity,
+  wellFormed, damage, hostile, locate, damageEntry, reparity, zeroRange,
   SAMPLE_MANIFEST, SAMPLE_MODULES, EXPECTED, corrupt, seeded,
 } from './epkCorpus.js';
 
@@ -401,6 +401,120 @@ describe('Ed25519 signing', () => {
     const r = await readEpk(bytes, { publicKey: kp.publicKey });
     expect(r.repairs.some((x) => x.rung === 4)).toBe(true);
     expect(r.signatureOk).toBe(true);
+  });
+});
+
+// ─── Regressions ─────────────────────────────────────────────────────────────
+//
+// Each of these is a bug that was in the shipped-to-branch reader. They run
+// first-class rather than as a footnote because the repair path is exactly
+// where hostile input arrives.
+
+describe('regressions', () => {
+  test('a preamble claiming an earlier offset terminates the scan', async () => {
+    // The scan skipped forward to entryOffset + storedSize. A record may claim
+    // an offset BEHIND the preamble carrying it, which rewound the cursor to a
+    // point before that preamble — found again, rewound again, forever.
+    //
+    // Verified by reverting the clamp: this fixture hangs the jest worker
+    // outright. That is also why the assertion is plain termination rather than
+    // a timeout race — scanPreambles is synchronous, so on the broken version
+    // nothing else on the thread gets to run, and no in-process timer can fire.
+    // The iteration budget in scanPreambles exists so any FUTURE
+    // non-termination degrades to a named refusal instead of a hang.
+    //
+    // It has to be a preamble after the first: at the first, the cursor is
+    // already at the blob's start and cannot be sent backwards.
+    const pkg = await wellFormed.mixedCodecs();
+    const L = locate(pkg);
+    let out = pkg.slice();
+
+    const MAGIC = [0x89, 0x45, 0x50, 0x4b, 0x45, 0x4e, 0x54, 0x0a];
+    const matchesAt = (buf, o) => MAGIC.every((m, i) => buf[o + i] === m);
+    const at = [];
+    for (let o = L.blobOffset; o < L.dirOffset - 8 && at.length < 3; o++) {
+      if (matchesAt(out, o)) { at.push(o); o += 7; }
+    }
+    expect(at.length).toBeGreaterThanOrEqual(2);
+
+    const wr32 = (buf, o, v) => {
+      buf[o] = v & 0xff; buf[o + 1] = (v >>> 8) & 0xff;
+      buf[o + 2] = (v >>> 16) & 0xff; buf[o + 3] = (v >>> 24) & 0xff;
+    };
+    wr32(out, at[1] + 8, L.blobOffset);   // entryOffset — behind this preamble
+    wr32(out, at[1] + 12, 1);             // storedSize
+    out = zeroRange(out, L.dirOffset, L.dirOffset + L.dirLength + L.dirParityLength);
+
+    const verdict = await readEpk(out).then(() => 'read', (e) => `refused:${e.reason}`);
+    expect(typeof verdict).toBe('string');
+    expect(verdict).not.toContain('scan-budget-exceeded');
+  }, 15000);
+
+  test('a package written at a different rsPct still reads', async () => {
+    // The reader used to derive parity geometry from its own default rsPct, so
+    // any package built at another percentage produced a parity-length mismatch
+    // and was reported as an unrecoverable core. The geometry lives in the
+    // header now, so the reader is never told and never wrong.
+    for (const rsPct of [0, 5, 10, 20, 40]) {
+      const pkg = await packEpk({
+        manifest: SAMPLE_MANIFEST,
+        modules: SAMPLE_MODULES,
+        assets: [{ path: 'x.bin', data: ENC.encode('hello'), codec: CODEC_DEFLATE }],
+        rsPct,
+      });
+      const r = await readEpk(pkg);
+      expect({ rsPct, id: r.manifest.id, repairs: r.repairs.length })
+        .toEqual({ rsPct, id: 'corpus-fixture', repairs: 0 });
+      expect(DEC.decode(await r.read('x.bin'))).toBe('hello');
+    }
+  });
+
+  test('an rsPct=0 package still repairs its header from the tail', async () => {
+    const pkg = await packEpk({
+      manifest: SAMPLE_MANIFEST, modules: SAMPLE_MODULES, assets: [], rsPct: 0,
+    });
+    const { bytes } = damage.frontHeaderZeroed(pkg);
+    const r = await readEpk(bytes);
+    expect(r.headerSource).toBe('tail-copy');
+  });
+
+  test('a channel package with a destroyed tail is refused, not trusted', async () => {
+    // "signed" is a flag in the header. Without the tail there is nothing to
+    // check it against, so a package could claim to be signed and be installed
+    // with no verification at all.
+    const kp = await keypair();
+    const pkg = await wellFormed.signed(kp.privateKey);
+    const bytes = pkg.slice(0, pkg.length - TAIL_SIZE);
+    await expect(readEpk(bytes, { fromChannel: true, publicKey: kp.publicKey }))
+      .rejects.toMatchObject({ reason: expect.stringMatching(/incomplete|unverifiable-channel-package/) });
+  });
+
+  test('a channel package with no key to check against is refused', async () => {
+    const kp = await keypair();
+    const pkg = await wellFormed.signed(kp.privateKey);
+    await expect(readEpk(pkg, { fromChannel: true }))
+      .rejects.toMatchObject({ reason: 'no-public-key' });
+  });
+
+  test('bytes from another realm are packed, not stringified', async () => {
+    // Buffer is a Uint8Array subclass from Node's realm: `instanceof
+    // Uint8Array` is false across realms, and the old fallback stringified it.
+    // This is the Electron main process and the Capacitor bridge, both of which
+    // hand over exactly this shape.
+    const buf = Buffer.from('real bytes, not a toString', 'utf8');
+    const pkg = await packEpk({
+      manifest: SAMPLE_MANIFEST,
+      assets: [{ path: 'b.bin', data: buf, codec: CODEC_STORE }],
+    });
+    const r = await readEpk(pkg);
+    expect(DEC.decode(await r.read('b.bin'))).toBe('real bytes, not a toString');
+  });
+
+  test('readEpk accepts a Buffer as the package itself', async () => {
+    const pkg = await wellFormed.single();
+    const r = await readEpk(Buffer.from(pkg));
+    expect(r.entryCount).toBe(1);
+    expect(await r.read('icon.png')).not.toBeNull();
   });
 });
 

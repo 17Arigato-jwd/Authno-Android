@@ -153,7 +153,8 @@ All integers little-endian, as in ECS.
 | 36 | 4 | blobOffset | |
 | 40 | 4 | blobLength | |
 | 44 | 4 | dirOffset | |
-| 48 | 16 | reserved | zero-filled; room for v2 without moving anything |
+| 48 | 1 | **rsParity** | parity bytes per RS chunk, `0` for none — **[build finding]** |
+| 49 | 15 | reserved | zero-filled; room for v2 without moving anything |
 
 `dirLength` and the entry count live in the tail, because the directory is the
 last thing written.
@@ -628,6 +629,36 @@ path unauthenticated.
 Covered in §6a.4: the signature is what makes automatic repair safe, because it
 independently confirms a repair restored the author's bytes rather than something
 merely well-formed.
+
+---
+
+## 6b. Two guards the preamble scan needs **[build finding]**
+
+Rung 6 walks arbitrary attacker-shaped bytes looking for sync markers, which
+makes it the one loop in the reader that must terminate for *structural*
+reasons rather than because the input behaves.
+
+**The cursor must never move backwards.** After reading a preamble the scan
+skips past the body that preamble describes — but a record may claim any
+`entryOffset` inside the blob, including one *behind* the preamble carrying it.
+The cursor then rewinds to a point before that preamble, finds it again, and
+spins. The scan is synchronous, so this is not a slow read: it hangs the thread,
+and no timeout or abort signal can interrupt it. Clamp the skip to never
+decrease.
+
+**And a hard iteration budget on top.** The clamp makes termination provable
+today, but this loop exists precisely to cope with input nobody anticipated, and
+a wrong answer is recoverable where a hang is not. Exceeding the budget is a
+named refusal, `scan-budget-exceeded`. This is not theoretical — it caught the
+unclamped loop live during development, turning a dead worker into a clean
+refusal.
+
+**The RS geometry belongs in the header, not in a reader option.** Related
+finding, same root cause of trusting the caller: deriving parity size from an
+`rsPct` argument means a package built at a different percentage produces a
+parity-length mismatch, which reads as *unrecoverable core* on a perfectly good
+package. Byte 48 of the header carries it, so a reader is never told and never
+wrong.
 
 ---
 

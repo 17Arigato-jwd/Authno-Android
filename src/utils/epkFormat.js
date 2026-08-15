@@ -94,7 +94,11 @@ export class EpkError extends Error {
  */
 export class EpkIncomplete extends EpkError {
   constructor(have, need) {
-    super('incomplete', `package is ${have} of ${need} bytes`, { have, need, resumeFrom: have });
+    // `need` is a LOWER bound: it is derived from the offsets that survived, and
+    // a signed package also carries a signature block whose length is only
+    // knowable once the directory has landed. Resume from `resumeFrom`, then
+    // read again — do not treat `need` as the final size.
+    super('incomplete', `package is ${have} of at least ${need} bytes`, { have, need, resumeFrom: have });
     this.name = 'EpkIncomplete';
   }
 }
@@ -250,7 +254,7 @@ async function buildCore(manifest, modules, rsPct) {
  * damaged. Rung 4 of the ladder. Also returns the repaired core bytes so the
  * caller can write the correction back into the package (§6a.2).
  */
-async function parseCore(core, rsPct, repairs) {
+async function parseCore(core, nsym, repairs) {
   let body = core;
   let repairedCore = null;
 
@@ -260,7 +264,7 @@ async function parseCore(core, rsPct, repairs) {
       const bodyLen = core.length - 8 - plen;
       body = core.subarray(0, bodyLen);
       const parity = core.subarray(bodyLen, bodyLen + plen);
-      const rec = rsRecover(body, parity, nParity(rsPct));
+      const rec = rsRecover(body, parity, nsym);
       if (!rec) throw new EpkError('core-unrecoverable', 'core failed RS beyond correction');
       if (rec.repaired) {
         body = rec.data;
@@ -360,7 +364,7 @@ export function pathIsSafe(path) {
 
 // ─── Header and tail ─────────────────────────────────────────────────────────
 
-function buildHeader({ uuid, flags, coreOffset, coreLength, blobOffset, blobLength, dirOffset }) {
+function buildHeader({ uuid, flags, coreOffset, coreLength, blobOffset, blobLength, dirOffset, rsParity }) {
   const h = new Uint8Array(HEADER_SIZE);
   h.set(EPK_MAGIC, 0);
   putU16(h, 8, FORMAT_VERSION);
@@ -371,6 +375,7 @@ function buildHeader({ uuid, flags, coreOffset, coreLength, blobOffset, blobLeng
   putU32(h, 36, blobOffset);
   putU32(h, 40, blobLength);
   putU32(h, 44, dirOffset);
+  h[48] = rsParity & 0xff;
   return h;
 }
 
@@ -386,6 +391,8 @@ function parseHeader(b, off) {
     blobOffset: u32(b, off + 36),
     blobLength: u32(b, off + 40),
     dirOffset: u32(b, off + 44),
+    // Parity bytes per RS chunk, recorded so a reader never has to be told.
+    rsParity: b[off + 48],
   };
 }
 
@@ -526,6 +533,7 @@ export async function packEpk({
     uuid: id, flags,
     coreOffset, coreLength: core.bytes.length,
     blobOffset, blobLength, dirOffset,
+    rsParity: nsym,
   });
 
   // The package hash covers the header, the core, the directory and the
@@ -579,18 +587,38 @@ function randomUuidBytes() {
 
 // ─── The repair ladder (§6a) ─────────────────────────────────────────────────
 
-/** Rung 6: rebuild a destroyed directory by scanning entry preambles (§3.2a). */
+/**
+ * Rung 6: rebuild a destroyed directory by scanning entry preambles (§3.2a).
+ *
+ * This is the one loop in the reader that walks arbitrary attacker-shaped
+ * bytes, so it terminates for structural reasons rather than because the input
+ * behaves. Two independent guards, because the failure mode here is severe: the
+ * loop is synchronous, so non-termination hangs the whole thread — not a slow
+ * read, and nothing a timeout or an abort signal can interrupt.
+ *
+ *  1. The cursor never moves backwards (the Math.max below).
+ *  2. A hard iteration budget. The clamp makes termination provable today, but
+ *     this loop exists to cope with input nobody anticipated, and a wrong
+ *     answer is recoverable where a hang is not.
+ */
 function scanPreambles(bytes, blobOffset, blobEnd) {
   const found = [];
   const limit = Math.min(blobEnd, bytes.length);
+  let budget = Math.max(0, limit - blobOffset) + 1;
   for (let o = blobOffset; o + PREAMBLE_FIXED <= limit; o++) {
+    if (budget-- <= 0) throw new EpkError('scan-budget-exceeded', 'preamble scan did not converge');
     if (!eq(bytes, ENTRY_MAGIC, o)) continue;
     const rec = readRecord(bytes, o + ENTRY_MAGIC.length, limit);
     if (!rec) continue;
     if (!pathIsSafe(rec.path)) continue;
     if (rec.entryOffset < blobOffset || rec.entryOffset + rec.storedSize > limit) continue;
     found.push(rec);
-    o = rec.entryOffset + rec.storedSize - 1;   // skip the body we just described
+    // Skip the body just described — but NEVER backwards. A record is free to
+    // claim any entryOffset inside the blob, including one behind the preamble
+    // that carries it; without the clamp the cursor rewinds, finds the same
+    // preamble again and the scan spins forever. This runs on damaged and
+    // hostile input by definition, so a hang here is a denial-of-service.
+    o = Math.max(o, rec.entryOffset + rec.storedSize - 1);
   }
   return found;
 }
@@ -629,14 +657,15 @@ function parseDirectory(dir, entryCount) {
  *
  * opts:
  *   publicKey      — WebCrypto Ed25519 public key. Required when fromChannel.
- *   fromChannel    — true if this arrived over the network; unsigned is refused (§7.2).
- *   rsPct, entryCap, policyCap
+ *   fromChannel    — true if this arrived over the network; §7.2 applies.
+ *   entryCap, policyCap, maxRead
+ *
+ * The Reed-Solomon geometry is read from the package header, not passed in.
  */
 export async function readEpk(bytes, opts = {}) {
   const {
     publicKey = null,
     fromChannel = false,
-    rsPct = DEFAULT_RS_PCT,
     entryCap = DEFAULT_ENTRY_CAP,
     policyCap = DEFAULT_POLICY_CAP,
     maxRead = MAX_JS_READ,
@@ -703,13 +732,19 @@ export async function readEpk(bytes, opts = {}) {
   };
   if (recoveredHeaderBytes) writeBack(0, recoveredHeaderBytes);
 
+  // The parity geometry comes from the PACKAGE, never from a caller option.
+  // Deriving it from an rsPct argument meant a package written at a different
+  // percentage produced a parity-length mismatch, which rsRecover reports as
+  // unrecoverable — so a perfectly good package read as a destroyed core.
+  const nsym = header.rsParity;
+  if (nsym > 127) throw new EpkError('bad-rs-geometry', `rsParity ${nsym} leaves no room for data`);
+
   // ── Rung 4: the core ───────────────────────────────────────────────────────
   const core = bytes.subarray(header.coreOffset, header.coreOffset + header.coreLength);
-  const { manifest, modules, repairedCore } = await parseCore(core, rsPct, repairs);
+  const { manifest, modules, repairedCore } = await parseCore(core, nsym, repairs);
   if (repairedCore) writeBack(header.coreOffset, repairedCore);
 
   // ── Rungs 5–6: the directory ───────────────────────────────────────────────
-  const nsym = nParity(rsPct);
   let records = null;
   const blobEnd = header.blobOffset + header.blobLength;
 
@@ -796,8 +831,15 @@ export async function readEpk(bytes, opts = {}) {
   // bytes and re-verifies, a wrong one does not, and no amount of repairing can
   // move a package the signature rejects into one it accepts.
   const signed = !!(header.flags & FLAG_SIGNED);
-  if (fromChannel && !signed) {
-    throw new EpkError('unsigned-channel-package', 'a channel update must be signed');
+  if (fromChannel) {
+    // §7.2 is "code that arrives over a network is installed only if it
+    // verifies", and *claiming* to be signed is not verifying. Three ways a
+    // channel package could otherwise slip through unchecked: no signature at
+    // all, a destroyed tail (so there is nothing to check the signature
+    // against), or a caller that forgot to supply the key.
+    if (!signed) throw new EpkError('unsigned-channel-package', 'a channel update must be signed');
+    if (!tail) throw new EpkError('unverifiable-channel-package', 'the tail is gone; the signature cannot be checked');
+    if (!publicKey) throw new EpkError('no-public-key', 'a channel update needs a key to verify against');
   }
 
   let signatureOk = null;
