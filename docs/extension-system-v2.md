@@ -2,6 +2,11 @@
 
 Status: **proposal, for decision.** Nothing here is built yet.
 
+§11 records the runtime alternatives and why the isolated-process manager is
+the destination rather than the starting point. §12 specifies background
+extensions, which are a confirmed requirement and which constrain what v2 must
+get right *before* anything is built on it.
+
 This document decides how AuthNo extensions work in 1.1.20. It exists because
 v2 is not an addition to v1 — it changes the trust model, and the trust model
 has to be settled before any of the features on top of it are worth building.
@@ -490,3 +495,206 @@ add.
 4. **Do we ship `panel` in 1.1.20**, or land `page` + `command` + `when` first
    and add panels in 1.1.21? Panels touch the editor layout, which is the most
    delicate surface in the app.
+5. **Does `background` ship in 1.1.20 at all, or only the permission?** The
+   argument for declaring it now and honouring it later: extensions written
+   against it keep working, and §12.3's no-DOM rule only helps if it lands
+   before anyone writes background code.
+6. **Is desktop "background" worth having at all in v1 of it**, given it can
+   only mean "AuthNo is running but not visible"? A prompt that promises less
+   on the platform where people expect more may be worse than not offering it.
+
+Two things in §11 and §12 are decisions I have taken rather than options —
+say so if you disagree:
+
+- The runtime moves to an isolated-process manager **eventually**, not in
+  1.1.20, because of the two-JS-engine cost in §11.2.
+- The background entry point is **denied the DOM from v2 onward**, before the
+  runtime that requires it exists, because retrofitting it later breaks every
+  background extension written in between.
+
+---
+
+## 11. Alternatives considered for the runtime
+
+Recorded because the reasoning is not obvious and will be re-proposed
+otherwise. All three were argued through; one of them is where we are going.
+
+### 11.1 Extensions as separate APKs (the Mihon model)
+
+Mihon/keiyoushi extensions are `.apk` files installed as ordinary Android apps,
+and the host shows a **Trust** prompt before using one. That prompt *is* the
+security model — signature trust, not containment. A Mihon extension runs with
+the host's own access.
+
+Reasonable for a manga reader. Wrong here, for a specific reason: **a separate
+APK declares its own `INTERNET` permission**, which on Android is a *normal*
+permission — granted at install, never prompted, not revocable. AuthNo would
+have no say in where a manuscript goes after handing it over, and no way to
+acquire one. It also costs `REQUEST_INSTALL_PACKAGES` (Play-restricted) or a
+Play listing per extension, and makes `.extbk` pointless.
+
+Rejected: it is strictly weaker than what we have, on the exact axis we care
+about.
+
+### 11.2 An AuthNo-owned extension process manager
+
+**Accepted as the destination.** Not as the 1.1.20 implementation.
+
+The idea: extensions run in processes AuthNo owns and supervises, rather than
+in a frame. Android has the exact primitive for this —
+
+> `android:isolatedProcess="true"` — "this service runs under a special process
+> that is isolated from the rest of the system and **has no permissions of its
+> own**. The only communication with it is through the Service API."
+
+Own UID, no `INTERNET`, no filesystem, Binder only. It is what Chrome uses for
+renderers. Every objection to §11.1 disappears: no separate APK, no Play
+listing per extension, still a `.extbk`, and the host is back in the path of
+every byte — enforced by the kernel rather than by the browser.
+
+**On desktop the jail must still be Chromium's.** A plain Node child process
+has full filesystem and network, which is *worse* than today. Matching
+Android's guarantee means seccomp-bpf on Linux and AppContainer on Windows;
+Electron already ships both as the renderer sandbox. The manager should be our
+code — lifecycle, policy, IPC, supervision — and the cell it puts extensions in
+should be Chromium's, because writing that ourselves is a multi-year security
+project maintained by one person.
+
+**The cost, stated plainly:** an isolated Android process cannot use WebView —
+WebView needs system services an isolated process cannot reach. So it needs an
+embedded engine (QuickJS, Hermes, J2V8; 1–3 MB), which is *not* the engine the
+desktop renderer runs. Two engines means divergent `Intl`, regex corners and
+`Date` edges, and "works on my laptop, fails on my phone" bugs. That is the
+real price and it is why this is the destination rather than the starting
+point.
+
+### 11.3 The frame runtime (v2 as specified above)
+
+One engine on both platforms, boundary enforced by a host-generated CSP,
+measured. What ships in 1.1.20.
+
+### 11.4 What makes the choice reversible
+
+**The runtime is an implementation detail behind `dispatch`.** Permissions, the
+manifest, contributions, onboarding and the capability list are identical
+either way. Three rules keep it that way, and all three cost nothing now and a
+rewrite later:
+
+1. **`dispatch` takes a message, not a call.** It must never be invoked as a
+   direct function from anything that assumes a shared heap. It already speaks
+   `postMessage`; Binder and a socket carry the same envelopes.
+2. **Everything crossing the boundary is structured-cloneable.** No functions,
+   no DOM nodes, no class instances. `toSendable` already exists for this and
+   must stay mandatory.
+3. **The background entry point gets no DOM** — see §12.3. This is the one that
+   would be expensive to retrofit.
+
+---
+
+## 12. Background extensions
+
+Confirmed as a requirement, so it is specified now rather than bolted on. The
+permission is `background`, and it is the most consequential one in the set.
+
+### 12.1 It does not mean the same thing on both platforms
+
+Worth stating before anything is promised in a UI:
+
+| | Android | desktop |
+|---|---|---|
+| App visible | yes | yes |
+| App backgrounded / minimised | yes | yes |
+| App fully closed | **yes** — a service can run | **no**, unless we ship a login-item daemon |
+| Device asleep | subject to Doze and App Standby | subject to OS sleep |
+
+Desktop "background" realistically means *AuthNo is running, the window is
+not visible*. Making it mean more requires a launch agent / scheduled task —
+a separate installed thing, which is the design rejected in §11.1 arriving by
+another door. **The permission prompt must not imply more than the platform
+gives**, and the docs should say which is which.
+
+### 12.2 How it runs
+
+The extension never gets a scheduler of its own. It declares intent; AuthNo
+owns the timer.
+
+```jsonc
+"background": {
+  "command": "sync.run",        // registered with host.registerCommand
+  "minInterval": 900,           // seconds; floor enforced by the host
+  "requires": ["network"],      // skip the wake entirely if not granted
+  "constraints": { "network": "unmetered", "charging": false }
+}
+```
+
+- **Android:** `WorkManager` periodic work, not `AlarmManager`. Its 15-minute
+  floor is a platform constraint, not ours, and `minInterval` is clamped to it.
+  WorkManager also handles Doze, reboot persistence and the constraint set,
+  which is a large amount of correctness we would otherwise write badly.
+- **Desktop:** a timer in the Electron main process waking a hidden sandboxed
+  renderer.
+
+The wake sequence is the same on both: host wakes → creates the extension
+context → runs the one named command → tears the context down. **Extensions do
+not stay resident.** A background extension that is merely *alive* is a battery
+complaint with our name on it.
+
+### 12.3 The constraint this puts on v2, today
+
+Under the process manager, background code runs in an isolated process with an
+embedded engine — **and no DOM.** Today it runs in a hidden iframe, which has
+one.
+
+So: **the background entry point must be forbidden from touching the DOM from
+v2 onward**, even though v2's runtime would allow it. `document`, `window.*`
+beyond the host API, `fetch` (it goes through the host), timers beyond the wake
+window. The sandbox harness should fail a build that uses them.
+
+If we skip this, every background extension written for v2 breaks on the day
+the runtime swaps, and the swap becomes a migration nobody wants to schedule.
+It is one lint rule now.
+
+### 12.4 The budget
+
+Enforced by the host, per extension:
+
+| limit | why |
+|---|---|
+| Wall-clock per wake (30 s, then killed) | one extension must not hold a wakelock |
+| Wakes per day | stops `minInterval` gaming |
+| Bytes per wake | a sync that grows without bound is a bug worth surfacing |
+| Consecutive-failure backoff | an extension failing every 15 min forever is a battery drain nobody attributes to it |
+
+All four visible in the native settings page, per extension, next to the
+hosts-contacted panel from §3.3. "This extension woke 48 times today and failed
+47 of them" is the sentence that gets a bad extension uninstalled.
+
+### 12.5 The combination that needs saying out loud
+
+`background` + `network` + `library:read:all` is, together, *an extension that
+can send your manuscripts anywhere while you are not looking.*
+
+That is not hypothetical and it is not a flaw — it is exactly what Cloud Backup
+is for, and the same three permissions any competitor would need. But the three
+prompts individually do not say it, and a writer tapping through them will not
+assemble it themselves.
+
+So the permission screen should name the combination when all three are asked
+for, in one sentence, once:
+
+> Together, these let Cloud Backup send your books to the internet while AuthNo
+> is closed. That is what it is for — but it is worth knowing.
+
+Not a scare dialog and not an extra tap. One sentence that makes the grant
+legible, and the hosts-contacted panel to check it against afterwards.
+
+### 12.6 The pre-existing hazard it inherits
+
+`docs/known-issues.md` already records that OEM battery managers silently drop
+repeating alarms — that is a live problem for *reminders*, which are far
+cheaper than a sync. Background extensions inherit it and will be hit harder.
+
+The honest position: background work is **best-effort on Android and always
+will be**, the settings page must show when an extension last actually ran
+rather than when it was scheduled to, and the existing "your phone may be
+stopping this" row should be reused rather than reinvented.
