@@ -24,6 +24,21 @@ accessibility, performance, correcting text that is simply wrong.
 Code comments are exempt: they explain mechanism to whoever maintains this, and
 that is their job. The rule is about text a user sees.
 
+## Until public release: break things for a better system
+
+There are no users. Nothing is deployed to anybody. So until the app is
+publicly released, a change that breaks existing behaviour, formats, manifests
+or stored data is **allowed and preferred** when it buys a better system — no
+compatibility shims, no adapters, no "keep the old path working too".
+
+The one thing this does not license is breaking something *by accident*. The
+rule is about deliberate redesign, not about skipping the check that says
+whether the new thing works. `docs/known-issues.md` and the sweep documents
+still record what is broken.
+
+This flips one default in particular: when a decision is between the correct
+shape and the compatible one, take the correct shape and delete the other.
+
 ## Things that must stay true
 
 - **Being locked out never means losing manuscripts.** The gate is a closed
