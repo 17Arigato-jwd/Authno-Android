@@ -721,12 +721,34 @@ export async function readEpk(bytes, opts = {}) {
   bound(header.coreOffset, header.coreLength, 'core');
   bound(header.blobOffset, header.blobLength, 'blob region');
 
+  // The directory must FOLLOW the blob region, never sit inside it.
+  //
+  // Found by scripts/epk-crosscheck.mjs, and it is the nastiest bug in this
+  // file's history. A package claiming a dirOffset inside the blob still reads:
+  // the directory fails to parse, rung 6 rebuilds it from preambles, and the
+  // rebuilt directory is then written back — at the offset the package chose,
+  // straight over an entry's bytes. In memory that silently drops one asset. If
+  // the caller then persists repairedBytes as §6a.2 asks, it destroys that
+  // asset on disk permanently, in the name of repairing the package.
+  //
+  // Structural, so it is refused rather than repaired (§8).
+  const blobEndCheck = header.blobOffset + header.blobLength;
+  if (header.dirOffset < blobEndCheck) {
+    throw new EpkError('directory-overlaps-blob', 'dirOffset points inside the blob region');
+  }
+  if (tail && tail.dirOffset < blobEndCheck) {
+    throw new EpkError('directory-overlaps-blob', 'the tail places the directory inside the blob region');
+  }
+
   // Repairs are written back (§6a.2). `work` starts as the bytes we were given
   // and is copied on the first correction, so a package that needed no repair
   // costs no copy — and one that did hashes as the author wrote it, which is
   // what lets the signature confirm the repair was right (§6a.4).
   let work = bytes;
   const writeBack = (offset, patch) => {
+    if (offset < 0 || offset + patch.length > bytes.length) {
+      throw new EpkError('repair-out-of-bounds', 'a repair would write outside the package');
+    }
     if (work === bytes) work = bytes.slice();
     work.set(patch, offset);
   };

@@ -390,7 +390,7 @@ export const EXPECTED = {
     offsetPastEof: 'range-outside-blob',
     rangeOutsideBlob: 'range-outside-blob',
     entryCountOverflow: 'entry-cap',
-    dirOffsetIntoBlob: 'directory-unrecoverable',
+    dirOffsetIntoBlob: 'directory-overlaps-blob',
     signedTampered: 'package-hash-mismatch',
   },
 };

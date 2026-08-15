@@ -703,8 +703,19 @@ The reader refuses, with the reason named, when:
 - `entryCount` exceeds the configured entry cap
 - two records claim the same path
 - an entry's byte range falls outside the blob region, or overlaps another
+- **the directory offset points inside the blob region** — see below
 - any offset plus its length exceeds the file's actual size **and** the file is
   not merely truncated — see below
+
+**The directory-overlap check is the one found by the cross-implementation
+run**, and it was the nastiest defect in the format's history. A package
+claiming a `dirOffset` inside the blob region still *reads*: the directory fails
+to parse, rung 6 rebuilds it from preambles, and the rebuilt directory is then
+written back at the offset the package chose — straight over an entry's bytes.
+In memory that silently drops one asset. Persist the repaired bytes as §6a.2
+asks, and it destroys that asset on disk permanently, in the name of repairing
+the package. The two readers disagreed about it because only one of them writes
+repairs back, which is exactly the class of divergence §8a exists to catch.
 
 The path, overlap and bounds checks are the ones that matter for a hostile
 package: an overlapping range is how an archive gets a reader to hand out the
@@ -772,10 +783,15 @@ same verdict, the same repair path taken, and the same reason string.
   be ignored — §3.2a)
 - an unsigned package presented as a channel update (§7.2)
 
-`scripts/check-extbk-crossread.mjs` is the shape of the runner; this is the
-larger version, and the damage fixtures are generated deterministically from the
-well-formed ones by a seeded corruptor so they can be regenerated rather than
-stored as binaries.
+**Built, and running in CI:** `scripts/epk-crosscheck.mjs`
+(`npm run test:epk-crosscheck`) runs the browser reader and the desktop reader
+over every fixture and requires identical verdicts — the refusal reason, the
+repair rungs taken, and per-entry the exact bytes or the exact drop. Damage
+fixtures are generated deterministically by a seeded corruptor, so they
+regenerate rather than living in the repo as opaque binaries.
+
+It found a real defect on its first run (see §8), which is the argument for
+writing it before the third implementation rather than after.
 
 ---
 

@@ -63,6 +63,14 @@ jobs:
         run: npx react-scripts test --watchAll=false
         env: { CI: true }
 
+      # Both VCHS-EPK readers over the same corpus. The browser reader holds the
+      # package in memory; the desktop one reads ranges from a file descriptor.
+      # They share only the Reed-Solomon math, so a disagreement is a real
+      # defect in one of them — and the kind that otherwise surfaces months
+      # later from the one platform nobody tested on.
+      - name: EPK cross-implementation check
+        run: npm run test:epk-crosscheck
+
       # The writing day on the two days a year that are 23 and 25 hours long.
       # Pure node, no browser.
       - name: The writing day in every timezone
