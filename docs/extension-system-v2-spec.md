@@ -74,20 +74,69 @@ empty reason fails.
 | `library:export` | `library.export` | "Turn your books into files" | **[1.1.20]** |
 | `network` | outbound to `hosts` (CSP) | "Connect to dropbox.com, api.dropbox.com" | **[1.1.20]** |
 | `browser` | `browser.open`, `auth.*` | "Open pages in your browser" | **[1.1.20]** |
+| `activity` | `activity.onWriting`, `activity.getRate` | "See when you are writing" | **[1.1.20]** |
 | `notifications` | `notify.post` | "Send you notifications" | **[later]** |
 | `widgets` | contributes a widget | "Add widgets to your home screen" | **[later]** |
 | `background` | `background` block honoured | "Run while AuthNo is closed" | **[later]** |
 
 Not permissions, always available: `app.*`, `ui.toast`, `ui.navigate`,
-`storage.*`, `hooks.register`, `commands.register`. Each is either inert or
-already private to the extension; prompting for them trains people to tap
-through prompts.
+`ui.prompt`, `ui.confirm`, `storage.*`, `hooks.register`, `commands.register`.
+Each is either inert or already private to the extension; prompting for them
+trains people to tap through prompts.
+
+### 2.2a `activity` — and why the rate is quantised
+
+`activity` reports writing cadence: an extension subscribes and receives
+characters-per-second while the user types. It is what a writing-timer, a
+pace-tracker or a streak widget needs, and none of them need anything else.
+
+**The rate is bucketed to 1 Hz, and only the count crosses the bridge.**
+
+Raw inter-keystroke timings are keystroke dynamics — a behavioural biometric,
+identifying enough to be used for authentication, and the kind of thing that
+should not leave the editor because an extension asked politely. An extension
+holding `activity` **and** `network` with per-keystroke resolution could
+fingerprint the person typing. One-second buckets give a timer everything it
+needs and destroy the signal that makes fingerprinting work.
+
+| what crosses | what does not |
+|---|---|
+| characters in the last whole second | when, within that second |
+| an idle/active edge event | which keys, in what order |
+| session totals, on request | backspaces distinguished from characters |
+
+```js
+authno.activity.onWriting(({ charsPerSecond, idle }) => { … })  // ~1 Hz
+await authno.activity.getRate()   // { charsPerSecond, idleSeconds }
+```
+
+Delivery pauses when no extension is subscribed, so the editor pays nothing for
+a permission nobody is using.
+
+### 2.2b `ui.prompt` — host-drawn, never extension-drawn
+
+```js
+const name = await authno.ui.prompt({ title, message, placeholder, initial });
+const ok   = await authno.ui.confirm({ title, message, danger: true });
+```
+
+Both resolve to `null`/`false` on dismissal, never throw on cancel, and are
+**drawn by the host** in the app's own dialog style. That is the point: an
+extension cannot draw a dialog that looks like it came from AuthNo, because the
+only dialog that looks like AuthNo is the one AuthNo drew.
+
+Constraints: one at a time per extension, dismissed automatically if the
+extension is disabled mid-prompt, `title` ≤ 60 chars and `message` ≤ 240, and the
+dialog is labelled with the extension's name and colour so its origin is never
+ambiguous. No permission, because a prompt cannot read or send anything — the
+user answers or does not.
 
 ### 2.3 Enforcement — where each is actually enforced
 
 | permission | enforced by | can the extension get around it |
 |---|---|---|
 | every `library:*`, `browser`, `notifications` | `requirePermission()` in `dispatch` | no — it is the only door, and there is no other origin to reach |
+| `activity` | `requirePermission()`, and the editor emits nothing when unsubscribed | no — and the 1 Hz bucketing is applied host-side, before the bridge |
 | `network` | **the browser**, via a host-generated CSP in the frame document | no — measured: meta removal, policy injection, XHR and nested frames all blocked |
 | `background` | the host scheduler; the extension has no timer of its own | no |
 
@@ -309,6 +358,118 @@ Order: **install → onboarding → permissions → ready.** Teach, then ask.
 
 ---
 
+## 8a. Widgets — fonts and templates
+
+### 8a.1 The font problem, and why the list is curated
+
+**RemoteViews has no typeface API.** There is no `setTypeface` that survives the
+Binder round-trip, and `TypefaceSpan(Typeface)` parcels only a family *name*, not
+the face — so a font file shipped inside an extension package cannot reach a
+widget. This is a platform constraint, not a policy choice.
+
+What *does* work is a font resource in **AuthNo's own APK**, referenced from a
+widget layout AuthNo also ships. That is why the list is curated: the fonts have
+to be ours for widgets to render them at all, and it is why an extension picks a
+font by name rather than supplying one.
+
+> **Needs an on-device check before the templates are written.** Two delivery
+> paths exist — build-time layout variants per font, or a `TypefaceSpan` carried
+> in a `SpannableString` — and which survives Binder on real OEM builds decides
+> how the templates are generated. Test this first; it shapes all of them.
+
+### 8a.2 The set — 22 faces
+
+All OFL or Apache-2.0, so redistribution inside the APK is clear. Latin, Latin
+Extended, Greek and Cyrillic throughout. Variable where the min SDK allows,
+static instances otherwise; budget is roughly 1–2 MB total.
+
+| # | face | class | why it is in the list |
+|---|---|---|---|
+| 1 | **Inter** | UI sans | the default; tabular figures, enormous glyph coverage |
+| 2 | **Roboto** | UI sans | matches the system, so a widget can disappear into the launcher |
+| 3 | **Open Sans** | humanist sans | the neutral workhorse |
+| 4 | **Lato** | humanist sans | warmer than Open Sans at the same weight |
+| 5 | **Source Sans 3** | humanist sans | widest Latin-Extended coverage of the sans group |
+| 6 | **Nunito** | rounded sans | the only rounded face; friendly widgets have no other option |
+| 7 | **Work Sans** | geometric sans | display-leaning without going to a true display face |
+| 8 | **Roboto Condensed** | condensed | widgets are narrow — this is the most-used class after the default |
+| 9 | **Barlow Condensed** | condensed | lighter colour than Roboto Condensed at small sizes |
+| 10 | **Oswald** | condensed display | headline condensed; strong at 2–3 words |
+| 11 | **Merriweather** | screen serif | designed for screens, holds up at widget sizes |
+| 12 | **Lora** | book serif | the bookish default for a writing app |
+| 13 | **Source Serif 4** | book serif | pairs with Source Sans across a widget set |
+| 14 | **EB Garamond** | classical serif | a manuscript app should own one Garamond |
+| 15 | **Libre Baskerville** | transitional serif | high x-height, survives small sizes better than Playfair |
+| 16 | **Playfair Display** | display serif | high contrast, for large numerals and single words |
+| 17 | **Abril Fatface** | display slab | the heaviest face in the set; big counts, big numbers |
+| 18 | **Zilla Slab** | slab | slab that still reads as text rather than display |
+| 19 | **JetBrains Mono** | mono | tabular by construction — the timer default |
+| 20 | **IBM Plex Mono** | mono | a mono with more personality, same tabular property |
+| 21 | **Caveat** | handwriting | a writing app wants one; casual notes and streak widgets |
+| 22 | **Bebas Neue** | all-caps display | condensed all-caps; the "1,247 WORDS" case |
+
+**Tabular figures matter more than the face for anything counting.** Inter,
+JetBrains Mono, IBM Plex Mono and Roboto all keep digits at constant width, so a
+timer does not jitter as it ticks. Templates in the timer and counter classes
+default to one of those, and the picker marks the rest as non-tabular rather than
+letting an author discover it at 59→00.
+
+**CJK is deliberately absent.** Noto Sans JP/KR/SC/TC are 5–16 MB *each* —
+bundling them would multiply the APK several times over for a case the platform
+already handles, since Android falls back to the system CJK face automatically.
+Widget text in those scripts renders; it renders in the system font.
+
+### 8a.3 Templates: four first, not fifty
+
+The 20–50 template target stands, but the first four are built alone and the rest
+wait on them. Templates are the largest chunk of work in v2 and carry almost no
+architectural risk — which is exactly why they should not go first. One of each
+class, against the constraints already known to be hostile:
+
+| first template | proves |
+|---|---|
+| **Static card** | layout, theming, the font path end to end |
+| **Periodic counter** | `updatePeriodMillis` has a **30-minute floor** — anything faster needs an alarm, and the battery story has to be settled once |
+| **Timer** | `setChronometer` is the **only view that ticks by itself**; everything else is a push |
+| **Scrolling list** | the Binder transaction limit is ~1 MB, so a list has to page rather than send |
+
+The timer is the one that will bend the API. Writing 46 more templates against a
+design the timer has not yet tested is how 46 templates get rewritten.
+
+---
+
+## 8b. The editor overlay — a dot, not text
+
+An extension with the overlay may show **a single dot in the corner of the
+editor**, in its own colour, the way Android shows its microphone and camera
+indicators. Earlier drafts put semi-transparent text over the toolbar; a dot is
+better while writing, which is the entire time it is visible.
+
+| state | behaviour |
+|---|---|
+| Idle | one dot per extension, 8 dp, at the trailing edge |
+| Tapped | expands to a small sheet: extension name, its line of text, a way to silence it |
+| Multiple | dots stack to three, then a `+n` dot; the sheet lists all of them |
+| Android, typing | dots sit over the toolbar's trailing edge, above the keyboard |
+| Desktop | bottom-right of the editor pane |
+
+**Accessibility, which a colour-only indicator fails by default:**
+
+- The dot's touch target is **48 dp** even though it draws at 8 dp.
+- Colour is never the only carrier — the expanded sheet names the extension in
+  text, and the dot carries a content description of the extension name and its
+  current line.
+- The dot does not animate under `prefers-reduced-motion`; it appears and
+  disappears without a pulse.
+- A dot never covers a caret position or a toolbar control; the toolbar reserves
+  its trailing slot when any overlay is active.
+
+An extension writes its line with `authno.ui.overlay.set(text)` and clears it
+with `.clear()`. The host owns the colour, the position and the dismissal — the
+extension owns one string.
+
+---
+
 ## 9. Lifecycle
 
 ```
@@ -318,7 +479,7 @@ permissions → activate() → running ⇄ hooks/commands → deactivate() → u
 
 | stage | guarantees |
 |---|---|
-| install | signature/CRC verified before anything is written to disk |
+| install | package verified and, if damaged, **repaired** before anything is written to disk — EPK §6a. A package arriving over the update channel must carry a valid **Ed25519** signature; a manually chosen file may be unsigned, and is shown as unsigned |
 | activate | 15 s timeout, then reported as failed to start |
 | running | a throw in one hook never stops another extension's |
 | deactivate | awaited, then the frame is destroyed regardless |
@@ -368,17 +529,30 @@ argument for doing this in one break rather than three.
 
 ---
 
-## 13. What I need decided
+## 13. Still open
 
 1. **`panel` in 1.1.20 or 1.1.21?** It touches the editor layout, the most
    delicate surface in the app.
-2. **Does `library:read:current` exist, or is `library:read:all` the only read
-   permission?** Two is more honest and more prompts.
-3. **`library.list` metadata — does it include chapter *titles*?** Useful for a
-   table-of-contents extension; titles can carry spoilers and plot.
-4. **Ship `background` as a declarable-but-unhonoured permission in 1.1.20**, so
-   the no-DOM rule binds before anyone writes background code?
-5. **Widgets: real contribution, or does an extension just feed data into an
-   AuthNo-shaped widget?** The second is far less work and probably enough.
-6. **Does an extension get an update channel**, or is reinstall the only path?
-   Affects whether `homepage` grows into something.
+2. **Ship `background` as a declarable-but-unhonoured permission in 1.1.20**, so
+   the no-DOM rule binds before anyone writes background code? The API shape has
+   to be frozen before the feature ships, or the first background extension
+   defines it by accident.
+3. **Which font delivery path survives Binder?** §8a.1 — needs an on-device
+   check, and it gates how every template is generated.
+4. **Does the update channel support pinning a version**, or is it always latest?
+
+### 13a. Decided, recorded so they are not reopened
+
+| question | answer |
+|---|---|
+| `library:read:current` **or** `:all` | **both** — two permissions, two prompts |
+| `library.list` metadata | chapter titles, chapter preview, book name, author, ISBN and more, each opt-in per call |
+| Update channel | **yes**, plus a manual "update from file" button in extension settings |
+| Widgets: templates or hand-built | **both** — templates for the common cases, hand-built widgets behind a separate permission set |
+| Signing | **Ed25519, in 1.1.20** — an unsigned auto-update path inherits granted permissions silently (EPK §7.2) |
+| Writing-activity permission | **`activity`**, bucketed to 1 Hz (§2.2a) |
+| Prompt API | **`ui.prompt` / `ui.confirm`**, host-drawn, no permission (§2.2b) |
+| Editor overlay | **a dot**, Android-privacy-indicator style, expanding on tap (§8b) |
+| Widget fonts | **22 curated faces** in the APK, since RemoteViews cannot take a font from a package (§8a.2) |
+| Extension size cap | **1 GB** policy, 4 GiB format ceiling |
+| Disabled extensions | greyed out, including the icon — never hidden |
