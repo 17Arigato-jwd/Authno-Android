@@ -3,6 +3,56 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.19-beta.5
+
+_Extensions work the same on a laptop as on a phone, saving tells you the
+truth, and the icon you pick is the icon you get._
+
+### Extensions
+
+- **Sign in with Google, and reach Google Drive, from the desktop app.** Both
+  were Android-only and told you so. They work on Windows and Linux now, using
+  the browser you already have. Writing an extension for one platform no longer
+  means writing it twice.
+- **An extension's settings page can start a sign-in on its own** instead of
+  handing the job to its background half first.
+- **Extension pages run in a stricter sandbox.** Two of them shared a boundary
+  that only one of them was actually enforcing.
+- Pages loaded from the web must be served over https, and one that is not says
+  so rather than loading quietly.
+- Extension pages can no longer pop up a system dialog or submit a form
+  straight to the web. If yours used `alert()`, it will need its own message
+  instead.
+
+### Saving
+
+- **"Saved ✓" now means saved.** A save that AuthNo refused — because a book
+  was still loading, or the file it came from had gone away — showed the same
+  green tick as one that worked. If the file has gone, AuthNo now offers to put
+  the book somewhere new instead of failing quietly.
+
+### The desktop app
+
+- **Links open in your browser again, not inside AuthNo.** A sign-in page could
+  end up on the app's own window, with no address bar and no way back.
+- **The app window stays the app.** Nothing can navigate it away.
+- **Changing the app icon sticks on Linux.** The launcher entry stopped
+  updating after the first time you picked one, which could also quietly break
+  links from your browser.
+- The default icon on desktop is the one the picker shows you. It was showing
+  one design and applying another.
+
+### Android
+
+- Importing a book, an extension or a theme no longer leaves a file handle open
+  when a file cannot be read to the end.
+
+### Elsewhere
+
+- The website explains every reason a pen name can be refused. Four of them
+  produced "something went sideways on our end", which was neither true nor
+  useful — the name had been refused for a reason it never mentioned.
+
 ## 1.1.19-beta.3
 
 _A day that ends when you stop writing rather than when the clock says so, a
