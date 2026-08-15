@@ -318,29 +318,43 @@ backstop, count the doors.
 
 ## Notes on things that look like issues and are not
 
-- **The JS suite fails 4 tests roughly once in ten runs.** Caught a third time
-  and the output captured, so this is no longer "somewhere". It is always the
-  same four, always in `src/utils/crossPlatformInstall.test.js`, and they are
-  exactly the four tests that call `discoverExtensions()`:
+- **The JS suite fails a handful of tests roughly once in ten runs. Cause
+  found.** The failures are always in `src/utils/crossPlatformInstall.test.js`,
+  always the tests that call `discoverExtensions()`, and the symptom is that it
+  returns `[]` after an install that returned a manifest without throwing.
 
-  > `and the app then finds it` · `an update replaces rather than duplicates` ·
-  > `sits alongside an installed extension rather than hiding it` ·
-  > `loses to an installed extension of the same id`
+  The earlier note said nothing was logged from its own catch. That was the
+  problem, not evidence: the `catch` around `Filesystem.readdir` discarded the
+  error entirely. Instrumenting it and looping produced the message on the
+  first hit —
 
-  The symptom is precise: `discoverExtensions()` returns `[]` after an install
-  that returned a manifest without throwing. Nothing is logged from its own
-  catch, so the dynamic `import('@capacitor/filesystem')` resolved and
-  `readdir` genuinely saw an empty directory — meaning the mock's `mockFiles`
-  map was empty at that moment, after an awaited write that could not have
-  failed silently. The file passes 19/19 in isolation, every time.
+  > `This browser doesn't support IndexedDB`
 
-  No cause found, and still none invented. What the next person should NOT
-  spend time on, because it has been ruled out: the two `EXTENSIONS_DIR`
-  constants agree; nothing shares state across test files, since the mock map
-  and jsdom's localStorage are both per-file; the install throws rather than
-  returning quietly, so a silent failure would surface on the install line and
-  does not. Eleven consecutive full runs after the capture were green, so
-  reproducing it costs a loop rather than a run.
+  — which is the **real** `@capacitor/filesystem` web build talking, not the
+  mock. The test registers its mock with `{ virtual: true }`, and that flag is
+  for modules with no real implementation. `@capacitor/filesystem` is genuinely
+  installed, so registering it as virtual leaves jest free to resolve the
+  dynamic `await import('@capacitor/filesystem')` inside `discoverExtensions`
+  to the real package instead, which then throws under jsdom because there is
+  no IndexedDB. It is load-sensitive rather than random: adding test files
+  changes how work is spread across workers, which is why the rate moved when
+  unrelated suites were added.
+
+  **What was fixed:** the swallow. `discoverExtensions` now distinguishes an
+  empty store from an unreadable one and reports the latter — see the entry
+  above. That was a product bug in its own right, and a worse one than the
+  flake: a storage backend that fails on a real device made every installed
+  extension silently disappear.
+
+  **What was not:** the mock itself. Dropping `{ virtual: true }` was tried and
+  made things markedly worse — the failure rate went from about 1 in 10 to 14
+  in 15, with different tests failing, because `require()` in the test and the
+  dynamic `import()` in the source then resolved to different module instances.
+  The change was reverted. The next attempt should probably move
+  `@capacitor/filesystem` to a `moduleNameMapper` entry with a real mock file,
+  so there is exactly one instance no matter how it is reached, rather than
+  adjusting the `jest.mock` flag again.
+
 - **`console.debug` about `WidgetData` off-device.** Expected, and only ever as
   a caught error. If it returns as an uncaught page error, that is the
   Capacitor thenable bug back — see the comment on `getPlugin`.

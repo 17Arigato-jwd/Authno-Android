@@ -26,6 +26,7 @@ import {
 } from './extbkInstaller';
 import { installThmbkBytes, refreshInstalledThemes } from './themeLoader';
 import { emitInstall, newInstallId } from './installEvents';
+import { logError } from './ErrorLogger';
 import { isPro, subscribeEntitlement } from './entitlements';
 import { registerHook } from './sessionHooks';
 import {
@@ -40,6 +41,9 @@ const ExtensionContext = createContext({
   extensions: [],
   loading: true,
   hasExtensions: false,
+  // Non-null when discovery could not READ the store. Distinct from an empty
+  // `extensions`, which means there is genuinely nothing installed.
+  discoveryError: null,
   refresh: async () => {},
   getConfig: (_extId) => ({}),
   setConfig: (_extId, _patch) => {},
@@ -55,12 +59,25 @@ const ExtensionContext = createContext({
 export function ExtensionProvider({ children, onNavigate }) {
   const [extensions, setExtensions] = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [discoveryError, setDiscoveryError] = useState(null);
 
   // ── Core refresh — discover + activate ─────────────────────────────────────
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const found = await discoverExtensions();
+
+      // Discovery could not read the store — not "there is nothing here".
+      // Keep whatever is already on screen rather than replacing it with an
+      // empty list, because blanking the list is indistinguishable from the
+      // extensions having been uninstalled.
+      if (found.error) {
+        logError('ExtensionContext:discoveryFailed', found.error);
+        setDiscoveryError(found.error);
+        setLoading(false);
+        return;
+      }
+      setDiscoveryError(null);
 
       // Deactivate all running extensions before re-activating
       await deactivateAll();
@@ -194,6 +211,7 @@ export function ExtensionProvider({ children, onNavigate }) {
   const value = useMemo(() => ({
     extensions,
     loading,
+    discoveryError,
     hasExtensions: !loading && extensions.length > 0,
     refresh,
     getConfig,
@@ -203,7 +221,7 @@ export function ExtensionProvider({ children, onNavigate }) {
     uninstall,
     registerHook,
     navigate,
-  }), [extensions, loading, refresh, getConfig, setConfig, clearConfig, installExtbk, uninstall, navigate]);
+  }), [extensions, loading, discoveryError, refresh, getConfig, setConfig, clearConfig, installExtbk, uninstall, navigate]);
 
   return (
     <ExtensionContext.Provider value={value}>
