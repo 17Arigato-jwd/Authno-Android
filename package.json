@@ -217,5 +217,10 @@
         "role": "Viewer"
       }
     ]
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "^@capacitor/filesystem$": "<rootDir>/src/testMocks/capacitorFilesystem.js"
+    }
   }
 }

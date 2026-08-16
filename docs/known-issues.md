@@ -318,42 +318,45 @@ backstop, count the doors.
 
 ## Notes on things that look like issues and are not
 
-- **The JS suite fails a handful of tests roughly once in ten runs. Cause
-  found.** The failures are always in `src/utils/crossPlatformInstall.test.js`,
-  always the tests that call `discoverExtensions()`, and the symptom is that it
-  returns `[]` after an install that returned a manifest without throwing.
+- **The JS suite failing a handful of tests roughly once in ten runs. FIXED.**
+  Kept here because it took four attempts and the wrong theories cost the most
+  time.
 
-  The earlier note said nothing was logged from its own catch. That was the
-  problem, not evidence: the `catch` around `Filesystem.readdir` discarded the
-  error entirely. Instrumenting it and looping produced the message on the
-  first hit —
+  It was always `src/utils/crossPlatformInstall.test.js`, always the tests that
+  call `discoverExtensions()`, and the symptom was `[]` after an install that
+  returned a manifest without throwing. Earlier notes said nothing was logged
+  from its own catch. That was the problem rather than evidence: the `catch`
+  around `Filesystem.readdir` discarded the error. Instrumenting it produced
+  the real message on the first hit —
 
   > `This browser doesn't support IndexedDB`
 
-  — which is the **real** `@capacitor/filesystem` web build talking, not the
-  mock. The test registers its mock with `{ virtual: true }`, and that flag is
-  for modules with no real implementation. `@capacitor/filesystem` is genuinely
-  installed, so registering it as virtual leaves jest free to resolve the
-  dynamic `await import('@capacitor/filesystem')` inside `discoverExtensions`
-  to the real package instead, which then throws under jsdom because there is
-  no IndexedDB. It is load-sensitive rather than random: adding test files
-  changes how work is spread across workers, which is why the rate moved when
-  unrelated suites were added.
+  — which is the **real** `@capacitor/filesystem` talking, not the mock. Those
+  suites reach it through a *dynamic* `await import('@capacitor/filesystem')`,
+  and with the real package also resolvable, jest could satisfy that import
+  from the real path while the test's `jest.mock` factory sat under another.
+  Intermittently, because which happens depends on how files land across
+  workers — which is why adding unrelated suites moved the rate, and why the
+  file always passed 19/19 alone.
 
-  **What was fixed:** the swallow. `discoverExtensions` now distinguishes an
-  empty store from an unreadable one and reports the latter — see the entry
-  above. That was a product bug in its own right, and a worse one than the
-  flake: a storage backend that fails on a real device made every installed
-  extension silently disappear.
+  **The fix** is a `moduleNameMapper` entry in `package.json` pointing
+  `@capacitor/filesystem` at `src/testMocks/capacitorFilesystem.js`, so there
+  is exactly one resolved path however the module is reached. Tests with their
+  own factory still win; a test that forgets one now gets a loud "not mocked"
+  error instead of an IndexedDB message from an implementation it never meant
+  to touch. Twenty consecutive full runs green, from a baseline of about one
+  failure in six.
 
-  **What was not:** the mock itself. Dropping `{ virtual: true }` was tried and
-  made things markedly worse — the failure rate went from about 1 in 10 to 14
-  in 15, with different tests failing, because `require()` in the test and the
-  dynamic `import()` in the source then resolved to different module instances.
-  The change was reverted. The next attempt should probably move
-  `@capacitor/filesystem` to a `moduleNameMapper` entry with a real mock file,
-  so there is exactly one instance no matter how it is reached, rather than
-  adjusting the `jest.mock` flag again.
+  **What did not work**, so nobody repeats it: dropping `{ virtual: true }`
+  from the `jest.mock` call. That took the rate from roughly 1 in 10 to 14 in
+  15, with different tests failing, because `require()` in the test and the
+  dynamic `import()` in the source then resolved to different instances.
+
+  **What it was hiding** was worse than the flake, and is fixed separately:
+  `discoverExtensions` returned `[]` both for "nothing installed" and for
+  "could not look". A storage backend that fails on a real device — private
+  browsing, a quota wall, a permission refusal — made every installed
+  extension silently disappear. It now reports the difference.
 
 - **`console.debug` about `WidgetData` off-device.** Expected, and only ever as
   a caught error. If it returns as an uncaught page error, that is the
