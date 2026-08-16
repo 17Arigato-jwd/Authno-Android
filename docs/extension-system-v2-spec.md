@@ -317,6 +317,14 @@ not need to know.
 
 #### 4a.2 The measure floor
 
+> **[build finding]** At the default character width the fallback never fires:
+> above the 720 dp phone breakpoint, a 320 px panel always leaves more than 45
+> characters. The yielding logic is therefore a **large-text path**, not a
+> narrow-window one — it only engages for somebody who has turned their text
+> size up, which is precisely when squeezing the column would hurt most. Worth
+> knowing before anyone "simplifies" it away as dead code.
+
+
 **The editor's text column never drops below 45 characters.** Below that, line
 length stops being comfortable prose and the panel has made the app worse at its
 only job.
