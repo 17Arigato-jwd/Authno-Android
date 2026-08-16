@@ -186,7 +186,8 @@ Renamed and namespaced. v1's flat 16 had a raw plugin path
 | `storage.get/set/remove/keys` | — | namespaced per extension, already private |
 | `storage.getJSON/setJSON` | — | the parse/stringify everyone rewrote with the same swallow-the-error bug |
 | `library.list()` | `library:read:all` | metadata only — id, title, counts. **Not** chapter text |
-| `library.get(id)` | `library:read:*` | full book; `:current` restricts to the open one |
+| `library.get(id)` | `library:read:*` | `:current` restricts to the open one — an **argument** check, see §3.3 |
+| `library.getAny(id)` | `library:read:all` | any book, no scope check |
 | `library.create(book)` | `library:write` | |
 | `library.update(id, book)` | `library:write` | |
 | `library.export(id, format)` | `library:export` | `format`: `authbook \| txt \| md \| html \| docx \| epub \| pdf` |
@@ -203,6 +204,32 @@ Renamed and namespaced. v1's flat 16 had a raw plugin path
 `getSessions` returned whole books, so a word-count extension had to be handed
 every manuscript to count them. Splitting list from get means most extensions
 never need `library:read:all` at all.
+
+### 3.0a Two rules that are not "which method may you call" **[build finding]**
+
+Both surfaced while implementing `library.*`, and both live in the capability
+rather than the permission table.
+
+**`library:read:current` is a scope, not a method.** `library.get` is one
+function and whether a call is allowed depends on its *argument* — the open
+book yes, any other book only with `read:all`. A static method check cannot see
+that, so the check sits where the id is known. Two consequences worth naming:
+the scope follows the open book as it changes, so a grant does not pin to
+whichever book happened to be open at install; and **with no book open,
+`read:current` grants nothing at all**, because there is no "current" for it to
+refer to and defaulting to the first book would quietly widen the permission.
+
+**`library.list` returns an allowlist, not a redaction.** The projection names
+the fields that may cross rather than deleting the ones that may not, so a
+field added to a book elsewhere in the app does not silently start crossing
+because nobody remembered to strip it.
+
+Opt-in extras: `chapter.titles`, `chapter.synopsis`, `chapter.preview`. Titles
+and synopses carry plot, which is why a word-count widget does not get them by
+default. And `chapter.preview` is honestly a grant over *content*: it caps at
+160 characters, but a chapter shorter than that is fully visible, so a book of
+very short chapters can be read through previews alone. No preview scheme
+avoids that, and it is the reason the extra is opt-in rather than standard.
 
 ### 3.1 Removed from v1
 
