@@ -48,6 +48,8 @@
     "build": "cross-env CI=false react-scripts build",
     "test": "react-scripts test",
     "test:epk-crosscheck": "node scripts/epk-crosscheck.mjs",
+    "check:vendored": "node scripts/check-vendored.mjs",
+    "check:cli-build": "node scripts/check-cli-build.mjs",
     "eject": "react-scripts eject",
     "electron": "cross-env NODE_ENV=development electron .",
     "electron-build": "cross-env NODE_ENV=production electron .",

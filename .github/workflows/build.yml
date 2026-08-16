@@ -71,6 +71,18 @@ jobs:
       - name: EPK cross-implementation check
         run: npm run test:epk-crosscheck
 
+      # The CLI ships its src/ as-is and cannot import from the app, so it
+      # carries byte-identical copies. Vendoring without a guard is how a
+      # format ends up with two implementations that agree until they do not.
+      - name: Vendored copies match
+        run: npm run check:vendored
+
+      # Proves the command is WIRED right — .js into the RS-protected core, an
+      # already-compressed image stored rather than deflated, a v2 manifest
+      # producing EPK. One-line mistakes a format test cannot see.
+      - name: extbk build produces packages the app reads
+        run: npm run check:cli-build
+
       # The writing day on the two days a year that are 23 and 25 hours long.
       # Pure node, no browser.
       - name: The writing day in every timezone
