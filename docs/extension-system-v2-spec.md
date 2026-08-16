@@ -141,6 +141,21 @@ user answers or does not.
 | `network` | **the browser**, via a host-generated CSP in the frame document | no — measured: meta removal, policy injection, XHR and nested frames all blocked |
 | `background` | the host scheduler; the extension has no timer of its own | no |
 
+**Both enforcement points are built from the same `PermissionSet`.** Obvious
+in a table and easy to get wrong in code: generate the policy from the
+*manifest* while `dispatch` checks the *grants*, and a refused `network`
+permission still reaches the network — because the CSP is the thing that
+actually stops that one. The frame's policy is read off the permission set, so
+a revoke changes both at once.
+
+**The policy is validated, not just escaped, before it enters the document.**
+A CSP is a closed vocabulary — directive names, schemes, origins, a few quoted
+keywords — and nothing legitimate in one needs `<`, `>`, `&` or a backtick.
+Escaping the quote is enough to keep a hostile string inside the attribute, but
+it makes the document's safety rest on one substitution being right forever,
+and a policy containing markup at all means something upstream is already
+wrong. It is refused.
+
 The CSP is built **`default-src 'none'` first, then grants** — never by naming
 `connect-src`. Measured: with `connect-src 'none'` an `<img>` beacon still
 reached the server; with `default-src 'none'` it did not.
