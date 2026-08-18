@@ -73,7 +73,7 @@ empty reason fails.
 | `library:read:all` | `library.list`, `library.get` on any | "Read all your books" | **[1.1.20]** |
 | `library:write` | `library.create`, `library.update` | "Add and change books" | **[1.1.20]** |
 | `library:export` | `library.export` | "Turn your books into files" | **[1.1.20]** |
-| `network` | outbound to `hosts` (CSP) | "Connect to dropbox.com, api.dropbox.com" | **[1.1.20]** |
+| `network` | outbound to `hosts` (CSP), and `network.requestHost` | "Connect to dropbox.com, api.dropbox.com" | **[1.1.20]** |
 | `browser` | `browser.open`, `auth.*` | "Open pages in your browser" | **[1.1.20]** |
 | `activity` | `activity.onWriting`, `activity.getRate` | "See when you are writing" | **[1.1.20]** |
 | `notifications` | `notify.post` | "Send you notifications" | **[later]** |
@@ -131,6 +131,46 @@ extension is disabled mid-prompt, `title` ≤ 60 chars and `message` ≤ 240, an
 dialog is labelled with the extension's name and colour so its origin is never
 ambiguous. No permission, because a prompt cannot read or send anything — the
 user answers or does not.
+
+### 2.2c Runtime hosts, for a server only the user knows **[build finding]**
+
+Found by porting Cloud Backup, which was simply **not expressible** in v2:
+Google Drive and Dropbox have fixed endpoints and declare fine, but WebDAV is a
+server the user types in, and no manifest can know it in advance. Every escape
+was correctly refused — `https://*` is not a grant, it is the absence of one —
+so the hole was in the model rather than the validator.
+
+The answer keeps the property the design rests on, which is that the CSP lists
+**real origins** rather than a promise about future ones: **the address the
+user types is the grant.**
+
+```jsonc
+"network": {
+  "reason": "To reach your storage.",
+  "hosts": ["https://api.dropboxapi.com"],        // may be empty if userHosts is set
+  "userHosts": { "reason": "To reach the server you name.", "max": 2 }
+}
+```
+
+- `userHosts` needs its **own reason**: "we will talk to Dropbox" and "we will
+  talk to a machine you name" are different questions and deserve separate
+  answers.
+- `max` is capped at **8**. "The user typed it" stops meaning consent at the
+  fiftieth prompt, and an extension needing a hundred hosts is describing a
+  proxy rather than a backup destination.
+- The same host rules apply at runtime as at build time. The point is a real
+  origin, not a later chance to smuggle in the wildcard the manifest was
+  refused.
+- Runtime grants persist, are listed separately in the Extensions tab, and are
+  revocable there like any other.
+
+**And the cost, stated rather than hidden: a new host does not reach the
+running frame.** The policy lives in the frame's document and a document cannot
+be re-policied after it loads, so `network.requestHost` resolves with
+`needsRestart: true` and the app restarts the extension. Resolving `true` and
+leaving the extension to wonder why its fetch still fails would be the unkind
+version. That is a real price for putting the CSP in the document, and it is
+still the right place: a policy the frame cannot edit beats one it could.
 
 ### 2.3 Enforcement — where each is actually enforced
 

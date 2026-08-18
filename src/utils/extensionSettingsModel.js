@@ -50,6 +50,7 @@ export function buildExtensionsTab({
   grantsFor = () => [],
   hostFor = () => null,
   valuesFor = () => ({}),
+  userHostsFor = () => [],
 } = {}) {
   const installed = Array.isArray(extensions) ? extensions.filter(Boolean) : [];
 
@@ -58,7 +59,7 @@ export function buildExtensionsTab({
   if (installed.length === 0) return { exists: false, rows: [] };
 
   const rows = installed
-    .map((manifest) => buildRow({ manifest, grantsFor, hostFor, valuesFor }))
+    .map((manifest) => buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
@@ -69,7 +70,7 @@ export function buildExtensionsTab({
   };
 }
 
-function buildRow({ manifest, grantsFor, hostFor, valuesFor }) {
+function buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor }) {
   const extId = String(manifest.id);
   const granted = new Set(grantsFor(extId) ?? []);
   const host = hostFor(extId);
@@ -84,7 +85,7 @@ function buildRow({ manifest, grantsFor, hostFor, valuesFor }) {
   // disabled extension does not sit in the list looking active.
   const dimmed = blocked !== null;
 
-  const permissions = permissionRows(manifest, granted);
+  const permissions = permissionRows(manifest, granted, userHostsFor(extId) ?? []);
   const warnings = warningRows({ manifest, host, permissions, blocked });
 
   const schema = manifest.settings?.schema;
@@ -127,7 +128,7 @@ function buildRow({ manifest, grantsFor, hostFor, valuesFor }) {
  * Showing only the granted ones would make the screen a list of what was said
  * yes to, when what somebody wants is the whole list with its answers.
  */
-function permissionRows(manifest, granted) {
+function permissionRows(manifest, granted, userHosts) {
   const declared = manifest.permissions ?? {};
   return Object.keys(declared)
     .filter((name) => PERMISSIONS[name])
@@ -138,6 +139,11 @@ function permissionRows(manifest, granted) {
       reason: String(declared[name]?.reason ?? ''),
       granted: granted.has(name),
       hosts: name === 'network' ? (declared[name]?.hosts ?? []) : undefined,
+      // Servers the user named at runtime, listed separately and each
+      // revocable. A grant you cannot see is a grant you cannot take back,
+      // and these are the ones the manifest never mentioned.
+      userHosts: name === 'network' ? [...userHosts] : undefined,
+      canAddHost: name === 'network' ? !!declared[name]?.userHosts : undefined,
       // A deferred permission can be declared but does nothing yet, and a
       // toggle that changes nothing is worse than one that is not offered.
       inert: PERMISSIONS[name].ships === 'later',

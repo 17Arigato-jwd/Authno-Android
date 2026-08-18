@@ -374,3 +374,133 @@ describe('install and update prompts', () => {
     expect(plan.errors[0]).toMatch(/needs a reason/);
   });
 });
+
+describe('runtime host grants, for a server only the user knows', () => {
+  // A WebDAV client cannot name its server in advance, and no wildcard is an
+  // honest substitute: `https://*` is not a grant, it is the absence of one.
+  // So the address the user types IS the grant.
+  const WEBDAV = {
+    apiVersion: 2,
+    id: 'cloud-backup',
+    permissions: {
+      network: {
+        reason: 'To reach your storage.',
+        hosts: ['https://api.dropboxapi.com'],
+        userHosts: { reason: 'To reach the server you name.', max: 2 },
+      },
+    },
+  };
+
+  test('a manifest may declare userHosts alongside fixed hosts', () => {
+    expect(validatePermissions(WEBDAV.permissions).ok).toBe(true);
+  });
+
+  test('userHosts alone is enough — no fixed hosts required', () => {
+    // The WebDAV-only case. Previously impossible to express at all.
+    const r = validatePermissions({
+      network: { reason: 'To reach your server.', userHosts: { reason: 'The one you name.' } },
+    });
+    expect({ ok: r.ok, errors: r.errors }).toEqual({ ok: true, errors: [] });
+  });
+
+  test('neither fixed hosts nor userHosts is still refused', () => {
+    const r = validatePermissions({ network: { reason: 'To reach the internet.' } });
+    expect(r.ok).toBe(false);
+    expect(r.errors[0]).toMatch(/an unbounded grant is not a grant/);
+  });
+
+  test('userHosts needs its own reason — it is a separate question', () => {
+    const r = validatePermissions({
+      network: { reason: 'To sync.', hosts: ['https://a.com'], userHosts: { max: 1 } },
+    });
+    expect(r.errors[0]).toMatch(/needs its own reason/);
+  });
+
+  test('the number of runtime hosts is bounded', () => {
+    // "The user typed it" stops being consent at the fiftieth prompt.
+    const bad = validatePermissions({
+      network: { reason: 'r', hosts: ['https://a.com'], userHosts: { reason: 'r', max: 99 } },
+    });
+    expect(bad.errors[0]).toMatch(/from 1 to 8/);
+  });
+
+  test('a granted host joins the policy', () => {
+    const p = permissionSetFor(WEBDAV, ['network']);
+    expect(p.csp()).not.toContain('nas.example.com');
+    expect(p.grantHost('https://nas.example.com')).toMatchObject({ ok: true, changed: true });
+    expect(p.csp()).toContain('https://nas.example.com');
+    expect(p.csp()).toContain('https://api.dropboxapi.com');
+  });
+
+  test('the same wildcard rules apply at runtime as at build time', () => {
+    // The point of runtime grants is a REAL origin, not a later chance to
+    // smuggle in the wildcard the manifest was refused.
+    const p = permissionSetFor(WEBDAV, ['network']);
+    for (const bad of ['https://*', '*', 'https://*.com', 'http://nas.local', 'https://a.com/dav']) {
+      expect({ bad, ok: p.grantHost(bad).ok }).toEqual({ bad, ok: false });
+    }
+    expect(p.userHosts()).toEqual([]);
+  });
+
+  test('granting the same host twice reports no change', () => {
+    // The caller uses this: a policy that did not change must not cost the
+    // extension a restart.
+    const p = permissionSetFor(WEBDAV, ['network']);
+    expect(p.grantHost('https://nas.example.com').changed).toBe(true);
+    expect(p.grantHost('https://nas.example.com').changed).toBe(false);
+    expect(p.userHosts()).toEqual(['https://nas.example.com']);
+  });
+
+  test('the declared maximum is enforced', () => {
+    const p = permissionSetFor(WEBDAV, ['network']);
+    expect(p.grantHost('https://one.example.com').ok).toBe(true);
+    expect(p.grantHost('https://two.example.com').ok).toBe(true);
+    expect(p.grantHost('https://three.example.com')).toMatchObject({ reason: 'too-many-hosts', max: 2 });
+    expect(p.canRequestHost()).toBe(false);
+  });
+
+  test('an extension that never declared userHosts cannot grant one', () => {
+    const plain = { permissions: { network: { reason: 'r', hosts: ['https://a.com'] } } };
+    const p = permissionSetFor(plain, ['network']);
+    expect(p.canRequestHost()).toBe(false);
+    expect(p.grantHost('https://nas.example.com').ok).toBe(false);
+  });
+
+  test('refusing network refuses every host, runtime ones included', () => {
+    const p = permissionSetFor(WEBDAV, [], ['https://nas.example.com']);
+    expect(p.effectiveHosts()).toEqual([]);
+    expect(p.csp()).toContain("connect-src 'none'");
+    expect(p.grantHost('https://other.example.com')).toMatchObject({ reason: 'no-network-permission' });
+  });
+
+  test('a runtime host is revocable like any other grant', () => {
+    const p = permissionSetFor(WEBDAV, ['network'], ['https://nas.example.com']);
+    expect(p.csp()).toContain('nas.example.com');
+    expect(p.revokeHost('https://nas.example.com')).toBe(true);
+    expect(p.csp()).not.toContain('nas.example.com');
+    expect(p.revokeHost('https://nas.example.com')).toBe(false);
+  });
+
+  test('runtime hosts persist, so a server is named once and not every launch', () => {
+    const p = permissionSetFor(WEBDAV, ['network']);
+    p.grantHost('https://nas.example.com');
+    const saved = p.toJSON();
+    expect(saved.userHosts).toEqual(['https://nas.example.com']);
+
+    const restored = permissionSetFor(WEBDAV, saved.granted, saved.userHosts);
+    expect(restored.csp()).toContain('https://nas.example.com');
+  });
+
+  test('stored hosts beyond the declared maximum are dropped on load', () => {
+    // An update that lowered max, or a tampered store.
+    const p = permissionSetFor(WEBDAV, ['network'],
+      ['https://a.example.com', 'https://b.example.com', 'https://c.example.com']);
+    expect(p.userHosts()).toHaveLength(2);
+  });
+
+  test('a junk host in the store never reaches the policy', () => {
+    const p = permissionSetFor(WEBDAV, ['network'], ['https://*', 'https://ok.example.com']);
+    expect(p.userHosts()).toEqual(['https://ok.example.com']);
+    expect(p.csp()).not.toContain('*');
+  });
+});

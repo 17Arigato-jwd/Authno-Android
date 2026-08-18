@@ -24,7 +24,7 @@
  */
 
 import {
-  permissionSetFor, validatePermissions, promptPlan,
+  permissionSetFor, validatePermissions, promptPlan, hostProblem,
 } from './extensionPermissionsV2.js';
 import { createDispatch, freeCapabilities, activityCapabilities } from './extensionDispatchV2.js';
 import { libraryCapabilities } from './extensionLibraryV2.js';
@@ -215,12 +215,13 @@ function escapeAttr(v) {
  * @param {Function} [o.onDenied]
  */
 export function createExtensionHost({
-  manifest, granted = [], handlers, meter = null, push = () => {}, onDenied = null,
+  manifest, granted = [], userHosts = [], handlers,
+  meter = null, push = () => {}, onDenied = null,
 }) {
   const check = validateManifestV2(manifest);
   if (!check.ok) throw new ManifestError(check.errors);
 
-  const permissions = permissionSetFor(manifest, granted);
+  const permissions = permissionSetFor(manifest, granted, userHosts);
 
   const capabilities = {
     ...freeCapabilities({
@@ -231,6 +232,9 @@ export function createExtensionHost({
     }),
     ...libraryCapabilities(handlers.library),
     ...(handlers.browser ? browserCapabilities(handlers.browser) : {}),
+    ...(handlers.network
+      ? networkCapabilities({ extId: manifest.id, permissions, ...handlers.network })
+      : {}),
   };
 
   let activity = null;
@@ -267,6 +271,55 @@ export function createExtensionHost({
     dispose() {
       dispatch.dispose();
       if (activity) activity.__unsubscribe();
+    },
+  };
+}
+
+/**
+ * `network.requestHost` — the extension asks, the user answers, the host joins
+ * the policy.
+ *
+ * The awkward part is honest rather than hidden: **the policy lives in the
+ * frame's document**, and a document cannot be re-policied once it has loaded.
+ * So a newly granted host does not reach the running frame — the extension has
+ * to be restarted for it to take effect, and the result says so rather than
+ * resolving true and leaving the extension wondering why its fetch still fails.
+ *
+ * That is a real cost of putting the CSP in the document, and it is still the
+ * right place for it: a policy the frame cannot edit beats one it could.
+ *
+ * @param {Function} ask     (extId, url) => Promise<boolean>  the user's answer
+ * @param {Function} persist (extId, hosts) => void
+ * @param {Function} [onGranted] (extId) => void — the app may restart the frame
+ */
+export function networkCapabilities({ extId, permissions, ask, persist, onGranted = null }) {
+  return {
+    'network.requestHost': async ([url]) => {
+      const wanted = String(url ?? '');
+
+      if (!permissions.canRequestHost()) {
+        const why = permissions.has('network') ? 'too-many-hosts' : 'no-network-permission';
+        return { ok: false, reason: why };
+      }
+      // Checked before the user is asked, so nobody is prompted to approve
+      // something that was never going to be accepted.
+      const problem = hostProblem(wanted);
+      if (problem) return { ok: false, reason: 'bad-host', detail: problem };
+
+      if (permissions.userHosts().includes(wanted)) {
+        return { ok: true, host: wanted, alreadyGranted: true, needsRestart: false };
+      }
+
+      const agreed = await ask(extId, wanted);
+      if (!agreed) return { ok: false, reason: 'declined' };
+
+      const result = permissions.grantHost(wanted);
+      if (!result.ok) return result;
+
+      persist(extId, permissions.userHosts());
+      if (onGranted) { try { onGranted(extId); } catch { /* the app's problem */ } }
+
+      return { ok: true, host: wanted, alreadyGranted: false, needsRestart: result.changed };
     },
   };
 }

@@ -311,3 +311,52 @@ describe('the copy is reviewable in one place', () => {
     }
   });
 });
+
+describe('runtime hosts on the settings screen', () => {
+  const WEBDAV = {
+    ...CLOUD_BACKUP,
+    permissions: {
+      network: {
+        reason: 'To reach your storage.',
+        hosts: ['https://api.dropboxapi.com'],
+        userHosts: { reason: 'To reach the server you name.', max: 2 },
+      },
+    },
+  };
+
+  test('a server the user named is listed separately from the declared ones', () => {
+    // A grant you cannot see is a grant you cannot take back, and this is the
+    // one the manifest never mentioned.
+    const [row] = buildExtensionsTab({
+      extensions: [WEBDAV],
+      grantsFor: () => ['network'],
+      userHostsFor: () => ['https://nas.example.com'],
+    }).rows;
+
+    const net = row.permissions.find((p) => p.permission === 'network');
+    expect(net.hosts).toEqual(['https://api.dropboxapi.com']);
+    expect(net.userHosts).toEqual(['https://nas.example.com']);
+  });
+
+  test('the screen knows whether this extension may ask for more', () => {
+    const withUser = buildExtensionsTab({ extensions: [WEBDAV] }).rows[0];
+    const without = buildExtensionsTab({ extensions: [CLOUD_BACKUP] }).rows[0];
+    expect(withUser.permissions.find((p) => p.permission === 'network').canAddHost).toBe(true);
+    expect(without.permissions.find((p) => p.permission === 'network').canAddHost).toBe(false);
+  });
+
+  test('runtime hosts appear only against network', () => {
+    const [row] = buildExtensionsTab({
+      extensions: [WEBDAV], userHostsFor: () => ['https://nas.example.com'],
+    }).rows;
+    for (const p of row.permissions.filter((x) => x.permission !== 'network')) {
+      expect({ permission: p.permission, userHosts: p.userHosts })
+        .toEqual({ permission: p.permission, userHosts: undefined });
+    }
+  });
+
+  test('none named yet is an empty list, not absent', () => {
+    const [row] = buildExtensionsTab({ extensions: [WEBDAV] }).rows;
+    expect(row.permissions.find((p) => p.permission === 'network').userHosts).toEqual([]);
+  });
+});

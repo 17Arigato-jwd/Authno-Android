@@ -1,0 +1,86 @@
+{
+  "apiVersion": 2,
+  "id": "cloud-backup",
+  "name": "Cloud Backup",
+  "version": "2.0.0",
+  "description": "Keeps a copy of your books on a service you already use.",
+  "author": "Aurora Studios",
+  "icon": "Cloud",
+  "minAppVersion": "1.1.20-beta.0",
+
+  "permissions": {
+    "library:read:all": {
+      "reason": "To copy every book, not only the one you have open."
+    },
+    "library:write": {
+      "reason": "To put a book back when you restore one."
+    },
+    "library:export": {
+      "reason": "To turn a book into a file before sending it."
+    },
+    "browser": {
+      "reason": "To sign you in to your provider."
+    },
+    "network": {
+      "reason": "To reach Google Drive, Dropbox, or a server you name.",
+      "hosts": [
+        "https://www.googleapis.com",
+        "https://api.dropboxapi.com",
+        "https://content.dropboxapi.com",
+        "https://www.dropbox.com"
+      ],
+      "userHosts": {
+        "reason": "To reach the WebDAV server you type in.",
+        "max": 2
+      }
+    }
+  },
+
+  "pages": {
+    "settings": { "title": "Cloud Backup", "type": "ui-file", "file": "Settings.js" },
+    "conflict": { "title": "Sync Conflict", "type": "ui-file", "file": "ConflictResolution.js" },
+    "cloud-files": { "title": "Cloud Files", "type": "ui-file", "file": "CloudFilePicker.js" }
+  },
+
+  "contributes": {
+    "settings": [
+      { "id": "cloud-backup-settings", "label": "Cloud Backup", "icon": "Cloud", "page": "settings" }
+    ],
+    "homescreen": [
+      { "id": "sync-status-tile", "label": "Cloud Backup", "page": "settings" }
+    ],
+    "bookActions": [
+      { "id": "backup-now", "label": "Back up now", "icon": "Upload", "command": "sync.now",
+        "when": "book.isSaved && ext.hasPermission('network')" },
+      { "id": "browse-cloud", "label": "Cloud files", "icon": "Cloud", "page": "cloud-files",
+        "when": "ext.hasPermission('network')" },
+      { "id": "resolve-conflict", "label": "Resolve conflict", "icon": "Upload", "page": "conflict",
+        "when": "ext.settings.hasConflict == true" }
+    ]
+  },
+
+  "commands": ["sync.now", "auth.connect", "auth.disconnect", "sync.status"],
+
+  "settings": {
+    "schema": [
+      { "key": "provider", "type": "select", "label": "Where to keep copies",
+        "options": ["Google Drive", "Dropbox", "WebDAV"], "default": "Google Drive" },
+      { "key": "account", "type": "action", "label": "Connect account", "command": "auth.connect" },
+      { "key": "status", "type": "readout", "label": "Last copy", "source": "sync.status" },
+      { "key": "auto", "type": "toggle", "label": "Copy automatically", "default": true },
+      { "key": "interval", "type": "number", "label": "Check every", "suffix": "minutes",
+        "min": 5, "max": 1440, "default": 30 },
+      { "key": "wifiOnly", "type": "toggle", "label": "Only on Wi-Fi", "default": true },
+      { "type": "section", "label": "Advanced", "collapsed": true, "children": [
+        { "key": "folder", "type": "text", "label": "Folder", "placeholder": "/AuthNo" },
+        { "key": "retries", "type": "number", "label": "Retries before giving up",
+          "min": 0, "max": 10, "default": 3 },
+        { "key": "conflictPolicy", "type": "select", "label": "When both copies changed",
+          "options": ["Ask me", "Keep the one on this device", "Keep the stored one"],
+          "default": "Ask me" }
+      ] }
+    ]
+  },
+
+  "tier": "premium"
+}

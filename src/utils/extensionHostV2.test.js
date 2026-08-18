@@ -366,3 +366,111 @@ describe('browser capabilities', () => {
     await expect(c['auth.requestDriveToken']([{}])).resolves.toEqual({ token: 'd' });
   });
 });
+
+describe('network.requestHost — the user names the server', () => {
+  const WEBDAV = {
+    apiVersion: 2, id: 'cloud-backup', name: 'Cloud Backup', version: '2.0.0',
+    permissions: {
+      network: {
+        reason: 'To reach your storage.',
+        hosts: ['https://api.dropboxapi.com'],
+        userHosts: { reason: 'To reach the server you name.', max: 2 },
+      },
+    },
+  };
+
+  function withNetwork({ granted = ['network'], answer = true, userHosts = [] } = {}) {
+    const asked = [];
+    const saved = [];
+    const restarts = [];
+    const host = createExtensionHost({
+      manifest: WEBDAV, granted, userHosts,
+      handlers: {
+        ...handlers(),
+        network: {
+          ask: async (extId, url) => { asked.push([extId, url]); return answer; },
+          persist: (extId, hosts) => saved.push([extId, [...hosts]]),
+          onGranted: (extId) => restarts.push(extId),
+        },
+      },
+    });
+    return { host, asked, saved, restarts };
+  }
+
+  test('the user is asked, and agreeing puts the host in the policy', async () => {
+    const { host, asked } = withNetwork();
+    const r = await host.dispatch('network.requestHost', ['https://nas.example.com']);
+    expect(r).toMatchObject({ ok: true, host: 'https://nas.example.com' });
+    expect(asked).toEqual([['cloud-backup', 'https://nas.example.com']]);
+    expect(host.csp()).toContain('https://nas.example.com');
+  });
+
+  test('declining leaves the policy alone', async () => {
+    const { host } = withNetwork({ answer: false });
+    const r = await host.dispatch('network.requestHost', ['https://nas.example.com']);
+    expect(r).toMatchObject({ ok: false, reason: 'declined' });
+    expect(host.csp()).not.toContain('nas.example.com');
+  });
+
+  test('it says the extension must restart, rather than pretending it took effect', async () => {
+    // The policy lives in the frame's document and a document cannot be
+    // re-policied after it loads. Resolving true and leaving the extension to
+    // wonder why its fetch still fails would be the unkind version of this.
+    const { host, restarts } = withNetwork();
+    const r = await host.dispatch('network.requestHost', ['https://nas.example.com']);
+    expect(r.needsRestart).toBe(true);
+    expect(restarts).toEqual(['cloud-backup']);
+  });
+
+  test('a host already granted needs no restart and no second prompt', async () => {
+    const { host, asked } = withNetwork({ userHosts: ['https://nas.example.com'] });
+    const r = await host.dispatch('network.requestHost', ['https://nas.example.com']);
+    expect(r).toMatchObject({ ok: true, alreadyGranted: true, needsRestart: false });
+    expect(asked).toEqual([]);
+  });
+
+  test('the grant is persisted, so the server is named once', async () => {
+    const { host, saved } = withNetwork();
+    await host.dispatch('network.requestHost', ['https://nas.example.com']);
+    expect(saved).toEqual([['cloud-backup', ['https://nas.example.com']]]);
+  });
+
+  test('a bad host is refused BEFORE the user is asked', async () => {
+    // Nobody should be prompted to approve something that was never going to
+    // be accepted.
+    const { host, asked } = withNetwork();
+    for (const bad of ['https://*', 'http://nas.local', 'https://a.com/dav', '']) {
+      const r = await host.dispatch('network.requestHost', [bad]);
+      expect({ bad, ok: r.ok }).toEqual({ bad, ok: false });
+    }
+    expect(asked).toEqual([]);
+  });
+
+  test('without the network permission the method is denied by dispatch', async () => {
+    const { host, asked } = withNetwork({ granted: [] });
+    await expect(host.dispatch('network.requestHost', ['https://nas.example.com']))
+      .rejects.toMatchObject({ code: 'permission-denied' });
+    expect(asked).toEqual([]);
+  });
+
+  test('the declared maximum is enforced through dispatch too', async () => {
+    const { host } = withNetwork();
+    await host.dispatch('network.requestHost', ['https://one.example.com']);
+    await host.dispatch('network.requestHost', ['https://two.example.com']);
+    const r = await host.dispatch('network.requestHost', ['https://three.example.com']);
+    expect(r).toMatchObject({ ok: false, reason: 'too-many-hosts' });
+  });
+
+  test('an extension that never declared userHosts cannot ask', async () => {
+    const plain = {
+      apiVersion: 2, id: 'plain', name: 'Plain', version: '1.0.0',
+      permissions: { network: { reason: 'r', hosts: ['https://a.example.com'] } },
+    };
+    const host = createExtensionHost({
+      manifest: plain, granted: ['network'],
+      handlers: { ...handlers(), network: { ask: async () => true, persist: () => {} } },
+    });
+    const r = await host.dispatch('network.requestHost', ['https://nas.example.com']);
+    expect(r).toMatchObject({ ok: false, reason: 'too-many-hosts' });
+  });
+});

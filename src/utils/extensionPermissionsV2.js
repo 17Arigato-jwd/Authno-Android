@@ -57,7 +57,9 @@ export const PERMISSIONS = {
   },
   network: {
     ships: '1.1.20',
-    methods: [],                 // enforced by the browser, not by dispatch
+    // `network.requestHost` is the one gated method here; the rest of this
+    // permission is enforced by the browser rather than by dispatch.
+    methods: ['network.requestHost'],
     prompt: 'Connect to the internet',
     needsHosts: true,
   },
@@ -128,6 +130,15 @@ export function impliedBy(name, seen = new Set()) {
 
 export const MAX_REASON = 120;
 
+/**
+ * How many servers one extension may be granted at runtime.
+ *
+ * Bounded because "the user typed it" stops being meaningful consent at the
+ * fiftieth prompt, and an extension that needs a hundred hosts is describing a
+ * proxy rather than a backup destination.
+ */
+export const MAX_USER_HOSTS = 8;
+
 // ─── Manifest validation (§2.1) ──────────────────────────────────────────────
 
 /**
@@ -178,9 +189,32 @@ export function validatePermissions(permissions) {
 
     if (def.needsHosts) {
       const hosts = decl.hosts;
-      if (!Array.isArray(hosts) || hosts.length === 0) {
-        errors.push('"network" needs a hosts array — an unbounded grant is not a grant');
-      } else {
+      const wantsUserHosts = decl.userHosts !== undefined;
+
+      if (wantsUserHosts) {
+        const u = decl.userHosts;
+        if (!u || typeof u !== 'object' || Array.isArray(u)) {
+          errors.push('"network".userHosts must be an object');
+        } else {
+          if (typeof u.reason !== 'string' || u.reason.trim() === '') {
+            errors.push('"network".userHosts needs its own reason — it is a separate question');
+          } else if (u.reason.length > MAX_REASON) {
+            errors.push(`"network".userHosts reason is ${u.reason.length} characters; the limit is ${MAX_REASON}`);
+          }
+          const max = u.max ?? 1;
+          if (!Number.isInteger(max) || max < 1 || max > MAX_USER_HOSTS) {
+            errors.push(`"network".userHosts.max must be a whole number from 1 to ${MAX_USER_HOSTS}`);
+          }
+        }
+      }
+
+      // An extension may declare no fixed hosts at all IF it asks for
+      // user-supplied ones — a WebDAV client genuinely cannot know the server
+      // in advance. What it may never do is ask for neither and expect the
+      // network anyway.
+      if ((!Array.isArray(hosts) || hosts.length === 0) && !wantsUserHosts) {
+        errors.push('"network" needs a hosts array, or userHosts — an unbounded grant is not a grant');
+      } else if (Array.isArray(hosts)) {
         for (const host of hosts) {
           const problem = hostProblem(host);
           if (problem) errors.push(`"network" host ${JSON.stringify(host)}: ${problem}`);
@@ -297,10 +331,22 @@ export class UnknownMethod extends Error {
  * tab can only write if somebody counted.
  */
 export class PermissionSet {
-  constructor(granted = [], { requested = [], hosts = [] } = {}) {
+  constructor(granted = [], { requested = [], hosts = [], userHosts = [], maxUserHosts = 0 } = {}) {
     this.granted = new Set(granted);
     this.requested = new Set(requested);
     this.hosts = hosts.filter((h) => !hostProblem(h));
+    /**
+     * Servers the user named at runtime.
+     *
+     * A WebDAV client cannot know its server in advance, and no wildcard is an
+     * honest substitute — `https://*` is not a grant, it is the absence of one.
+     * So the address the user types IS the grant: they are told which host is
+     * about to be reachable, they agree, and it joins the policy. That keeps
+     * the property the whole design rests on, which is that the CSP lists real
+     * origins rather than a promise about future ones.
+     */
+    this.userGranted = [...new Set(userHosts.filter((h) => !hostProblem(h)))].slice(0, maxUserHosts);
+    this.maxUserHosts = maxUserHosts;
     this.denials = new Map();   // permission → { count, methods:Set, firstAt, lastAt }
   }
 
@@ -387,9 +433,41 @@ export class PermissionSet {
       .sort((a, b) => b.count - a.count);
   }
 
-  /** Hosts to put in the CSP: declared AND granted. */
+  /** Hosts to put in the CSP: declared and granted, plus any the user named. */
   effectiveHosts() {
-    return this.has('network') ? this.hosts : [];
+    if (!this.has('network')) return [];
+    return [...new Set([...this.hosts, ...this.userGranted])];
+  }
+
+  /** Just the runtime ones, for the settings screen to list and revoke. */
+  userHosts() { return [...this.userGranted]; }
+
+  canRequestHost() { return this.has('network') && this.userGranted.length < this.maxUserHosts; }
+
+  /**
+   * Record a host the user agreed to.
+   *
+   * Returns { ok, host, changed }. `changed` is false when the host was
+   * already granted, which matters to the caller: see §restart below — a
+   * policy that did not change must not cost the extension a restart.
+   */
+  grantHost(url) {
+    if (!this.has('network')) return { ok: false, reason: 'no-network-permission' };
+    const problem = hostProblem(url);
+    if (problem) return { ok: false, reason: 'bad-host', detail: problem };
+    if (this.userGranted.includes(url)) return { ok: true, host: url, changed: false };
+    if (this.userGranted.length >= this.maxUserHosts) {
+      return { ok: false, reason: 'too-many-hosts', max: this.maxUserHosts };
+    }
+    this.userGranted.push(url);
+    return { ok: true, host: url, changed: true };
+  }
+
+  revokeHost(url) {
+    const i = this.userGranted.indexOf(url);
+    if (i < 0) return false;
+    this.userGranted.splice(i, 1);
+    return true;
   }
 
   /** Everything in force, implications expanded — for the settings screen. */
@@ -402,7 +480,9 @@ export class PermissionSet {
   csp() { return buildCsp(this.effectiveHosts()); }
 
   toJSON() {
-    return { granted: [...this.granted].sort(), hosts: this.hosts };
+    // userHosts is persisted: a server the user named once should not have to
+    // be named again on every launch.
+    return { granted: [...this.granted].sort(), hosts: this.hosts, userHosts: [...this.userGranted] };
   }
 }
 
@@ -447,12 +527,17 @@ export function promptPlan(manifestPermissions, previouslyGranted = []) {
  * that quietly stops declaring `library:read:all` also stops being able to use
  * it — the declaration is the thing the user agreed to.
  */
-export function permissionSetFor(manifest, grantedNames = []) {
+export function permissionSetFor(manifest, grantedNames = [], userHosts = []) {
   const permissions = manifest?.permissions ?? {};
   const { requested } = validatePermissions(permissions);
   const honoured = grantedNames.filter((g) => requested.includes(g));
+  const declaredMax = permissions?.network?.userHosts
+    ? Math.min(MAX_USER_HOSTS, permissions.network.userHosts.max ?? 1)
+    : 0;
   return new PermissionSet(honoured, {
     requested,
     hosts: declaredHosts(permissions),
+    userHosts,
+    maxUserHosts: declaredMax,
   });
 }
