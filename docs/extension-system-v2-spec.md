@@ -692,6 +692,39 @@ permissions → activate() → running ⇄ hooks/commands → deactivate() → u
 Update: if `apiVersion` or a permission set changed, re-prompt for the delta
 only. Storage survives; grants for unchanged permissions survive.
 
+### 9.1 Three steps that are only correct where they are **[build finding]**
+
+Every piece of this lifecycle already existed separately. What joining them up
+adds is **order**, and three of the steps are load-bearing rather than tidy:
+
+**Verify before writing.** A package is read, repaired and manifest-checked
+entirely in memory; nothing reaches disk until it has passed. Writing first and
+validating after leaves files behind from a refusal, and the next scan finds
+them. This is also where an unsigned channel package is refused (§7.2) —
+"later" would be after the bytes are already installed.
+
+**Onboarding before permissions.** Somebody deciding whether an extension may
+read every book should have been told what it does first. Prompting before
+explaining is how a permission screen becomes a thing to tap through. Skipping
+onboarding is allowed and is not a refusal.
+
+**Grants are destroyed on uninstall**, and destroyed even when deleting the
+files fails. Otherwise reinstalling the same id silently inherits every
+permission a previous version was given — and the id is chosen by the author,
+not by us. That is the failure that would otherwise be skipped, because it sits
+behind the step most likely to fail.
+
+Two rules run through all of it. **A refused permission is never fatal**: the
+extension installs, activates and runs inert, because refusing to install
+something over one answer turns a choice into an ultimatum. And **an extension
+that fails to start is still installed**, since refusing the whole install
+leaves nothing in settings to look at, which is exactly where the reason is.
+
+One smaller guard worth naming: the answer coming back from the permission
+dialog is filtered against what was actually asked, so a buggy or hostile
+prompt implementation cannot widen the result — a dialog cannot grant something
+it never showed.
+
 ---
 
 ## 10. Diagnostics **[later]**
