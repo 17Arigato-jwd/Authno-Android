@@ -32,7 +32,19 @@ import { logError } from './ErrorLogger';
 import { runExtension, stopExtension, stopAll } from './extensionSandbox';
 import { runExtensionV2, stopExtensionV2, stopAllV2, runningV2 } from './extensionRunnerV2';
 import { readExtensionTree } from './extensionSandbox';
-import { readGrants } from './extensionGrants';
+import { readGrants, writeGrants } from './extensionGrants';
+import {
+  openBrowser as hostOpenBrowser,
+  closeBrowser as hostCloseBrowser,
+  oauth as hostOauth,
+  googleSignIn as hostGoogleSignIn,
+  requestDriveToken as hostRequestDriveToken,
+  signOut as hostSignOut,
+} from './extensionBrowserHost';
+
+/** What a restart-after-grant needs to start the same extension again. */
+const _manifests = new Map();
+const _navigateFns = new Map();
 import { toast as hostToast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { isAndroid } from './platform';
@@ -52,6 +64,7 @@ import { extStorage } from './extensionStorage';
 let _replaceSessionFn = null;
 let _importSessionFn  = null;
 let _getSessionsFn    = null;
+let _currentIdFn      = null;
 
 /** Called by App.js so conflict resolution can hot-swap a session. */
 export function setReplaceSessionHandler(fn) { _replaceSessionFn = fn; }
@@ -59,6 +72,16 @@ export function setReplaceSessionHandler(fn) { _replaceSessionFn = fn; }
 export function setImportSessionHandler(fn)  { _importSessionFn  = fn; }
 /** Called by App.js to expose the sessions list to extensions. */
 export function setGetSessionsHandler(fn)    { _getSessionsFn    = fn; }
+/**
+ * Called by App.js with the id of the book that is open, or null.
+ *
+ * This is what makes `library:read:current` a real permission rather than a
+ * label. Without it `currentId()` is always null, and the scope check in
+ * extensionLibraryV2 refuses every read — correctly, and unhelpfully: an
+ * extension granted exactly the permission it needs would be told there is no
+ * open book while the user is looking at one.
+ */
+export function setCurrentBookHandler(fn)    { _currentIdFn      = fn; }
 
 function ensureHostAPI() {
   if (window.AuthNoExtensionAPI) return;
@@ -176,6 +199,11 @@ export async function activateExtension(manifest, navigateFn) {
  */
 async function activateV2(manifest, navigateFn) {
   const extId = manifest.id;
+  // Kept so a host grant can restart this exact extension with the same
+  // navigation callback; a restart that lost it would leave every
+  // `ui.navigate` from the extension going nowhere.
+  _manifests.set(extId, manifest);
+  if (navigateFn) _navigateFns.set(extId, navigateFn);
 
   let files;
   try {
@@ -236,8 +264,82 @@ function v2Handlers(extId, navigateFn) {
         return _importSessionFn(b64);
       },
       replaceSession: (id, b64) => (typeof _replaceSessionFn === 'function' ? _replaceSessionFn(id, b64) : undefined),
+      currentId: () => (typeof _currentIdFn === 'function' ? _currentIdFn() : null),
+      exportSessionAs: (session, format) => exportSessionAs(session, format),
     }),
+
+    // Opening a browser, and the OAuth round trip that comes back from one.
+    // Absent until now, which meant `browser` and `auth` were a permission a
+    // user could grant and an extension could never use: createExtensionHost
+    // only builds those capabilities when this is here, so every call came
+    // back `unknown-method`.
+    browser: {
+      open: (url) => hostOpenBrowser(url),
+      close: () => hostCloseBrowser(),
+      oauth: (opts) => hostOauth(opts),
+      googleSignIn: (opts) => hostGoogleSignIn(opts),
+      requestDriveToken: (opts) => hostRequestDriveToken(opts),
+      signOut: () => hostSignOut(),
+    },
+
+    // Adding a host to the policy. `ask` is the user's answer and nothing
+    // grants without it — an extension that could add its own origins would
+    // make the CSP a list of hosts it had chosen rather than ones anyone
+    // approved.
+    network: {
+      ask: (id, url) => prompts().confirm(id, {
+        title: 'Connect to a new address?',
+        // The origin, on its own line and unaltered. This is the one fact the
+        // answer turns on, and an extension that could dress it up — or bury
+        // it in a sentence it also wrote — would be choosing what the question
+        // looks like as well as asking it.
+        message: `${_extName(id)} wants to connect to:\n\n${url}\n\n`
+          + 'Only allow this if you recognise the address.',
+      }).catch(() => false),
+      persist: (id, hosts) => {
+        const current = readGrants(id);
+        writeGrants(id, current.granted, hosts);
+      },
+      // A document cannot be re-policied after it loads, so a new host only
+      // takes effect on the next start. Restarting here rather than leaving
+      // the extension to ask means the grant the user just gave works.
+      onGranted: (id) => { _restartAfterGrant(id); },
+    },
   };
+}
+
+/** The extension's own name, for a dialog that has to say who is asking. */
+function _extName(extId) {
+  return _manifests.get(extId)?.name ?? extId;
+}
+
+/** Export one session to a non-.authbook format, for `library.export`. */
+async function exportSessionAs(session, format) {
+  const { exportAsTxt, exportAsHtml, exportAsEpub } = await import('./storage');
+  const fn = { txt: exportAsTxt, html: exportAsHtml, epub: exportAsEpub }[format];
+  if (!fn) throw new Error(`Unknown export format: ${format}`);
+  return fn(session, { returnBytes: true });
+}
+
+/**
+ * Restart one extension so a host it was just granted is in its policy.
+ *
+ * Deferred to a microtask rather than awaited: this is called from inside
+ * `network.requestHost`, and tearing the frame down while it is waiting for
+ * that call's reply would leave the extension with a promise that never
+ * settles instead of the answer it asked for.
+ */
+function _restartAfterGrant(extId) {
+  Promise.resolve().then(async () => {
+    try {
+      const manifest = _manifests.get(extId);
+      if (!manifest) return;
+      await stopExtensionV2(extId);
+      await activateV2(manifest, _navigateFns.get(extId) ?? null);
+    } catch (e) {
+      logError('extensionRuntime:restartAfterGrant', e, { extId });
+    }
+  });
 }
 
 /** Stop one extension and drop its frame, hooks and blob URLs with it. */

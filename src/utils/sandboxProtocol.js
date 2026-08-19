@@ -335,6 +335,9 @@ const API_V2 = `function (call, hooks, listeners) {
       oauth: function (o) { return call('auth.oauth', [o || {}]); },
       googleSignIn: function (o) { return call('auth.googleSignIn', [o]); },
       requestDriveToken: function (o) { return call('auth.requestDriveToken', [o]); },
+      // Resolves { ok: false, reason } rather than throwing when there is no
+      // native session to end, so a teardown can await it unconditionally.
+      signOut: function () { return call('auth.signOut', []); },
     },
 
     network: {

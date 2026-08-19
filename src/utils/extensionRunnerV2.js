@@ -38,6 +38,7 @@ const _running = new Map();
  * @param {object}   o.files       path → source, the linkable module graph
  * @param {string}   o.entry
  * @param {string[]} o.granted
+ * @param {string[]} o.userHosts   origins the user approved after install
  * @param {object}   o.handlers
  * @param {object}   [o.meter]
  * @param {Function} [o.onDenied]
@@ -49,6 +50,7 @@ export async function runExtensionV2({
   files = {},
   entry = 'index.js',
   granted = [],
+  userHosts = [],
   handlers,
   meter = null,
   onDenied = null,
@@ -75,7 +77,16 @@ export async function runExtensionV2({
 
   let host;
   try {
-    host = createExtensionHost({ manifest, granted, handlers, meter, push: (e) => pushEvent(e), onDenied });
+    // userHosts, not just granted: a host the user approved at runtime lives
+    // apart from the manifest's list and is the whole reason `network` can
+    // cover a WebDAV server nobody could have named at build time. Dropping it
+    // here — which is what happened until this line — meant an approved host
+    // was written to disk, read back on the next start, and then left out of
+    // the policy, so the fetch it was granted for kept failing and nothing in
+    // the app could say why.
+    host = createExtensionHost({
+      manifest, granted, userHosts, handlers, meter, push: (e) => pushEvent(e), onDenied,
+    });
   } catch (e) {
     if (e instanceof ManifestError) return { ok: false, error: e.message, errors: e.errors };
     throw e;

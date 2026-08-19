@@ -53,7 +53,7 @@ import {
   getTourState, startFirstBookTour, setTourBookId, emitTourSignal, subscribeTour,
 } from "./utils/firstBookTour";
 import { ExtensionProvider } from "./utils/ExtensionContext";
-import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
+import { setImportSessionHandler, setGetSessionsHandler, setCurrentBookHandler } from "./utils/extensionRuntime";
 import { bookFingerprint } from "./utils/bookFingerprint";
 import { makeGate } from "./utils/exclusive";
 import {
@@ -609,6 +609,14 @@ function AppInner({ navigateRef }) {
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
   const [menuOpen, setMenuOpen]   = useState(false);
+
+  // The open book, for `library:read:current`. Without this the scope check in
+  // extensionLibraryV2 sees no current book and refuses every read — which is
+  // correct behaviour reached from a wrong fact, and reads to the user as an
+  // extension they just approved refusing to work.
+  useEffect(() => {
+    setCurrentBookHandler(() => currentId);
+  }, [currentId]);
 
   // Guided tour: the "Everything in one menu" step opens the burger menu so
   // the spotlight can walk its rows; any other step (or tour end) closes it.

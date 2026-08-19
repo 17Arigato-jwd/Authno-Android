@@ -65,7 +65,7 @@ export const PERMISSIONS = {
   },
   browser: {
     ships: '1.1.20',
-    methods: ['browser.open', 'auth.oauth', 'auth.googleSignIn', 'auth.requestDriveToken'],
+    methods: ['browser.open', 'auth.oauth', 'auth.googleSignIn', 'auth.requestDriveToken', 'auth.signOut'],
     prompt: 'Open pages in your browser',
   },
   activity: {

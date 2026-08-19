@@ -355,6 +355,29 @@ export function browserCapabilities(browser) {
     'auth.oauth': async ([opts]) => browser.oauth(opts ?? {}),
     'auth.googleSignIn': async ([opts]) => browser.googleSignIn(opts ?? {}),
     'auth.requestDriveToken': async ([opts]) => browser.requestDriveToken(opts ?? {}),
+
+    /**
+     * Undo a native sign-in, so the next one asks which account again.
+     *
+     * Under `browser` rather than a permission of its own, because connecting
+     * and disconnecting are one act and splitting them would produce the only
+     * genuinely bad outcome available here: an extension that can sign a user
+     * in and cannot sign them out.
+     *
+     * Best-effort by contract. There is nothing to sign out of on a platform
+     * with no native session, and an extension calling this during its own
+     * teardown must not have that teardown fail because Play Services was
+     * unavailable — so it resolves either way and says which happened.
+     */
+    'auth.signOut': async () => {
+      if (typeof browser.signOut !== 'function') return { ok: false, reason: 'unsupported' };
+      try {
+        await browser.signOut();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, reason: 'failed', detail: String(e?.message ?? e) };
+      }
+    },
   };
 }
 
