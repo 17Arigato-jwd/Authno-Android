@@ -83,6 +83,13 @@ jobs:
       - name: extbk build produces packages the app reads
         run: npm run check:cli-build
 
+      # The first v2 extension, actually running: the package the CLI builds,
+      # in a real sandboxed frame, with the bootstrap the app ships, answering
+      # the capability names the app dispatches. Skips cleanly when the source
+      # is not checked out — it lives in its own repository.
+      - name: Cloud Backup v2 runs
+        run: npm run check:cloud-backup
+
       # The home-screen widgets against the app's own type, spacing and radius
       # scale, read straight out of tokens.js. The widgets already enforce
       # colour this way; every other dimension was free to drift, and did —
