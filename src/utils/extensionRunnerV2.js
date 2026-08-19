@@ -24,6 +24,7 @@
  */
 
 import { createExtensionHost, ManifestError, API_VERSION } from './extensionHostV2.js';
+import { createCommandRegistry } from './extensionCommands.js';
 import { FRAME_SANDBOX, BOOTSTRAP_V2, createHostRouter, toSendable } from './sandboxProtocol.js';
 
 const ACTIVATE_TIMEOUT_MS = 15000;
@@ -76,6 +77,8 @@ export async function runExtensionV2({
   }
 
   let host;
+  let commands = null;
+  let router = null;
   try {
     // userHosts, not just granted: a host the user approved at runtime lives
     // apart from the manifest's list and is the whole reason `network` can
@@ -84,8 +87,22 @@ export async function runExtensionV2({
     // was written to disk, read back on the next start, and then left out of
     // the policy, so the fetch it was granted for kept failing and nothing in
     // the app could say why.
+    // The registry is created before the host because the host needs it, and
+    // wired to the router afterwards because the router needs the host. The
+    // late binding is the one awkward part of that circle and it is contained
+    // to this variable.
+    commands = createCommandRegistry({
+      extId: manifest.id,
+      declared: Array.isArray(manifest.commands) ? manifest.commands : [],
+      call: (name, args) => {
+        if (!router) throw new Error('the extension is not listening yet');
+        return router.fire(`__command:${name}`, args);
+      },
+    });
+
     host = createExtensionHost({
       manifest, granted, userHosts, handlers, meter, push: (e) => pushEvent(e), onDenied,
+      commands,
     });
   } catch (e) {
     if (e instanceof ManifestError) return { ok: false, error: e.message, errors: e.errors };
@@ -124,7 +141,7 @@ export async function runExtensionV2({
   let settle;
   const ready = new Promise((res) => { settle = res; });
 
-  const router = createHostRouter({
+  router = createHostRouter({
     post,
     payload: () => ({ modules: buildModules(files, entry), entry, manifest }),
     dispatch: (method, args) => host.dispatch(method, args),
@@ -162,13 +179,16 @@ export async function runExtensionV2({
     // dispose() after teardown, so calls made during deactivate() still work —
     // disposing first would refuse the extension's own last writes.
     host.dispose();
+    // Readouts poll on a timer. One left running after the frame is gone
+    // would call into a router that answers undefined forever.
+    try { commands?.dispose(); } catch { /* going regardless */ }
     try { frame.remove(); } catch { /* already detached */ }
   };
 
   if (!outcome.ok) { await teardown(); return outcome; }
 
-  _running.set(extId, { frame, teardown, host });
-  return { ok: true, host };
+  _running.set(extId, { frame, teardown, host, commands });
+  return { ok: true, host, commands };
 }
 
 /**
@@ -184,6 +204,30 @@ function buildModules(files, entry) {
   // referenced before the blob that defines it exists.
   const ordered = [...paths.filter((p) => p !== entry), ...paths.filter((p) => p === entry)];
   return ordered.map((path) => ({ path, source: files[path] }));
+}
+
+/**
+ * The running host for one extension, or null.
+ *
+ * Exposed so a UI page can be served through the SAME dispatch as the
+ * background half rather than a second bridge of its own. Two bridges means
+ * two permission checks, and v1 proved which way that goes: its page bridge
+ * had none at all.
+ */
+export function hostV2(extId) {
+  return _running.get(extId)?.host ?? null;
+}
+
+/**
+ * The command registry for one running extension, or null.
+ *
+ * What a `bookActions` button, a settings `action` row and a `readout` all
+ * call. Until this existed the registry was written, tested and unreachable:
+ * a manifest could declare `commands`, an extension could mean to register
+ * them, and nothing in the app could invoke one.
+ */
+export function commandsV2(extId) {
+  return _running.get(extId)?.commands ?? null;
 }
 
 /** Stop one extension. Safe for one that is not running. */

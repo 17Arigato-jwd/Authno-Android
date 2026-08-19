@@ -313,11 +313,25 @@ function _extName(extId) {
   return _manifests.get(extId)?.name ?? extId;
 }
 
-/** Export one session to a non-.authbook format, for `library.export`. */
+/**
+ * Export one session, for `library.export`.
+ *
+ * `authbook` is the important one and was the one missing: it is the format a
+ * backup extension wants, the default `library.export` uses when a caller
+ * names none, and the only one that round-trips — txt, html and epub all lose
+ * something. Leaving it out meant the single most likely call answered
+ * "Unknown export format: authbook".
+ */
 async function exportSessionAs(session, format) {
-  const { exportAsTxt, exportAsHtml, exportAsEpub } = await import('./storage');
-  const fn = { txt: exportAsTxt, html: exportAsHtml, epub: exportAsEpub }[format];
-  if (!fn) throw new Error(`Unknown export format: ${format}`);
+  if (format === 'authbook') {
+    const { packSession, bytesToBase64, sessionToBook } = await import('./authbook');
+    const base64 = bytesToBase64(await packSession(sessionToBook(session)));
+    const name = String(session?.title ?? session?.id ?? 'book').replace(/[/\\:*?"<>|]/g, '');
+    return { filename: `${name}.authbook`, base64, mimeType: 'application/octet-stream' };
+  }
+  const { exportAsTxt, exportAsHtml, exportAsEpub, exportAsPdf } = await import('./storage');
+  const fn = { txt: exportAsTxt, html: exportAsHtml, epub: exportAsEpub, pdf: exportAsPdf }[format];
+  if (!fn) throw new Error(`this build cannot export ${format}`);
   return fn(session, { returnBytes: true });
 }
 

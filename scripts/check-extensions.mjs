@@ -66,6 +66,10 @@ export async function activate(authno) {
   const grant = await authno.network.requestHost('https://example.com');
   await authno.storage.set('needsRestart', String(grant.needsRestart));
 
+  await authno.commands.register('probe.run', function (args) {
+    return 'ran:' + (args && args.what);
+  });
+
   authno.activity.onWriting(function (e) {
     authno.storage.set('rate', String(e.rate));
   });
@@ -252,6 +256,7 @@ const badResult = await page.evaluate(async () => {
  */
 const v2Result = await page.evaluate(async ({ source }) => {
   const log = [];
+  const registered = [];
   const frame = document.createElement('iframe');
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden;';
@@ -281,6 +286,7 @@ const v2Result = await page.evaluate(async ({ source }) => {
       if (method === 'ui.toast') return null;
       if (method === 'activity.onWriting') return args[0];
       if (method === 'network.requestHost') return { ok: true, host: args[0], needsRestart: true };
+      if (method === 'commands.register') { registered.push(args[0]); return true; }
       throw new Error('no such method: ' + method);
     },
     onReady: (o) => settle(o),
@@ -303,9 +309,16 @@ const v2Result = await page.evaluate(async ({ source }) => {
   post({ type: 'ext-event', event: { rate: 42 } });
   await new Promise((r) => setTimeout(r, 100));
 
+  // A command invoked the way a button invokes one: straight into the frame,
+  // not broadcast on the app's hook bus.
+  const commandAnswer = await Promise.race([
+    router.fire('__command:probe.run', [{ what: 'it' }]),
+    new Promise((r) => setTimeout(() => r('COMMAND TIMED OUT'), 4000)),
+  ]);
+
   await router.teardown();
   frame.remove();
-  return { outcome, log, store };
+  return { outcome, log, store, registered, commandAnswer };
 }, { source: files.index });
 
 await browser.close();
@@ -340,6 +353,10 @@ const checks = [
     String(v2Result.store.rate)],
   ['v2: deactivate still round-trips', v2Result.store.tornDown === 'yes',
     String(v2Result.store.tornDown)],
+  ['v2: a command is registered by name', v2Result.registered.includes('probe.run'),
+    v2Result.registered.join(',')],
+  ['v2: invoking that command reaches its handler', v2Result.commandAnswer === 'ran:it',
+    String(v2Result.commandAnswer)],
 ];
 
 let ok = true;

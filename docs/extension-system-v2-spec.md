@@ -245,7 +245,7 @@ Renamed and namespaced. v1's flat 16 had a raw plugin path
 | `library.getAny(id)` | `library:read:all` | any book, no scope check |
 | `library.create(book)` | `library:write` | |
 | `library.update(id, book)` | `library:write` | |
-| `library.export(id, format)` | `library:export` | `format`: `authbook \| txt \| md \| html \| docx \| epub \| pdf` |
+| `library.export(id, format)` | `library:export` | `format`: `authbook \| txt \| html \| epub \| pdf` — the five the app can produce. It imports `md` and `docx` and exports neither; listing them here made `library.export` admit a call the exporter behind it would refuse, which moves the error away from its reason. |
 | `browser.open(url)` | `browser` | https only |
 | `browser.close()` | `browser` | Android only; a real tab is not ours to close |
 | `auth.oauth({authUrl, redirect, …})` | `browser` | the portable round trip |

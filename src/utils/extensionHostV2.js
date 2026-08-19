@@ -227,10 +227,11 @@ function escapeAttr(v) {
  * @param {object}   [o.meter]     the activity meter
  * @param {Function} [o.push]      deliver an event into the frame
  * @param {Function} [o.onDenied]
+ * @param {object}   [o.commands]  the command registry, if this build has one
  */
 export function createExtensionHost({
   manifest, granted = [], userHosts = [], handlers,
-  meter = null, push = () => {}, onDenied = null,
+  meter = null, push = () => {}, onDenied = null, commands = null,
 }) {
   const check = validateManifestV2(manifest);
   if (!check.ok) throw new ManifestError(check.errors);
@@ -245,6 +246,11 @@ export function createExtensionHost({
       app: handlers.app,
     }),
     ...libraryCapabilities(handlers.library),
+    // Registering a command needs no permission: the manifest's `commands`
+    // array is the gate, and the registry refuses anything not in it. What a
+    // command DOES still goes through the same capabilities as everything
+    // else, so declaring one grants nothing on its own.
+    ...(commands ? { 'commands.register': async ([name]) => commands.register(name) } : {}),
     ...(handlers.browser ? browserCapabilities(handlers.browser) : {}),
     ...(handlers.network
       ? networkCapabilities({ extId: manifest.id, permissions, ...handlers.network })

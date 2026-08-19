@@ -212,8 +212,19 @@ export function libraryCapabilities({
   };
 }
 
+/**
+ * The formats an extension may ask for.
+ *
+ * These are the ones the app can actually produce. `md` and `docx` were on
+ * this list and are not among them — the app imports both and exports
+ * neither — so an extension asking for one passed the permission check and
+ * then failed deeper in, with a message about an unknown format rather than
+ * about a format that does not exist here. A gate that admits a call the
+ * layer behind it will refuse is worse than no gate: it moves the error away
+ * from the reason.
+ */
 const ALLOWED_FORMATS = new Set([
-  'authbook', 'txt', 'md', 'html', 'docx', 'epub', 'pdf',
+  'authbook', 'txt', 'html', 'epub', 'pdf',
 ]);
 
 export { ALLOWED_FORMATS };

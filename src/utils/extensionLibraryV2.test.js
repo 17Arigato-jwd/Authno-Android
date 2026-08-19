@@ -256,9 +256,14 @@ describe('writing and exporting', () => {
       .rejects.toMatchObject({ code: 'capability-failed' });
   });
 
-  test('the format list is exactly what the spec names', () => {
+  // md and docx were here, and are not among the formats the app can produce —
+  // it imports both and exports neither. The gate admitting a call the layer
+  // behind it refuses is worse than no gate: an extension asking for markdown
+  // got "unknown export format" from deep in the app rather than "this build
+  // cannot export md" from the place that decides.
+  test('the format list is exactly what the app can produce', () => {
     expect([...ALLOWED_FORMATS].sort())
-      .toEqual(['authbook', 'docx', 'epub', 'html', 'md', 'pdf', 'txt']);
+      .toEqual(['authbook', 'epub', 'html', 'pdf', 'txt']);
   });
 
   test('a build without a capability says so rather than pretending', async () => {

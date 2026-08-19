@@ -282,7 +282,7 @@ export const BOOTSTRAP = frameBootstrap(API_V1);
  *    `library:read:current` it answers for the open book and refuses every
  *    other id. `library.getAny` is the one that needs `library:read:all`.
  */
-const API_V2 = `function (call, hooks, listeners) {
+export const API_V2 = `function (call, hooks, listeners) {
   function ns(prefix) {
     return function (name, args) { return call(prefix + '.' + name, args || []); };
   }
@@ -358,6 +358,27 @@ const API_V2 = `function (call, hooks, listeners) {
       },
     },
 
+    /**
+     * Something a button, a settings action or a readout can invoke.
+     *
+     * Only names in the manifest's \`commands\` array are accepted — the host
+     * refuses the rest — so what a contribution might trigger is knowable by
+     * reading the manifest rather than by running the code. That is what makes
+     * a contribution reviewable before it is installed.
+     *
+     * Registered under a reserved prefix so a command and a hook can share the
+     * same name without either shadowing the other.
+     */
+    commands: {
+      register: function (name, handler) {
+        var key = '__command:' + name;
+        hooks[key] = [handler];
+        return call('commands.register', [name]).then(function () {
+          return function off() { delete hooks[key]; };
+        });
+      },
+    },
+
     registerHook: function (name, handler) {
       (hooks[name] = hooks[name] || []).push(handler);
       call('registerHook', [name]);
@@ -369,6 +390,70 @@ const API_V2 = `function (call, hooks, listeners) {
 }`;
 
 export const BOOTSTRAP_V2 = frameBootstrap(API_V2);
+
+/**
+ * The same API, for a v2 extension's UI page.
+ *
+ * A page is a second frame of the same extension, and the whole point of it
+ * being second is that it must not be more powerful than the first. v1's page
+ * bridge was a hand-written object with `getSessions`, `importSession` and
+ * `encodeSession` on it and no permission check anywhere — so an extension
+ * that had been refused the library could open its own settings page and read
+ * every book from there.
+ *
+ * This builds the identical object from the identical source and the host
+ * routes it through the identical dispatch, so a page can do exactly what the
+ * background half can do and nothing else.
+ *
+ * Two differences, both because a page is not a background worker: `hooks` is
+ * an empty object (a page cannot register one — it is gone when the user
+ * navigates away, and a hook that outlived its frame would fire into nothing),
+ * and `close()` is added, which is the one thing only a page needs.
+ */
+export function pageApiV2() {
+  return `
+(function () {
+  'use strict';
+  var pending = {};
+  var seq = 0;
+  var listeners = [];
+
+  function call(method, args) {
+    return new Promise(function (res, rej) {
+      var id = ++seq;
+      pending[id] = { res: res, rej: rej };
+      window.parent.postMessage({ type: 'api-call', id: id, method: method, args: args }, '*');
+    });
+  }
+
+  var api = (${API_V2})(call, {}, listeners);
+  api.close = function () { window.parent.postMessage({ type: 'ext-close' }, '*'); };
+  // A page cannot outlive itself, so a hook it registered could only fire into
+  // a frame that is gone. Refused with a reason rather than silently ignored.
+  api.registerHook = function () {
+    throw new Error('a page cannot register a hook — do that in the extension\\'s background half');
+  };
+  window.authno = api;
+
+  window.addEventListener('message', function (e) {
+    var msg = e.data;
+    if (!msg) return;
+    if (msg.type === 'api-result') {
+      var p = pending[msg.id];
+      if (!p) return;
+      delete pending[msg.id];
+      if (msg.error) p.rej(new Error(msg.error)); else p.res(msg.result);
+      return;
+    }
+    if (msg.type === 'ext-event') {
+      for (var i = 0; i < listeners.length; i++) {
+        try { listeners[i](msg.event); } catch (err) { /* one listener, not all */ }
+      }
+    }
+  });
+})();
+`;
+}
 
 /**
  * The srcdoc for one extension's frame.
@@ -410,6 +495,26 @@ export function createHostRouter({
   const hookOffs = [];
   const hookPending = new Map();
   let hookSeq = 0;
+
+  /**
+   * Ask the frame to run something it registered, and wait for the answer.
+   *
+   * Used by two callers that look different and are not: a hook the app's own
+   * bus fired, and a command a button invoked. Both are "the host has a name
+   * the frame gave it and wants the handler behind it run", and both must be
+   * bounded — a frame that never answers must not stall the app's hook chain
+   * or leave a button spinning. The extension is a listener here, not a
+   * gatekeeper.
+   */
+  function fire(name, args) {
+    return new Promise((resolve) => {
+      if (torn) return resolve(undefined);
+      const id = ++hookSeq;
+      hookPending.set(id, resolve);
+      setTimeout(() => { if (hookPending.delete(id)) resolve(undefined); }, hookTimeoutMs);
+      post({ type: 'ext-hook', id, name, args: sendable(args) });
+    });
+  }
   let closing = false;   // deactivate sent; still answering the frame
   let torn = false;      // done; the frame is on its own
   let closed = null;     // resolves when the frame says it has finished
@@ -453,15 +558,7 @@ export function createHostRouter({
       // frame is about to stop answering.
       if (closing) { post({ type: 'ext-reply', id: msg.id, result: null, error: null }); return; }
       const name = String(msg.args?.[0] ?? '');
-      hookOffs.push(registerHook(name, (...args) => new Promise((resolve) => {
-        if (torn) return resolve(undefined);
-        const id = ++hookSeq;
-        hookPending.set(id, resolve);
-        // A frame that never answers must not stall the app's own hook chain.
-        // The app fired this; the extension is a listener, not a gatekeeper.
-        setTimeout(() => { if (hookPending.delete(id)) resolve(undefined); }, hookTimeoutMs);
-        post({ type: 'ext-hook', id, name, args: sendable(args) });
-      })));
+      hookOffs.push(registerHook(name, (...args) => fire(name, args)));
       post({ type: 'ext-reply', id: msg.id, result: null, error: null });
       return;
     }
@@ -509,7 +606,10 @@ export function createHostRouter({
 
   let closedPromise = new Promise((res) => { closed = res; });
 
-  return { onMessage, teardown };
+  // `fire` is exposed so the command registry can reach a handler the frame
+  // registered without going through the app's hook bus — a command is
+  // invoked by a button, not broadcast to every listener.
+  return { onMessage, teardown, fire };
 }
 
 /**
