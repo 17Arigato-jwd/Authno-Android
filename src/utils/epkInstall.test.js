@@ -215,3 +215,122 @@ describe('v1 still installs exactly as before', () => {
       .toEqual(['com.example.v1', 'com.example.v2']);
   });
 });
+
+describe('permissions are asked at install, or recorded as unasked', () => {
+  test('the asker is given the plan, with the author reasons', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const seen = [];
+    await installExtbkBytes(b64(await buildV2()), {
+      silent: true,
+      askPermissions: async (id, plan) => { seen.push([id, plan]); return ['library:read:all']; },
+    });
+
+    expect(seen[0][0]).toBe('com.example.v2');
+    expect(seen[0][1].prompt[0]).toMatchObject({
+      permission: 'library:read:all',
+      reason: 'To read your books.',
+      prompt: 'Read all your books',
+    });
+  });
+
+  test('the answer is written where activation will read it', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const { readGrants } = require('./extensionGrants');
+
+    const out = await installExtbkBytes(b64(await buildV2()), {
+      silent: true, askPermissions: async () => ['library:read:all'],
+    });
+    expect(out._granted).toEqual(['library:read:all']);
+    expect(readGrants('com.example.v2').granted).toEqual(['library:read:all']);
+  });
+
+  test('saying no installs anyway, and records the refusal', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const out = await installExtbkBytes(b64(await buildV2()), {
+      silent: true, askPermissions: async () => [],
+    });
+    expect(out.id).toBe('com.example.v2');
+    expect(out._granted).toEqual([]);
+    expect(out._refused).toEqual(['library:read:all']);
+    expect(out._permissionsPending).toBe(false);
+  });
+
+  test('a dialog cannot grant something it never showed', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const out = await installExtbkBytes(b64(await buildV2()), {
+      silent: true,
+      askPermissions: async () => ['library:read:all', 'library:write', 'browser'],
+    });
+    expect(out._granted).toEqual(['library:read:all']);
+  });
+
+  test('with no asker the questions are marked UNASKED, not answered no', async () => {
+    // Silently answering "no" produces an extension that runs perfectly, does
+    // nothing, and explains nothing.
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const out = await installExtbkBytes(b64(await buildV2()), { silent: true });
+    expect(out._permissionsPending).toBe(true);
+    expect(out._granted).toEqual([]);
+  });
+
+  test('an extension declaring nothing is never marked pending', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const { packEpk } = require('./epkFormat');
+    const out = await installExtbkBytes(b64(await packEpk({
+      manifest: { apiVersion: 2, id: 'quiet', name: 'Quiet', version: '1.0.0' },
+      modules: { 'index.js': 'export function activate() {}' },
+    })), { silent: true });
+    expect(out._permissionsPending).toBe(false);
+  });
+
+  test('an update asks only about what is new', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const asked = [];
+
+    await installExtbkBytes(b64(await buildV2()), {
+      silent: true, askPermissions: async () => ['library:read:all'],
+    });
+    await installExtbkBytes(b64(await buildV2({
+      version: '2.1.0',
+      permissions: {
+        'library:read:all': { reason: 'To read your books.' },
+        network: { reason: 'To sync.', hosts: ['https://api.example.com'] },
+      },
+    })), {
+      silent: true,
+      askPermissions: async (id, plan) => { asked.push(plan.prompt.map((p) => p.permission)); return []; },
+    });
+
+    expect(asked).toEqual([['network']]);
+  });
+
+  test('a permission the update stops declaring is dropped', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const { readGrants } = require('./extensionGrants');
+
+    await installExtbkBytes(b64(await buildV2()), {
+      silent: true, askPermissions: async () => ['library:read:all'],
+    });
+    const out = await installExtbkBytes(b64(await buildV2({
+      version: '2.1.0', permissions: {},
+    })), { silent: true });
+
+    expect(out._dropped).toEqual(['library:read:all']);
+    expect(readGrants('com.example.v2').granted).toEqual([]);
+  });
+
+  test('a runtime host survives an update', async () => {
+    // It was granted by the user typing an address; an update to the extension
+    // is not a reason to make them type it again.
+    const { installExtbkBytes } = require('./extbkInstaller');
+    const { writeGrants, readGrants } = require('./extensionGrants');
+
+    await installExtbkBytes(b64(await buildV2()), {
+      silent: true, askPermissions: async () => ['library:read:all'],
+    });
+    writeGrants('com.example.v2', ['library:read:all'], ['https://nas.example.com']);
+
+    await installExtbkBytes(b64(await buildV2({ version: '2.1.0' })), { silent: true });
+    expect(readGrants('com.example.v2').userHosts).toEqual(['https://nas.example.com']);
+  });
+});

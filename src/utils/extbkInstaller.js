@@ -23,6 +23,8 @@ import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
 import { isEpk, readEpk } from './epkFormat';
 import { validateManifestV2 } from './extensionHostV2';
+import { promptPlan } from './extensionPermissionsV2';
+import { readGrants, writeGrants } from './extensionGrants';
 import { emitInstall, newInstallId } from './installEvents';
 import { isAndroid }    from './platform';
 import { DEV_STORE_KEY } from './extensionLoader';
@@ -101,7 +103,7 @@ function validateManifest(raw) {
  * @param {string} base64
  * @returns {Promise<object>} validated manifest
  */
-export async function installExtbkBytes(base64, { installId, silent = false } = {}) {
+export async function installExtbkBytes(base64, { installId, silent = false, askPermissions = null } = {}) {
   const id   = installId ?? newInstallId();
   const emit = (evt) => { if (!silent) emitInstall({ id, kind: 'extension', ...evt }); };
 
@@ -114,7 +116,7 @@ export async function installExtbkBytes(base64, { installId, silent = false } = 
     // extension, so the file a user picks looks the same either way and the
     // reader decides — which is the only arrangement where picking the wrong
     // one is impossible.
-    if (isEpk(bytes)) return installEpkBytes(bytes, { id, emit });
+    if (isEpk(bytes)) return installEpkBytes(bytes, { id, emit, askPermissions });
 
     // Quick magic check before full validation
     for (let i = 0; i < FILE_MAGIC.length; i++) {
@@ -183,7 +185,7 @@ export async function installExtbkBytes(base64, { installId, silent = false } = 
  * chose, and §7.2 allows an unsigned package exactly there. The update-channel
  * path passes it and gets the stricter answer.
  */
-async function installEpkBytes(bytes, { id, emit }) {
+async function installEpkBytes(bytes, { id, emit, askPermissions = null }) {
   emit({ stage: 'decoding' });
 
   let pkg;
@@ -249,6 +251,34 @@ async function installEpkBytes(bytes, { id, emit }) {
     console.warn(`[extbkInstaller] ${manifest.id}: dropped unreadable asset(s):`, dropped.join(', '));
   }
 
+  // ── Permissions ───────────────────────────────────────────────────────────
+  //
+  // Only the delta on an update, so a decision already made is not re-asked.
+  //
+  // With no asker supplied the question is not silently answered "no". An
+  // extension installed with empty grants runs perfectly, does nothing, and
+  // explains nothing — which is indistinguishable from broken, and is what
+  // this path did until the flag below existed. `permissionsPending` is what
+  // lets the Extensions tab tell "you said no" from "nobody asked you".
+  const heldBefore = readGrants(manifest.id);
+  const plan = promptPlan(manifest.permissions, heldBefore.granted);
+  let granted = plan.carried;
+  let permissionsPending = false;
+
+  if (plan.prompt.length > 0) {
+    if (typeof askPermissions === 'function') {
+      emit({ stage: 'permissions', name: manifest.name, asking: plan.prompt.length });
+      const answered = (await askPermissions(manifest.id, plan)) ?? [];
+      // Filtered against what was actually asked: a dialog cannot grant
+      // something it never showed.
+      const askable = new Set(plan.prompt.map((p) => p.permission));
+      granted = [...new Set([...plan.carried, ...answered.filter((p) => askable.has(p))])];
+    } else {
+      permissionsPending = true;
+    }
+  }
+  writeGrants(manifest.id, granted, heldBefore.userHosts);
+
   console.log(`[extbkInstaller] ${fromVersion ? 'Updated' : 'Installed'} (EPK): ${manifest.id} v${manifest.version}`);
   emit({ stage: 'activating', name: manifest.name, version: manifest.version, fromVersion });
   return {
@@ -259,6 +289,10 @@ async function installEpkBytes(bytes, { id, emit }) {
     _repairs: pkg.repairs,
     _droppedAssets: dropped,
     _warnings: check.warnings,
+    _granted: granted,
+    _refused: plan.prompt.map((p) => p.permission).filter((p) => !granted.includes(p)),
+    _dropped: plan.dropped,
+    _permissionsPending: permissionsPending,
   };
 }
 

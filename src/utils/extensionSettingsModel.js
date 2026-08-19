@@ -161,6 +161,23 @@ function permissionRows(manifest, granted, userHosts) {
 function warningRows({ manifest, host, permissions, blocked }) {
   const out = [];
 
+  // "Nobody asked you" is a different state from "you said no", and it needs a
+  // different sentence and a different button. An extension installed without
+  // its questions ever being put runs perfectly, does nothing, and explains
+  // nothing — which from the outside is indistinguishable from broken.
+  if (manifest._permissionsPending) {
+    const unanswered = permissions.filter((p) => !p.granted && !p.inert);
+    if (unanswered.length) {
+      out.push({
+        kind: 'permissions-unanswered',
+        text: STRINGS.permissionsUnanswered,
+        permissions: unanswered.map((p) => p.permission),
+        count: Number.MAX_SAFE_INTEGER,   // sorts above the ledger warnings
+        canFixHere: true,
+      });
+    }
+  }
+
   if (blocked === BLOCKED.TOO_OLD) {
     out.push({ kind: 'too-old', text: STRINGS.tooOld, minAppVersion: manifest.minAppVersion ?? null });
   }
@@ -205,4 +222,5 @@ export const STRINGS = {
   permissionRefused: 'This extension has been asking for a permission it does not have.',
   permissionUndeclared: 'This extension is asking for something it never requested.',
   badSchema: 'This extension\'s settings could not be read.',
+  permissionsUnanswered: 'This extension has not been asked what it may do yet.',
 };

@@ -360,3 +360,57 @@ describe('runtime hosts on the settings screen', () => {
     expect(row.permissions.find((p) => p.permission === 'network').userHosts).toEqual([]);
   });
 });
+
+describe('"nobody asked you" is not the same as "you said no"', () => {
+  test('an install whose questions were never put says so', () => {
+    // Such an extension runs perfectly, does nothing, and explains nothing.
+    // From the outside that is indistinguishable from broken.
+    const [row] = buildExtensionsTab({
+      extensions: [{ ...CLOUD_BACKUP, _permissionsPending: true }],
+      grantsFor: () => [],
+    }).rows;
+
+    const warn = row.warnings.find((w) => w.kind === 'permissions-unanswered');
+    expect(warn).toBeDefined();
+    expect(warn.text).toBe(STRINGS.permissionsUnanswered);
+    expect(warn.canFixHere).toBe(true);
+    expect(warn.permissions).toEqual(expect.arrayContaining(['library:read:all', 'network']));
+  });
+
+  test('it sorts above the "has been asking for" warnings', () => {
+    // Answering the questions is the fix for both, so the unanswered one leads.
+    const [row] = buildExtensionsTab({
+      extensions: [{ ...CLOUD_BACKUP, _permissionsPending: true }],
+      hostFor: () => ({ missingPermissions: () => [
+        { permission: 'library:read:all', count: 9, wasRequested: true, prompt: 'p' },
+      ] }),
+    }).rows;
+    expect(row.warnings[0].kind).toBe('permissions-unanswered');
+  });
+
+  test('an extension that was asked and refused does NOT get this warning', () => {
+    const [row] = buildExtensionsTab({
+      extensions: [CLOUD_BACKUP], grantsFor: () => [],
+    }).rows;
+    expect(row.warnings.some((w) => w.kind === 'permissions-unanswered')).toBe(false);
+  });
+
+  test('once everything answerable is granted, the warning goes', () => {
+    const [row] = buildExtensionsTab({
+      extensions: [{ ...CLOUD_BACKUP, _permissionsPending: true }],
+      grantsFor: () => ['library:read:all', 'network'],
+    }).rows;
+    expect(row.warnings.some((w) => w.kind === 'permissions-unanswered')).toBe(false);
+  });
+
+  test('a not-yet-honoured permission does not keep the warning alive', () => {
+    // background is declarable but inert, so it is not something to answer.
+    const onlyInert = {
+      ...CLOUD_BACKUP,
+      _permissionsPending: true,
+      permissions: { background: { reason: 'To sync while closed.' } },
+    };
+    const [row] = buildExtensionsTab({ extensions: [onlyInert] }).rows;
+    expect(row.warnings.some((w) => w.kind === 'permissions-unanswered')).toBe(false);
+  });
+});
