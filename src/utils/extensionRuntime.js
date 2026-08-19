@@ -30,6 +30,17 @@
 
 import { logError } from './ErrorLogger';
 import { runExtension, stopExtension, stopAll } from './extensionSandbox';
+import { runExtensionV2, stopExtensionV2, stopAllV2, runningV2 } from './extensionRunnerV2';
+import { readExtensionTree } from './extensionSandbox';
+import { readGrants } from './extensionGrants';
+import { toast as hostToast } from '../DesignSystem';
+import { APP_VERSION } from '../version';
+import { isAndroid } from './platform';
+import { activityMeter } from './activityMeter';
+import { surfaces } from './extensionSurfaces';
+import { prompts } from './extensionPrompts';
+import { libraryHandlers } from './extensionHandlersV2';
+import { extStorage } from './extensionStorage';
 
 // ── window.AuthNoExtensionAPI ────────────────────────────────────────────────
 //
@@ -129,6 +140,11 @@ export async function activateExtension(manifest, navigateFn) {
 
   ensureHostAPI();
 
+  // apiVersion decides which runner, and there is no third option: a v2
+  // extension must not reach v1's dispatch, which checks nothing. That is the
+  // whole reason the version is in the manifest rather than inferred.
+  if (manifest.apiVersion === 2) return activateV2(manifest, navigateFn);
+
   const { ok, error } = await runExtension(manifest, {
     navigate: (ext, pageId, session) => navigateFn?.(ext, pageId, session),
     getSessions: () => (typeof _getSessionsFn === 'function' ? _getSessionsFn() : []),
@@ -147,13 +163,94 @@ export async function activateExtension(manifest, navigateFn) {
   console.log(`[extensionRuntime] \u2713 Activated: ${extId} v${manifest.version}`);
 }
 
+/**
+ * Start a v2 extension.
+ *
+ * Everything the v2 work built meets the app here: the grants on record become
+ * a PermissionSet, that set builds both the frame's policy and the checks on
+ * its bridge, and every capability goes through a door that can refuse.
+ *
+ * A v1 extension activating alongside is unaffected — the two runners share no
+ * code path, so the day Cloud Backup ships as 2.0.0 the old one is deleted
+ * rather than unpicked.
+ */
+async function activateV2(manifest, navigateFn) {
+  const extId = manifest.id;
+
+  let files;
+  try {
+    files = await readExtensionTree(extId);
+  } catch (e) {
+    logError('extensionRuntime:readV2', e, { extId });
+    return;
+  }
+
+  const { granted, userHosts } = readGrants(extId);
+
+  const { ok, error } = await runExtensionV2({
+    manifest,
+    files,
+    entry: 'index.js',
+    granted,
+    userHosts,
+    meter: activityMeter(),
+    handlers: v2Handlers(extId, navigateFn),
+    onDenied: (id, permission, method) => {
+      // Counted rather than logged and forgotten: the Extensions tab turns
+      // this into "it has been asking for something it does not have", which
+      // is the difference between an extension that looks broken and one
+      // whose problem is legible.
+      console.warn(`[extensionRuntime] ${id} was refused ${method} (needs ${permission})`);
+    },
+  });
+
+  if (!ok) {
+    logError('extensionRuntime:activateV2', new Error(error), { extId });
+    console.error(`[extensionRuntime] ${extId} did not activate: ${error}`);
+    return;
+  }
+  console.log(`[extensionRuntime] \u2713 Activated (v2): ${extId} v${manifest.version}`);
+}
+
+/** The app-side implementations a v2 host is handed. */
+function v2Handlers(extId, navigateFn) {
+  return {
+    app: {
+      version: () => APP_VERSION,
+      platform: () => (isAndroid() ? 'android' : 'desktop'),
+      locale: () => (typeof navigator !== 'undefined' ? navigator.language : 'en'),
+    },
+    ui: {
+      toast: (message, opts) => hostToast(message, opts),
+      navigate: (id, pageId, session) => navigateFn?.({ id }, pageId, session),
+      prompt: (id, opts) => prompts().prompt(id, opts),
+      confirm: (id, opts) => prompts().confirm(id, opts),
+      overlaySet: (id, text) => surfaces().setOverlay(id, text),
+      overlayClear: (id) => surfaces().clearOverlay(id),
+    },
+    storage: extStorage(extId),
+    library: libraryHandlers({
+      getSessions: () => (typeof _getSessionsFn === 'function' ? _getSessionsFn() : []),
+      importSession: (b64) => {
+        if (typeof _importSessionFn !== 'function') throw new Error('importSession handler not registered');
+        return _importSessionFn(b64);
+      },
+      replaceSession: (id, b64) => (typeof _replaceSessionFn === 'function' ? _replaceSessionFn(id, b64) : undefined),
+    }),
+  };
+}
+
 /** Stop one extension and drop its frame, hooks and blob URLs with it. */
 export async function deactivateExtension(extId) {
+  // Which runner started it is not knowable from the id alone, so both are
+  // asked. Stopping something that is not running is a no-op in either.
+  if (runningV2().includes(extId)) { await stopExtensionV2(extId); return; }
   await stopExtension(extId);
 }
 
 /** Stop everything. Called on a full refresh or when the extension list changes. */
 export async function deactivateAll() {
+  await stopAllV2();
   await stopAll();
 }
 
