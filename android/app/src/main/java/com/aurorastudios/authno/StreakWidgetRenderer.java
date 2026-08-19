@@ -135,11 +135,20 @@ public class StreakWidgetRenderer {
                                          int accent,
                                          float density,
                                          WidgetTheme pal) {
+        // Cell geometry on the design system's spacing scale, same as the
+        // layout around it. 34×28 and an 18dp header were eyeballed, and a
+        // calendar whose proportions come from nowhere is exactly what makes
+        // this widget look adjacent to the app rather than part of it.
+        //
+        // 32dp columns also make the bitmap wider relative to its height
+        // (7×32 = 224dp across, ~164dp down), which matters because the view
+        // below is fitCenter into whatever height is left over: the closer the
+        // bitmap's aspect is to the slot's, the less of that slot goes unused.
         final int COLS     = 7;
-        final int CELL_W   = (int) (34 * density);
-        final int CELL_H   = (int) (28 * density);
-        final int HEADER_H = (int) (18 * density);
-        final int PAD_V    = (int) (4  * density);
+        final int CELL_W   = (int) (DSTokens.SPACING.XXL * density);   // 32dp
+        final int CELL_H   = (int) (DSTokens.SPACING.XL  * density);   // 24dp
+        final int HEADER_H = (int) (DSTokens.SPACING.LG  * density);   // 16dp
+        final int PAD_V    = (int) (DSTokens.SPACING.XS  * density);   // 4dp
 
         Calendar today  = Calendar.getInstance();
         int year        = today.get(Calendar.YEAR);
@@ -164,9 +173,11 @@ public class StreakWidgetRenderer {
         textPaint.setTextAlign(Paint.Align.CENTER);
         Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        // Typography sizes from DSTokens
-        float headerTextSize = DSTokens.TYPOGRAPHY.SIZE_SM * density * 0.9f;
-        float dayTextSize    = 11 * density;
+        // Typography from DSTokens, unscaled. The 0.9f that used to sit on the
+        // header size put it at 9.9sp — between two steps of the scale, which
+        // is the one place a size cannot be. size.xs IS the caption step.
+        float headerTextSize = DSTokens.TYPOGRAPHY.SIZE_XS * density;   // 9sp
+        float dayTextSize    = DSTokens.TYPOGRAPHY.SIZE_SM * density;   // 11sp
 
         // Accent tints
         int accentFill   = DSTokens.withAlpha(accent, 0x2e);

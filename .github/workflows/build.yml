@@ -83,6 +83,14 @@ jobs:
       - name: extbk build produces packages the app reads
         run: npm run check:cli-build
 
+      # The home-screen widgets against the app's own type, spacing and radius
+      # scale, read straight out of tokens.js. The widgets already enforce
+      # colour this way; every other dimension was free to drift, and did —
+      # 54 values on no scale at all, which is what made them read as a
+      # different product sitting next to the app.
+      - name: Widgets on the design system scale
+        run: npm run check:widget-scale
+
       # The writing day on the two days a year that are 23 and 25 hours long.
       # Pure node, no browser.
       - name: The writing day in every timezone

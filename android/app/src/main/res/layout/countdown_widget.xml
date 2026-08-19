@@ -14,6 +14,13 @@
   not move.
 
   Nothing here is an emoji.
+
+  Sizes are the design system's scale too, not just the colours:
+  TYPOGRAPHY.size for sp, SPACING for dp, RADIUS for corners. There is no
+  separate widget ramp — inventing one is how this ended up with 10sp, 10.5sp,
+  12sp, 3dp, 5dp, 7dp and a 12dp corner, none of which the app uses anywhere.
+  scripts/check-widget-scale.mjs reads tokens.js and fails CI on any value that
+  is not on it.
 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -48,7 +55,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:maxLines="1"
                 android:ellipsize="end"
                 android:textColor="@color/ds_text_subtle" />
@@ -57,7 +64,7 @@
                 android:id="@+id/countdown_streak"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:visibility="gone"
@@ -69,8 +76,8 @@
             android:id="@+id/countdown_clock"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="30sp"
+            android:layout_marginTop="8dp"
+            android:textSize="28sp"
             android:textStyle="bold"
             android:includeFontPadding="false"
             android:textColor="@color/ds_text_primary" />
@@ -79,8 +86,8 @@
             android:id="@+id/countdown_static"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textSize="30sp"
+            android:layout_marginTop="8dp"
+            android:textSize="28sp"
             android:textStyle="bold"
             android:includeFontPadding="false"
             android:visibility="gone"
@@ -90,7 +97,7 @@
             android:id="@+id/countdown_caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
+            android:layout_marginTop="4dp"
             android:textSize="11sp"
             android:maxLines="1"
             android:ellipsize="end"
@@ -115,7 +122,7 @@
             android:id="@+id/countdown_remaining"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="10.5sp"
+            android:textSize="11sp"
             android:maxLines="1"
             android:ellipsize="end"
             android:visibility="gone"

@@ -6,6 +6,13 @@
   All colours reference @color/ds_* from ds_colors.xml, which mirrors
   src/DesignSystem/tokens.js.  Never write colour literals here —
   update ds_colors.xml (and tokens.js) instead.
+
+  Sizes are the design system's scale too, not just the colours:
+  TYPOGRAPHY.size for sp, SPACING for dp, RADIUS for corners. There is no
+  separate widget ramp — inventing one is how this ended up with 10sp, 10.5sp,
+  12sp, 3dp, 5dp, 7dp and a 12dp corner, none of which the app uses anywhere.
+  scripts/check-widget-scale.mjs reads tokens.js and fails CI on any value that
+  is not on it.
 -->
 <!--
   The card background is a tintable ImageView rather than a drawable on the
@@ -34,7 +41,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="14dp">
+        android:padding="12dp">
 
     <!-- ── Header row: book title + streak number ── -->
     <LinearLayout
@@ -47,10 +54,10 @@
         <!-- Book icon -->
         <ImageView
             android:id="@+id/widget_book_icon"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
             android:src="@drawable/ic_book_gradient"
-            android:layout_marginEnd="10dp"
+            android:layout_marginEnd="8dp"
             android:contentDescription="Book" />
 
         <!-- Title (takes all remaining space) — ds_text_secondary (#dcddde) -->
@@ -73,31 +80,55 @@
             android:layout_height="wrap_content"
             android:text="0"
             android:textColor="@color/ds_violet_dark"
-            android:textSize="26sp"
+            android:textSize="28sp"
             android:textStyle="bold"
-            android:lineSpacingExtra="-2dp" />
+            android:includeFontPadding="false" />
 
         <!-- Flame icon -->
         <ImageView
             android:id="@+id/widget_flame_icon"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
             android:src="@drawable/ic_flame_gradient"
-            android:layout_marginStart="2dp"
-            android:paddingBottom="4dp"
+            android:layout_marginStart="4dp"
             android:contentDescription="Streak fire" />
 
     </LinearLayout>
 
-    <!-- Streak sub-label — ds_text_subtle (#72767d) -->
-    <TextView
-        android:id="@+id/widget_streak_label"
+    <!-- ── Meta row: the streak on the left, today's words on the right ──
+         One line, not two. Both are ds_text_subtle (#72767d) at size.sm,
+         which is the app's caption size. -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="no streak yet"
-        android:textColor="@color/ds_text_subtle"
-        android:textSize="10sp"
-        android:layout_marginBottom="8dp" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp"
+        android:baselineAligned="false">
+
+        <TextView
+            android:id="@+id/widget_streak_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="no streak yet"
+            android:textColor="@color/ds_text_subtle"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/widget_progress_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="0 / 300 words today"
+            android:textColor="@color/ds_text_subtle"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+    </LinearLayout>
 
     <!-- ── Today's progress ── -->
     <ProgressBar
@@ -109,17 +140,7 @@
         android:progress="0"
         android:progressTint="@color/ds_violet_dark"
         android:progressBackgroundTint="@color/ds_progress_track"
-        android:layout_marginBottom="3dp" />
-
-    <!-- Progress label — ds_text_subtle (#72767d) -->
-    <TextView
-        android:id="@+id/widget_progress_label"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="0 / 300 words today"
-        android:textColor="@color/ds_text_subtle"
-        android:textSize="10sp"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginBottom="12dp" />
 
     <!-- Start writing — deep-links straight into the editor at the last
          caret position (the app's Resume Writing path). Background drawable
@@ -129,11 +150,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:paddingTop="7dp"
-        android:paddingBottom="7dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
         android:layout_marginBottom="8dp"
         android:text="Start writing"
-        android:textSize="12sp"
+        android:textSize="13sp"
         android:textStyle="bold"
         android:background="@drawable/widget_btn_state_dark"
         android:textColor="@color/ds_text_secondary" />
@@ -166,10 +187,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginEnd="5dp"
+            android:layout_marginEnd="8dp"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
             android:text="+ Chapter"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -184,10 +205,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginEnd="5dp"
+            android:layout_marginEnd="8dp"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
             android:text="Next book"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -203,8 +224,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="center"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
             android:text="Refresh"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -222,8 +243,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:scaleType="fitXY"
-        android:adjustViewBounds="true" />
+        android:scaleType="fitCenter" />
 
     </LinearLayout>
 

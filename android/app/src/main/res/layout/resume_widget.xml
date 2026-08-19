@@ -18,6 +18,13 @@
 
   Colours reference @color/ds_* (ds_colors.xml, mirroring tokens.js) as the
   first paint; the provider replaces them with the active theme's values.
+
+  Sizes are the design system's scale too, not just the colours:
+  TYPOGRAPHY.size for sp, SPACING for dp, RADIUS for corners. There is no
+  separate widget ramp — inventing one is how this ended up with 10sp, 10.5sp,
+  12sp, 3dp, 5dp, 7dp and a 12dp corner, none of which the app uses anywhere.
+  scripts/check-widget-scale.mjs reads tokens.js and fails CI on any value that
+  is not on it.
 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -50,10 +57,10 @@
 
             <ImageView
                 android:id="@+id/resume_icon"
-                android:layout_width="13dp"
-                android:layout_height="13dp"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
                 android:src="@drawable/ic_book_gradient"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="8dp"
                 android:contentDescription="@null" />
 
             <TextView
@@ -63,7 +70,7 @@
                 android:layout_weight="1"
                 android:text="AuthNo"
                 android:textColor="@color/ds_text_subtle"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
 
@@ -76,7 +83,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="3dp"
+            android:layout_marginTop="4dp"
             android:text="Nothing open yet"
             android:textColor="@color/ds_text_secondary"
             android:textSize="15sp"
@@ -91,10 +98,10 @@
             android:layout_height="wrap_content"
             android:text="Open AuthNo to get started"
             android:textColor="@color/ds_text_subtle"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:maxLines="1"
             android:ellipsize="end"
-            android:layout_marginBottom="7dp" />
+            android:layout_marginBottom="8dp" />
 
         <!-- ── The only thing that opens anything ──
              Background is a state selector: resting and pressed, crossfading
@@ -107,7 +114,7 @@
             android:paddingTop="8dp"
             android:paddingBottom="8dp"
             android:text="Continue writing"
-            android:textSize="12sp"
+            android:textSize="13sp"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end"

@@ -50,6 +50,7 @@
     "test:epk-crosscheck": "node scripts/epk-crosscheck.mjs",
     "check:vendored": "node scripts/check-vendored.mjs",
     "check:cli-build": "node scripts/check-cli-build.mjs",
+    "check:widget-scale": "node scripts/check-widget-scale.mjs",
     "eject": "react-scripts eject",
     "electron": "cross-env NODE_ENV=development electron .",
     "electron-build": "cross-env NODE_ENV=production electron .",
