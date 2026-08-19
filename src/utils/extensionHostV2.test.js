@@ -21,6 +21,10 @@ const VALID = {
     settings: [{ id: 'cb-settings', label: 'Cloud Backup', page: 'settings' }],
     bookActions: [{ id: 'backup-now', label: 'Back up now', command: 'sync.now' }],
   },
+  // Declared, because a contribution naming an undeclared command is now a
+  // build-time error — this fixture was itself the first thing that check
+  // caught.
+  commands: ['sync.now'],
 };
 
 const clone = (over = {}) => JSON.parse(JSON.stringify({ ...VALID, ...over }));
@@ -472,5 +476,53 @@ describe('network.requestHost — the user names the server', () => {
     });
     const r = await host.dispatch('network.requestHost', ['https://nas.example.com']);
     expect(r).toMatchObject({ ok: false, reason: 'too-many-hosts' });
+  });
+});
+
+describe('commands must be declared to be used', () => {
+  test('a contribution naming an undeclared command is refused at build time', async () => {
+    // The registry refuses to register an undeclared name at runtime anyway,
+    // so without this the failure lands later and further from the mistake.
+    const r = validateManifestV2({
+      ...clone(),
+      commands: ['sync.now'],
+      contributes: {
+        bookActions: [{ id: 'x', label: 'Go', command: 'never.declared' }],
+      },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/command "never.declared" is used but not listed/);
+  });
+
+  test('a settings action or readout counts as using a command', () => {
+    const r = validateManifestV2({
+      ...clone(),
+      commands: [],
+      contributes: {},
+      settings: { schema: [
+        { type: 'action', label: 'Connect', command: 'auth.connect' },
+        { type: 'readout', label: 'Status', source: 'sync.status' },
+      ] },
+    });
+    expect(r.errors.join(' ')).toMatch(/auth.connect/);
+    expect(r.errors.join(' ')).toMatch(/sync.status/);
+  });
+
+  test('a fully declared manifest passes', () => {
+    const r = validateManifestV2({
+      ...clone(),
+      commands: ['sync.now', 'auth.connect'],
+      contributes: {
+        settings: [{ id: 's', label: 'S', page: 'settings' }],
+        bookActions: [{ id: 'x', label: 'Go', command: 'sync.now' }],
+      },
+      settings: { schema: [{ type: 'action', label: 'Connect', command: 'auth.connect' }] },
+    });
+    expect({ ok: r.ok, errors: r.errors }).toEqual({ ok: true, errors: [] });
+  });
+
+  test('commands must be an array', () => {
+    const r = validateManifestV2({ ...clone(), commands: 'sync.now' });
+    expect(r.errors.join(' ')).toMatch(/commands must be an array/);
   });
 });

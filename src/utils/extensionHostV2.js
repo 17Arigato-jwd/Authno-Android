@@ -29,6 +29,7 @@ import {
 import { createDispatch, freeCapabilities, activityCapabilities } from './extensionDispatchV2.js';
 import { libraryCapabilities } from './extensionLibraryV2.js';
 import { parseWhen } from './whenClause.js';
+import { undeclaredCommands } from './extensionCommands.js';
 
 export const API_VERSION = 2;
 
@@ -150,6 +151,19 @@ export function validateManifestV2(manifest) {
         });
       }
     }
+  }
+
+  // A contribution or settings control naming a command the manifest never
+  // declared is a button that cannot work. Better found while reading the
+  // manifest than by pressing it — and the registry refuses to register an
+  // undeclared name at runtime anyway, so this would otherwise fail later and
+  // further away.
+  for (const cmd of undeclaredCommands(manifest)) {
+    errors.push(`command "${cmd}" is used but not listed in "commands"`);
+  }
+
+  if (manifest.commands !== undefined && !Array.isArray(manifest.commands)) {
+    errors.push('commands must be an array of names');
   }
 
   return { ok: errors.length === 0, errors, warnings };

@@ -424,6 +424,35 @@ Both live in editor chrome, so they are specified together rather than colliding
   per extension, never two saying the same thing.
 - An extension with an overlay but no panel keeps the plain dot behaviour of §8b.
 
+### 4.0a Commands, and why the manifest lists them **[build finding]**
+
+Three places name a command, and until this was built none of them could reach
+one: a contribution's `command` target, a settings `action`, and a settings
+`readout`'s `source`.
+
+The handler stays inside the frame and only the **name** crosses — the same
+shape `registerHook` already uses, because a function cannot cross a
+postMessage boundary and a host holding a reference into a sandbox is a host
+that has stopped being outside it.
+
+**The manifest's `commands` array is the contract.** An extension may register
+only what it declared, so the set of things a button might invoke is knowable
+by reading the manifest rather than by running the code — which is what makes
+a contribution reviewable before it is installed. A contribution or control
+naming an undeclared command is now a build-time error; it was the first thing
+the check caught, in this repo's own test fixture.
+
+Two failure modes are told apart on purpose. *Declared but never registered* is
+an extension still starting, or with a bug. *Not declared at all* is a
+contribution pointing at nothing. A single "unknown command" would send
+somebody looking in the wrong place.
+
+Everything is bounded: a command that never answers times out rather than
+stalling the button that called it, and a `readout` polls only while somebody
+is subscribed, with a floor of 2 s — a status line asking ten times a second
+is a busy loop wearing a label. It asks once immediately, because a readout
+blank for five seconds after opening looks broken.
+
 ### 4.1 `when` clauses
 
 ```
