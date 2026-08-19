@@ -24,7 +24,7 @@
  */
 
 import { createExtensionHost, ManifestError, API_VERSION } from './extensionHostV2.js';
-import { FRAME_SANDBOX, BOOTSTRAP, createHostRouter, toSendable } from './sandboxProtocol.js';
+import { FRAME_SANDBOX, BOOTSTRAP_V2, createHostRouter, toSendable } from './sandboxProtocol.js';
 
 const ACTIVATE_TIMEOUT_MS = 15000;
 
@@ -95,7 +95,13 @@ export async function runExtensionV2({
 
   // The document carries the policy built from the grants in force. This is
   // the difference from v1, which shipped a frame with no policy at all.
-  frame.srcdoc = host.document(BOOTSTRAP);
+  //
+  // BOOTSTRAP_V2, not BOOTSTRAP: the two differ only in the API object they
+  // hand the extension, and v1's is flat — `getSessions`, `openBrowser` — which
+  // are the v1 dispatch's method names and mean nothing to this one. A v2
+  // extension given the v1 bootstrap gets `unknown-method` for every call it
+  // makes, which reads as a broken extension rather than a wrong frame.
+  frame.srcdoc = host.document(BOOTSTRAP_V2);
 
   const post = (msg) => {
     try { frame.contentWindow?.postMessage(msg, '*'); } catch { /* torn down */ }
