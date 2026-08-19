@@ -21,6 +21,8 @@
 
 import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
+import { isEpk, readEpk } from './epkFormat';
+import { validateManifestV2 } from './extensionHostV2';
 import { emitInstall, newInstallId } from './installEvents';
 import { isAndroid }    from './platform';
 import { DEV_STORE_KEY } from './extensionLoader';
@@ -107,6 +109,13 @@ export async function installExtbkBytes(base64, { installId, silent = false } = 
     emit({ stage: 'validating' });
     const bytes = base64ToBytes(base64);
 
+    // A v2 package is a different container entirely, told apart by its magic
+    // rather than by anything the caller passes. Both formats keep the .extbk
+    // extension, so the file a user picks looks the same either way and the
+    // reader decides — which is the only arrangement where picking the wrong
+    // one is impossible.
+    if (isEpk(bytes)) return installEpkBytes(bytes, { id, emit });
+
     // Quick magic check before full validation
     for (let i = 0; i < FILE_MAGIC.length; i++) {
       if (bytes[i] !== FILE_MAGIC[i]) {
@@ -160,6 +169,97 @@ export async function installExtbkBytes(base64, { installId, silent = false } = 
     emit({ stage: 'error', error: err?.message ?? String(err) });
     throw err;
   }
+}
+
+/**
+ * Install a VCHS-EPK package.
+ *
+ * The order is the point and it is not the same as v1's. Everything is read,
+ * repaired and checked in memory first; nothing is written until the package
+ * has passed. v1 writes as it decodes, so a package that fails halfway leaves
+ * a partial extension on disk for the next scan to find.
+ *
+ * `fromChannel` is deliberately absent here: this path is a file the user
+ * chose, and §7.2 allows an unsigned package exactly there. The update-channel
+ * path passes it and gets the stricter answer.
+ */
+async function installEpkBytes(bytes, { id, emit }) {
+  emit({ stage: 'decoding' });
+
+  let pkg;
+  try {
+    pkg = await readEpk(bytes);
+  } catch (e) {
+    // A truncated download is not a corrupt package; it is a finishable one,
+    // and saying so is the difference between "try again" and "start again".
+    if (e?.reason === 'incomplete') {
+      throw new Error(`This file is incomplete — ${e.have} of about ${e.need} bytes arrived.`);
+    }
+    throw new Error(`Invalid .extbk: ${e?.message ?? e}`);
+  }
+
+  const check = validateManifestV2(pkg.manifest);
+  if (!check.ok) throw new Error(`Invalid manifest: ${check.errors.join('; ')}`);
+
+  const manifest = pkg.manifest;
+  const previous = await readInstalledManifest(manifest.id);
+  const fromVersion = previous?.version;
+
+  const files = Object.entries(pkg.modules);
+  const totalFiles = 1 + files.length;
+  emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion,
+         fileCount: totalFiles, filesWritten: 0, progress: 0 });
+
+  const { Filesystem, Directory } = await fs();
+  try {
+    await Filesystem.mkdir({ path: EXTENSIONS_DIR, directory: Directory.Data, recursive: true });
+  } catch (_) { /* already there */ }
+
+  let written = 0;
+  const step = () => {
+    written += 1;
+    emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion,
+           fileCount: totalFiles, filesWritten: written, progress: written / totalFiles });
+  };
+
+  await writeExtensionFile(Filesystem, Directory, manifest.id, 'manifest.json',
+    JSON.stringify(manifest, null, 2));
+  step();
+  for (const [path, source] of files) {
+    await writeExtensionFile(Filesystem, Directory, manifest.id, path, source);
+    step();
+  }
+
+  // Blob entries are assets rather than code. Each is verified against its own
+  // digest as it is read, and one that fails is dropped rather than failing the
+  // install — the same graceful degradation the app already applies to a
+  // partially recoverable book.
+  const dropped = [];
+  for (const path of pkg.entries.keys()) {
+    const data = await pkg.read(path);
+    if (data === null) { dropped.push(path); continue; }
+    await writeExtensionFile(Filesystem, Directory, manifest.id, path, data);
+  }
+
+  if (pkg.repairs.length) {
+    console.log(`[extbkInstaller] repaired ${manifest.id}:`,
+      pkg.repairs.map((r) => `rung ${r.rung} ${r.what}`).join(', '));
+  }
+  if (dropped.length) {
+    console.warn(`[extbkInstaller] ${manifest.id}: dropped unreadable asset(s):`, dropped.join(', '));
+  }
+
+  console.log(`[extbkInstaller] ${fromVersion ? 'Updated' : 'Installed'} (EPK): ${manifest.id} v${manifest.version}`);
+  emit({ stage: 'activating', name: manifest.name, version: manifest.version, fromVersion });
+  return {
+    ...manifest,
+    _installId: id,
+    _fromVersion: fromVersion,
+    _format: 'epk',
+    _repairs: pkg.repairs,
+    _droppedAssets: dropped,
+    _warnings: check.warnings,
+  };
 }
 
 /** Read the manifest of an already-installed extension (null if absent). */
