@@ -30,6 +30,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launchOptions } from './chromium.mjs';
+import { protocolScript } from './protocolScript.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -73,15 +74,6 @@ function graphFor(entry) {
 
 // ── 3. The real bootstrap and router, as classic script ──────────────────────
 
-function protocolScript() {
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'utils', 'sandboxProtocol.js'), 'utf8');
-  const out = src.replace(/^export /gm, '');
-  if (!/const BOOTSTRAP_V2 = frameBootstrap\(/.test(out) || !/function createHostRouter\(/.test(out)) {
-    throw new Error('sandboxProtocol.js no longer has the shape this check strips — fix the transform, do not delete the check');
-  }
-  return out;
-}
-
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });
   res.end('<!doctype html><html><body></body></html>');
@@ -94,7 +86,7 @@ const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(`console: ${m.text()}`); });
 await page.goto(`http://127.0.0.1:${PORT}/`);
-await page.addScriptTag({ content: protocolScript() });
+await page.addScriptTag({ content: protocolScript(['BOOTSTRAP_V2', 'createHostRouter']) });
 
 // ── 4. Run it ────────────────────────────────────────────────────────────────
 

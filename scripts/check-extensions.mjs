@@ -32,22 +32,10 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launchOptions } from './chromium.mjs';
+import { protocolScript } from './protocolScript.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4402;
-
-/** The real protocol module, as a classic script. */
-function protocolScript() {
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'utils', 'sandboxProtocol.js'), 'utf8');
-  const out = src.replace(/^export /gm, '');
-  // If this ever stops matching, everything below would silently test nothing.
-  if (!/function frameBootstrap\(/.test(out)
-      || !/const BOOTSTRAP = frameBootstrap\(/.test(out)
-      || !/function createHostRouter\(/.test(out)) {
-    throw new Error('sandboxProtocol.js no longer has the shape this check strips — fix the transform, do not delete the check');
-  }
-  return out;
-}
 
 /** The v2 probe extension, written the way an author would write one. */
 const files = {

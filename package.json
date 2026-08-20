@@ -47,6 +47,7 @@
     "start": "react-scripts start",
     "build": "cross-env CI=false react-scripts build",
     "test": "react-scripts test",
+    "check:all": "node scripts/check-all.mjs",
     "test:epk-crosscheck": "node scripts/epk-crosscheck.mjs",
     "check:vendored": "node scripts/check-vendored.mjs",
     "check:cli-build": "node scripts/check-cli-build.mjs",
