@@ -293,3 +293,161 @@ Recording these because each cost real time to rule out.
 - **`bookImport`, `bookScan`, `materialYou`, `themePicker`, `pkce`, `epkCorpus`
   look orphaned.** They are reached through dynamic `import()` or from scripts,
   which a `from|require` grep misses.
+
+---
+
+## Second sweep — 2026-08-20, dynamic
+
+The first pass was static: reading, cross-referencing, and running the app's
+validators against real manifests. This one fuzzed the parsers and read the
+worker. `scripts/fuzz-parsers.mjs` is what found #12 and #13; it is committed
+and runnable as `npm run fuzz:parsers`. It is deliberately **not** in
+`check:all` yet, because it currently exits non-zero on #12 — putting it in the
+suite before the fix would just paint CI red.
+
+### 12. A host can pass validation and then make the extension unstartable
+
+**Severity: high.** The extension installs, the manifest is valid, the grant is
+saved and shown as approved — and the frame can never be built.
+
+`hostProblem` validates a **parsed** URL and every caller keeps the **raw**
+string:
+
+```js
+// src/utils/extensionPermissionsV2.js
+url = new URL(host.replace('://*.', '://wildcard-placeholder.'));
+…
+return null;                    // accepted — but `host` is never normalised
+```
+
+```js
+export function declaredHosts(permissions) {
+  return raw.filter((h) => !hostProblem(h));   // the RAW strings survive
+}
+```
+
+The WHATWG URL parser is lenient in ways the CSP charset is not. Measured:
+
+| host | `hostProblem` | `new URL(h).origin` | building the frame policy |
+|---|---|---|---|
+| `https://a\nb` | accepted | `https://ab` | **throws** — `contains "\n"` |
+| `https://a"` | accepted | `https://a"` | **throws** — `contains "\""` |
+| `https://[::1]` | accepted | `https://[::1]` | **throws** — `contains "[]"` |
+| `https://ok.example.com` | accepted | same | OK |
+
+The newline case is the clearest: the parser *strips* it, so the string is
+validated as `https://ab` and then stored and used as `https://a\nb`.
+
+End to end, all three: `validateManifestV2` → `ok: true`; `declaredHosts` keeps
+the raw string; `assertPolicySafe(buildCsp(...))` throws. The throw happens
+inside frame construction, so `activateExtension` catches it and logs *"did not
+activate"* — a silently dead extension with a manifest that passes every check.
+
+`assertPolicySafe`'s own comment predicted this: *"a policy containing markup
+at all means something upstream is already wrong — a host that slipped past
+`hostProblem`."* Hosts do slip past it.
+
+**Fix shape:** normalise. Have `hostProblem` reject any host whose raw text is
+not identical to its parsed origin, or have callers store `new URL(h).origin`
+instead of the author's text. The second is better — it makes the stored grant
+and the policy the same string by construction.
+
+**Reproduce:** `node scripts/fuzz-parsers.mjs`
+
+---
+
+### 13. No IPv6 address can ever be granted the network permission
+
+**Severity: medium.** A real self-hosting case that cannot work.
+
+Distinct from #12 even though the fuzzer found both together: normalising
+hosts fixes the newline and the quote, and leaves this one exactly where it is.
+`assertPolicySafe`'s allowlist has no brackets —
+
+```js
+const bad = text.match(/[^A-Za-z0-9 :/.*'_;,=?&%+-]/g);
+```
+
+— and an IPv6 origin cannot be written without them. So somebody running WebDAV
+at `https://[::1]` or on any IPv6 literal can type it into the host-grant
+prompt, be told yes, see it listed as an approved host, and watch the extension
+stop starting. `[` and `]` are legal in a CSP source expression; the allowlist
+simply omits them.
+
+---
+
+### 14. The worker's single-use flow tokens are not actually single-use
+
+**Severity: low** — both tokens are 256-bit secrets, so this is a race only
+their holder can run. Listed because the code states the guarantee as a
+security property and does not enforce it.
+
+```js
+// worker/src/lib/oauth.js — takeFlow
+const row = await env.DB.prepare(`SELECT … WHERE id = ?1 AND kind = ?2`)…first();
+if (!row) return null;
+await env.DB.prepare(`DELETE FROM oauth_flows WHERE id = ?1`)…run();
+```
+
+Two statements, no transaction. Concurrent requests carrying the same token can
+both `SELECT` before either `DELETE`s, and both proceed — against the comment
+directly above it:
+
+> Read a flow row and delete it in the same breath. Single-use is the whole
+> point: a state that survives its first use is a replayable CSRF token, and a
+> handoff that survives is a second chance at somebody's session.
+
+The repo already knows the atomic forms: `throttle.js` uses upsert with
+`RETURNING`, and `burnInviteIntoAccount` uses `env.DB.batch`. `DELETE … WHERE
+id = ?1 RETURNING payload, expires_at` is the one-line version here.
+
+---
+
+### 15. Two auth routes are the only ones with no rate limit
+
+**Severity: low — defence in depth**, and only that because the tokens are
+strong.
+
+`GET /v1/auth/google/callback` and `POST /v1/auth/google/finish` are the only
+routes that are both unauthenticated and unthrottled. `finish` exchanges a
+`handoff` value for a session token.
+
+It is not exploitable as written: `putFlow` mints 32 random bytes, stores only
+the SHA-256, expires the handoff after 60 seconds and deletes it on use. There
+is nothing to guess.
+
+It is on the list because every other auth route is throttled — `signin`,
+`pwsignin`, `redeem`, `recover`, `recover2` — and `throttle.js` opens by saying
+*"a limiter that only some handlers remember to call is not a limiter."* These
+are the two handlers that did not remember.
+
+---
+
+## Also checked in the second sweep, and NOT bugs
+
+- **The rescue path.** `rescue.js` detects the quota-degraded
+  `{id,title,filePath}` mirror and refuses to hand over a blank export, exactly
+  as CLAUDE.md requires. `AccessGate` renders the "Export my books" button with
+  no `disabled`, and the cooldown branch renders a status line rather than
+  returning early — so the hatch is open precisely when it is needed.
+- **Every `PendingIntent` in the Android code sets `FLAG_IMMUTABLE`.** The
+  request-code scheme (`widgetId * 10 + n`) is documented and bounded, and the
+  reminder codes (`ALARM_REQUEST_CODE + index`, cap 101) do not overlap.
+- **All four widgets declare `updatePeriodMillis="1800000"`** — exactly the
+  30-minute floor, not below it.
+- **The extension's OAuth uses PKCE (S256) and generates and checks `state`.**
+  A custom-scheme redirect is interceptable, and PKCE is what makes an
+  intercepted code useless; it is there.
+- **`verifyPassword`** compares with an XOR loop rather than `===`, stores a
+  per-user iteration count, and throws on a corrupt record instead of reporting
+  it as a wrong password.
+- **The sign-in throttle limits per address AND per account**, counts only
+  failures, and keys on the attempted username whether or not it exists — so it
+  is not an enumeration oracle.
+- **The extension's upload queue honours its own backoff.** `nextRetry` is set
+  on failure and checked in the drain loop; a conflict ends the entry rather
+  than retrying it.
+- **20,000 fuzzed inputs against `parseWhen`, `whenAllows`, `coerceValue` and
+  `validateSchema`** produced no wrong-typed throw, no non-boolean, no bad
+  return shape and nothing slower than a millisecond — including 10,000-deep
+  paren nesting, a self-referential schema, and a 5,000-control schema.
