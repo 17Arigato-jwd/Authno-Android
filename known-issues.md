@@ -5,8 +5,8 @@ the app, the website (`claude/audit-followups`) and the Cloud Backup extension
 (`cloud-backup-plus-revamp`) — and worked through in the same session.
 
 Everything here was reproduced, not inferred, and every fix is verified the same
-way it was found. All fifteen are closed, plus one more (#16) found while
-closing #6.
+way it was found. All eighteen are closed. Three of them — #16, #17 and #18 —
+were found while closing the others, which is the usual way.
 
 There is a section at the bottom of things that **look** like bugs and are not.
 That is the half of a list like this that stops getting re-investigated every
@@ -31,6 +31,7 @@ few months.
 | 15 | Two auth routes had no rate limit | website | **fixed** |
 | 16 | An update replaced a running extension's files underneath it | app | **fixed** |
 | 17 | Backgrounding the app could cost the last word typed | app | **fixed** |
+| 18 | `save-book-bytes` wrote to any path over Electron IPC | app | **fixed** |
 
 ---
 
