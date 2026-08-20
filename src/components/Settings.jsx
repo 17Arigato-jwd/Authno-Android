@@ -1720,6 +1720,35 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     if (next.unlocked) { setDevModeUnlocked(true); setDevUnlocked(true); }
   };
 
+  /**
+   * The version line, and the only way in to developer options.
+   *
+   * It used to be rendered inside the desktop sidebar branch, which portrait
+   * does not have — so on a phone, which is every Android install, there was
+   * no version to tap and the gesture could not be performed at all. Rendered
+   * from one place now, in both layouts, so the two cannot drift again.
+   */
+  const versionLine = (style = {}) => (
+    <button
+      type="button"
+      onClick={onVersionTap}
+      title={devUnlocked ? 'Developer options are on' : undefined}
+      style={{
+        padding: '8px 8px 2px', fontSize: 10.5,
+        color: 'var(--text-5)', background: 'none', border: 'none',
+        textAlign: 'left', cursor: 'default', fontFamily: 'inherit',
+        ...style,
+      }}
+    >
+      AuthNo v{APP_META.version}
+      {/* Silent for the first four taps, so a stray double-tap never produces
+          a mysterious countdown. */}
+      {!devUnlocked && tapHint(tapState) && (
+        <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>· {tapHint(tapState)}</span>
+      )}
+    </button>
+  );
+
   const isExtSection = extSettingsItems.some(item => activeSection === `ext::${item._extId}::${item.id}`);
 
   useEffect(() => {
@@ -1925,6 +1954,12 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                 </div>
               </>
             )}
+            {versionLine({
+              flexShrink: 0,
+              borderTop: '1px solid var(--border-sm)',
+              background: 'var(--nav-bg)',
+              padding: '8px 14px calc(8px + env(safe-area-inset-bottom, 0px))',
+            })}
           </>
         ) : (
           <>
@@ -1955,23 +1990,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                       {items.map((item) => navButton(item))}
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    onClick={onVersionTap}
-                    title={devUnlocked ? 'Developer options are on' : undefined}
-                    style={{
-                      marginTop: 'auto', padding: '8px 8px 2px', fontSize: 10.5,
-                      color: 'var(--text-5)', background: 'none', border: 'none',
-                      textAlign: 'left', cursor: 'default', fontFamily: 'inherit',
-                    }}
-                  >
-                    AuthNo v{APP_META.version}
-                    {/* Silent for the first four taps, so a stray double-tap
-                        never produces a mysterious countdown. */}
-                    {!devUnlocked && tapHint(tapState) && (
-                      <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>· {tapHint(tapState)}</span>
-                    )}
-                  </button>
+                  {versionLine({ marginTop: 'auto' })}
                 </>
               )}
             </div>

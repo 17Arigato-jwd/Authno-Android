@@ -17,9 +17,9 @@ export function Chip({ variant = 'default', icon, accentHex, children, onClick, 
   const variants = {
     default: { bg: 'rgba(255,255,255,0.06)', border: COLORS.border,         color: COLORS.textMuted  },
     active:  { bg: `${accent}22`,            border: `${accent}55`,         color: accent             },
-    success: { bg: `${COLORS.success}1a`,    border: `${COLORS.success}55`, color: COLORS.success    },
-    warning: { bg: `${COLORS.warning}1a`,    border: `${COLORS.warning}55`, color: COLORS.warning    },
-    danger:  { bg: `${COLORS.danger}1a`,     border: `${COLORS.danger}55`,  color: COLORS.danger     },
+    success: { bg: COLORS.successSoft, border: COLORS.successLine, color: COLORS.success },
+    warning: { bg: COLORS.warningSoft, border: COLORS.warningLine, color: COLORS.warning },
+    danger:  { bg: COLORS.dangerSoft,  border: COLORS.dangerLine,  color: COLORS.danger  },
   };
   const v = variants[variant] ?? variants.default;
 
@@ -55,10 +55,10 @@ export function Badge({ variant = 'pro', icon, accentHex, children, style = {} }
   const variants = {
     pro:     { bg: `${accent}22`,            color: accent          },
     beta:    { bg: `${COLORS.sky}1a`,        color: COLORS.sky      },
-    new:     { bg: `${COLORS.success}1a`,    color: COLORS.success  },
-    danger:  { bg: `${COLORS.danger}1a`,     color: COLORS.danger   },
-    success: { bg: `${COLORS.success}22`,    color: COLORS.success  },
-    warning: { bg: `${COLORS.warning}1a`,    color: COLORS.warning  },
+    new:     { bg: COLORS.successSoft, color: COLORS.success  },
+    danger:  { bg: COLORS.dangerSoft,  color: COLORS.danger   },
+    success: { bg: COLORS.successSoft, color: COLORS.success  },
+    warning: { bg: COLORS.warningSoft, color: COLORS.warning  },
   };
   const v = variants[variant] ?? variants.pro;
 

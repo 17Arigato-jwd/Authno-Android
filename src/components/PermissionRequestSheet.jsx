@@ -184,7 +184,7 @@ export default function PermissionRequestSheet({ accentHex = COLORS.violetDark }
                   padding: `${SPACING.md}px`,
                   borderRadius: RADIUS.lg,
                   border: `1px solid ${on ? `${accentHex}44` : COLORS.border}`,
-                  background: on ? `${accentHex}0f` : 'rgba(255,255,255,0.02)',
+                  background: on ? `${accentHex}0f` : COLORS.tintSubtle,
                   transition: 'background 0.15s, border-color 0.15s',
                 }}
               >
@@ -200,7 +200,7 @@ export default function PermissionRequestSheet({ accentHex = COLORS.violetDark }
                       <span style={{
                         fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.bold,
                         letterSpacing: TYPOGRAPHY.tracking.wide, textTransform: 'uppercase',
-                        color: COLORS.warning, background: `${COLORS.warning}1e`,
+                        color: COLORS.warning, background: COLORS.warningSoft,
                         padding: '2px 6px', borderRadius: RADIUS.sm,
                       }}>worth a look</span>
                     )}

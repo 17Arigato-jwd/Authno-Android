@@ -25,8 +25,8 @@ const PIXEL_VARIANTS = {
   gradient:  ()       => ({ border: 'transparent', fill: null, gradient: GRADIENTS.violet, color: '#fff', shadow: SHADOWS.violet }),
   secondary: ()       => ({ border: COLORS.indigo, fill: `${COLORS.indigo}22`, color: COLORS.indigo, shadow: 'none' }),
   ghost:     (accent) => ({ border: `${accent ?? COLORS.rose}66`, fill: 'transparent', color: accent ?? COLORS.rose, shadow: 'none' }),
-  danger:    ()       => ({ border: COLORS.danger, fill: `${COLORS.danger}cc`, color: '#fff', shadow: SHADOWS.danger }),
-  success:   ()       => ({ border: COLORS.success, fill: `${COLORS.success}cc`, color: '#fff', shadow: SHADOWS.success }),
+  danger:    ()       => ({ border: COLORS.danger, fill: COLORS.dangerFill, color: '#fff', shadow: SHADOWS.danger }),
+  success:   ()       => ({ border: COLORS.success, fill: COLORS.successFill, color: '#fff', shadow: SHADOWS.success }),
   info:      ()       => ({ border: COLORS.sky, fill: `${COLORS.sky}cc`, color: '#fff', shadow: SHADOWS.sky }),
 };
 

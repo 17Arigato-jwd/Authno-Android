@@ -192,7 +192,7 @@ export default function ExtensionPermissions({ accentHex = COLORS.violetDark }) 
         {tab.needsAttention > 0 && (
           <span style={{
             padding: '1px 6px', borderRadius: RADIUS.full,
-            background: `${COLORS.warning}22`, color: COLORS.warning,
+            background: COLORS.warningSoft, color: COLORS.warning,
             fontSize: TYPOGRAPHY.size.xs,
           }}>{tab.needsAttention}</span>
         )}

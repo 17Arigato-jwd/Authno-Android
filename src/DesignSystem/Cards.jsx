@@ -21,10 +21,10 @@ export function FrostedCard({ accentHex, blur = 18, padding = '24px', radius = 2
     <div style={{
       backdropFilter: `blur(${blur}px) saturate(1.4)`,
       WebkitBackdropFilter: `blur(${blur}px) saturate(1.4)`,
-      background: 'rgba(255,255,255,0.06)',
+      background: COLORS.tint,
       border: `1px solid ${accentHex ? `${accentHex}33` : COLORS.border}`,
       borderRadius: radius, padding,
-      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.1), ${SHADOWS.card}`,
+      boxShadow: `inset 0 1px 0 ${COLORS.sheen}, ${SHADOWS.card}`,
       ...style,
     }}>
       {children}

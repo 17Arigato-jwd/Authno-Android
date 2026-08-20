@@ -44,9 +44,9 @@ export function FrostedModal({ isOpen, onClose, title, accentHex, maxWidth = '48
       <div style={{
         width: '90vw', maxWidth,
         backdropFilter: 'blur(24px) saturate(1.6)', WebkitBackdropFilter: 'blur(24px) saturate(1.6)',
-        background: 'rgba(20,20,26,0.82)',
+        background: COLORS.panel,
         border: `1px solid ${accent}33`, borderRadius: 24,
-        boxShadow: `0 0 0 1px rgba(255,255,255,0.05) inset, ${SHADOWS.panel}, ${SHADOWS.glow(accent)}`,
+        boxShadow: `0 0 0 1px ${COLORS.hairline} inset, ${SHADOWS.panel}, ${SHADOWS.glow(accent)}`,
         animation: 'dsPanelIn 0.2s cubic-bezier(0.34,1.56,0.64,1)',
         overflow: 'hidden', ...style,
       }}>
@@ -62,12 +62,12 @@ export function FrostedModal({ isOpen, onClose, title, accentHex, maxWidth = '48
               onClick={onClose}
               style={{
                 width: 32, height: 32, borderRadius: '50%',
-                background: 'rgba(255,255,255,0.07)', border: 'none',
+                background: COLORS.tint, border: 'none',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: COLORS.textMuted, fontSize: 18, lineHeight: 1, transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = COLORS.textMuted; }}
+              onMouseEnter={e => { e.currentTarget.style.background = COLORS.tintHover; e.currentTarget.style.color = COLORS.textPrimary; }}
+              onMouseLeave={e => { e.currentTarget.style.background = COLORS.tint; e.currentTarget.style.color = COLORS.textMuted; }}
               aria-label="Close"
             >×</button>
           </div>
@@ -126,11 +126,11 @@ export function BottomSheet({ isOpen, onClose, title, accentHex, maxWidth = '540
         style={{
           width: '100%', maxWidth, maxHeight: '88vh', overflowY: 'auto',
           backdropFilter: 'blur(24px) saturate(1.5)', WebkitBackdropFilter: 'blur(24px) saturate(1.5)',
-          background: 'rgba(22,22,28,0.96)',
+          background: COLORS.sheet,
           borderTop: `1px solid ${accent}33`,
           borderLeft: `1px solid ${COLORS.border}`, borderRight: `1px solid ${COLORS.border}`,
           borderRadius: `${RADIUS.xl}px ${RADIUS.xl}px 0 0`,
-          boxShadow: `0 -12px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset`,
+          boxShadow: `0 -12px 48px rgba(0,0,0,0.6), 0 0 0 1px ${COLORS.hairline} inset`,
           animation: dragY === 0 ? 'dsSheetIn 0.28s cubic-bezier(0.32,0.72,0,1)' : undefined,
           transform: `translateY(${dragY}px)`,
           transition: dragRef.current.dragging ? 'none' : 'transform 0.28s cubic-bezier(0.32,0.72,0,1)',
@@ -149,7 +149,7 @@ export function BottomSheet({ isOpen, onClose, title, accentHex, maxWidth = '540
             <button
               onClick={onClose}
               style={{ width: 28, height: 28, borderRadius: '50%', background: COLORS.surface3, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: COLORS.textMuted, fontSize: 16, transition: 'background 0.15s, color 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.background = COLORS.surface4; e.currentTarget.style.color = '#fff'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = COLORS.surface4; e.currentTarget.style.color = COLORS.textPrimary; }}
               onMouseLeave={e => { e.currentTarget.style.background = COLORS.surface3; e.currentTarget.style.color = COLORS.textMuted; }}
             >×</button>
           </div>

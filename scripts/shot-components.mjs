@@ -277,22 +277,45 @@ if (failures.length) {
   process.exit(1);
 }
 
-const page = (body) => `<!DOCTYPE html><html><head><meta charset="utf-8">
+/**
+ * The CSS variables a light theme actually sets.
+ *
+ * Taken from the shipped Sepia theme through the same themeVars() the app
+ * calls, not transcribed — a hand-copied palette is exactly the kind of thing
+ * that stays right while the real one moves.
+ *
+ * A component that themes its TEXT and hardcodes its PANEL looks correct in
+ * the dark default and unreadable here: dark text on a dark panel, which no
+ * dark-only screenshot can show.
+ */
+const { SEPIA } = require(path.join(ROOT, 'src/theme/ThemeSepia.js'));
+const { themeVars } = require(path.join(ROOT, 'src/theme/ThemeBase.js'));
+const LIGHT_THEME = `<style>:root{${themeVars(SEPIA)}}
+  html,body{background:${SEPIA.backgrounds.app};} .page{color:${SEPIA.text.t3};}</style>`;
+
+const page = (body, light = false) => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   html,body{margin:0;padding:0;height:100%;background:#0b0b0c;
     font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;}
   /* Stand-in for the manuscript underneath, so chrome can be judged over it. */
   .page{padding:28px 22px;color:#8b8b96;font-size:15px;line-height:1.75;max-width:60ch;}
-</style></head><body>
+</style>
+${light ? LIGHT_THEME : ''}
+</head><body>
 <div class="page">The gate had been shut for a hundred years, and the hinge
 remembered none of it. She set her palm flat against the wood and felt the cold
 come up through it, the way water finds a crack.</div>
 ${body}</body></html>`;
 
 const server = http.createServer((req, res) => {
-  const name = decodeURIComponent((req.url ?? '/').replace(/^\//, '')) || 'dots-one';
+  const [pathname] = (req.url ?? '/').split('?');
+  const name = decodeURIComponent(pathname.replace(/^\//, '')) || 'dots-one';
   res.writeHead(200, { 'content-type': 'text/html' });
-  res.end(page(rendered[name] ?? '<p style="color:red">no such scene</p>'));
+  // `?light` renders the scene with the --ds-* variables a light theme sets,
+  // which is the only way to see a component that hardcodes a dark panel and
+  // themes its text: the two stop agreeing, and the text disappears.
+  const light = /[?&]light\b/.test(req.url ?? '');
+  res.end(page(rendered[name] ?? '<p style="color:red">no such scene</p>', light));
 });
 await new Promise((r) => server.listen(PORT, r));
 
@@ -300,10 +323,14 @@ fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch(launchOptions());
 const errors = [];
 
-for (const name of Object.keys(SCENES)) {
+// Every scene in the dark default, plus the ones whose panels sit under
+// themed text in a light theme — that pairing is where a hardcoded panel
+// shows up as unreadable text.
+const LIGHT_TOO = ['permission-many', 'prompt-host', 'ext-settings'];
+for (const name of [...Object.keys(SCENES), ...LIGHT_TOO.map((n) => `${n}@light`)]) {
   const p = await browser.newPage({ viewport: { width: 412, height: 860 }, deviceScaleFactor: 2 });
   p.on('pageerror', (e) => errors.push(`${name}: ${e}`));
-  await p.goto(`http://127.0.0.1:${PORT}/${name}`, { waitUntil: 'domcontentloaded' });
+  await p.goto(`http://127.0.0.1:${PORT}/${name.replace(/@light$/, '')}${name.endsWith('@light') ? '?light' : ''}`, { waitUntil: 'domcontentloaded' });
   // Let entrance animations finish. FrostedModal fades and scales in over
   // 200ms, and shooting through that produced two photographs of the same
   // dialog at different opacities — which reads as a contrast bug in the
