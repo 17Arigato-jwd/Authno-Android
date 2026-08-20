@@ -57,7 +57,7 @@ const MAX_ONBOARDING_STEPS = 5;
  * @param {Function} o.readGrants     (extId) => string[]
  * @param {Function} o.writeGrants    (extId, granted, userHosts) => Promise
  * @param {Function} o.clearStorage   (extId) => Promise
- * @param {Function} o.askPermissions (extId, plan) => Promise<string[]>   what was granted
+ * @param {Function} o.askPermissions (extId, plan, meta) => Promise<string[]>   what was granted
  * @param {Function} [o.showOnboarding] (extId, steps) => Promise<boolean>
  * @param {Function} [o.activate]     (manifest, files, granted) => Promise<{ok, error}>
  * @param {Function} [o.deactivate]   (extId) => Promise
@@ -143,7 +143,11 @@ export function createInstaller({
     if (plan.prompt.length === 0) return { granted: plan.carried, plan };
 
     say('permissions', { asking: plan.prompt.length, carried: plan.carried.length });
-    const answered = (await askPermissions(manifest.id, plan)) ?? [];
+    const answered = (await askPermissions(manifest.id, plan, {
+      name: manifest.name,
+      version: manifest.version,
+      icon: manifest.icon ?? null,
+    })) ?? [];
 
     // Only what was actually asked about can be added by the answer, and only
     // what the manifest still declares survives from before. A dialog cannot

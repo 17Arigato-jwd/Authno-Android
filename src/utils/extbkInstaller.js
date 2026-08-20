@@ -268,7 +268,14 @@ async function installEpkBytes(bytes, { id, emit, askPermissions = null }) {
   if (plan.prompt.length > 0) {
     if (typeof askPermissions === 'function') {
       emit({ stage: 'permissions', name: manifest.name, asking: plan.prompt.length });
-      const answered = (await askPermissions(manifest.id, plan)) ?? [];
+      // The manifest's own identity goes with the question. A dialog that can
+      // only say "cloud-backup wants…" is naming a directory; a person agreed
+      // to install "Cloud Backup".
+      const answered = (await askPermissions(manifest.id, plan, {
+        name: manifest.name,
+        version: manifest.version,
+        icon: manifest.icon ?? null,
+      })) ?? [];
       // Filtered against what was actually asked: a dialog cannot grant
       // something it never showed.
       const askable = new Set(plan.prompt.map((p) => p.permission));

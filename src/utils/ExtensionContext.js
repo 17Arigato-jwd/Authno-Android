@@ -26,6 +26,7 @@ import {
 } from './extbkInstaller';
 import { installThmbkBytes, refreshInstalledThemes } from './themeLoader';
 import { emitInstall, newInstallId } from './installEvents';
+import { permissionRequests } from './permissionRequests';
 import { logError } from './ErrorLogger';
 import { isPro, subscribeEntitlement } from './entitlements';
 import { registerHook } from './sessionHooks';
@@ -55,6 +56,26 @@ const ExtensionContext = createContext({
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
+
+/**
+ * How an install asks the person, and what happens when it cannot.
+ *
+ * Passed to every install path rather than only the interactive one, because
+ * the paths that skip it are exactly the ones a person is least likely to
+ * revisit: a cold-start intent, a share-sheet handoff, a seeded pre-install.
+ * Those all end with `_permissionsPending` and an extension that runs, does
+ * nothing, and explains nothing.
+ *
+ * A rejection — the queue is full — is caught rather than thrown. The install
+ * has already happened at this point; failing it now would leave files on disk
+ * that no manifest lists.
+ */
+function askViaSheet(extId, plan, meta) {
+  return permissionRequests().ask(extId, plan, meta).catch((e) => {
+    console.warn(`[ExtensionContext] could not ask about ${extId}:`, e.message);
+    return plan?.carried ?? [];
+  });
+}
 
 export function ExtensionProvider({ children, onNavigate }) {
   const [extensions, setExtensions] = useState([]);
@@ -143,7 +164,7 @@ export function ExtensionProvider({ children, onNavigate }) {
       const { base64, installId } = e.detail ?? {};
       if (!base64) return;
       try {
-        const manifest = await installExtbkBytes(base64, { installId });
+        const manifest = await installExtbkBytes(base64, { installId, askPermissions: askViaSheet });
         await refresh();
         emitInstall({ id: manifest._installId ?? installId ?? newInstallId(), kind: 'extension', stage: 'done', name: manifest.name, version: manifest.version, fromVersion: manifest._fromVersion });
       } catch (err) {
@@ -191,7 +212,7 @@ export function ExtensionProvider({ children, onNavigate }) {
   const clearConfig = useCallback((id) => clearExtensionConfig(id),     []);
 
   const installExtbk = useCallback(async (base64) => {
-    const manifest = await installExtbkBytes(base64);
+    const manifest = await installExtbkBytes(base64, { askPermissions: askViaSheet });
     await refresh();
     emitInstall({ id: manifest._installId ?? newInstallId(), kind: 'extension', stage: 'done', name: manifest.name, version: manifest.version, fromVersion: manifest._fromVersion });
     return manifest;

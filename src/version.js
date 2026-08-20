@@ -4,4 +4,4 @@ export const APP_NAME = "AuthNo";
 export const APP_AUTHOR = "VCHS Studios";
 export const APP_SUPPORT_EMAIL = "varchas.mishra@gmail.com";
 export const APP_WEBSITE = "https://authno.pages.dev";
-export const APP_BUILD_DATE = "2026-08-15";
+export const APP_BUILD_DATE = "2026-08-20";

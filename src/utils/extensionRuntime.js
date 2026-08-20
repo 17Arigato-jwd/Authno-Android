@@ -41,10 +41,6 @@ import {
   requestDriveToken as hostRequestDriveToken,
   signOut as hostSignOut,
 } from './extensionBrowserHost';
-
-/** What a restart-after-grant needs to start the same extension again. */
-const _manifests = new Map();
-const _navigateFns = new Map();
 import { toast as hostToast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { isAndroid } from './platform';
@@ -53,6 +49,10 @@ import { surfaces } from './extensionSurfaces';
 import { prompts } from './extensionPrompts';
 import { libraryHandlers } from './extensionHandlersV2';
 import { extStorage } from './extensionStorage';
+
+/** What a restart-after-grant needs to start the same extension again. */
+const _manifests = new Map();
+const _navigateFns = new Map();
 
 // ── window.AuthNoExtensionAPI ────────────────────────────────────────────────
 //

@@ -43,6 +43,7 @@ import HomeDesktop from "./components/HomeDesktop";
 import BookStudio from "./components/BookStudio";
 import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
+import PermissionRequestSheet from "./components/PermissionRequestSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
@@ -2250,6 +2251,9 @@ function AppInner({ navigateRef }) {
           class here fought the theme engine and produced half-applied light mode (B2). */}
       <ToastContainer position="bottom-center" />
       <InstallSheet accentHex={customization.accentHex} />
+      {/* Above the install sheet in the tree so an install that finishes
+          while a question is up does not draw over the question. */}
+      <PermissionRequestSheet accentHex={customization.accentHex} />
       {billingOpen && (
         <Suspense fallback={null}>
           <PremiumSoonDialog accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
