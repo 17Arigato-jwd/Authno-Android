@@ -136,6 +136,7 @@ const ExtensionPermissions = require(path.join(ROOT, 'src/components/ExtensionPe
 const ExtensionPromptDialog = require(path.join(ROOT, 'src/components/ExtensionPromptDialog.jsx')).default;
 const { prompts, __resetPrompts } = require(path.join(ROOT, 'src/utils/extensionPrompts.js'));
 const PermissionRequestSheet = require(path.join(ROOT, 'src/components/PermissionRequestSheet.jsx')).default;
+const ExtensionSettingsPage = require(path.join(ROOT, 'src/components/ExtensionSettingsPage.jsx')).default;
 const { surfaces, __resetSurfaces } = require(path.join(ROOT, 'src/utils/extensionSurfaces.js'));
 const { permissionRequests, __resetPermissionRequests } = require(path.join(ROOT, 'src/utils/permissionRequests.js'));
 
@@ -186,6 +187,45 @@ const SCENES = {
       initial: '/AuthNo',
     }).catch(() => {});
     return React.createElement(ExtensionPromptDialog, { accentHex: '#5a00d9' });
+  },
+
+  /**
+   * A settings page with one of everything, on a card the width of the tab it
+   * lives in. Every control type at once is the layout worth photographing:
+   * one at a time they all look fine, and the question is whether a label
+   * column, a toggle, a select and a row of chips agree on their alignment.
+   */
+  'ext-settings'() {
+    return React.createElement('div', {
+      style: { padding: '16px 12px', maxWidth: 420 },
+    }, React.createElement(ExtensionSettingsPage, {
+      accentHex: '#5a00d9',
+      running: true,
+      manifest: {
+        id: 'cloud-backup',
+        name: 'Cloud Backup',
+        settings: {
+          schema: [
+            { type: 'toggle', key: 'auto', label: 'Back up automatically', default: true,
+              hint: 'After every chapter you finish.' },
+            { type: 'text', key: 'folder', label: 'Folder on the server', default: '/AuthNo' },
+            { type: 'number', key: 'every', label: 'Minutes between backups', min: 5, max: 240, default: 30 },
+            { type: 'select', key: 'keep', label: 'Versions to keep', options: ['3', '10', 'all'], default: '10' },
+            { type: 'multiselect', key: 'kinds', label: 'Include', options: ['Books', 'Notes', 'Themes'], default: ['Books'] },
+            { type: 'readout', label: 'Status', source: 'backup.status' },
+            { type: 'action', label: 'Back up now', command: 'backup.run' },
+            {
+              type: 'section',
+              label: 'Advanced',
+              children: [
+                { type: 'toggle', key: 'debug', label: 'Verbose log', default: false },
+                { type: 'text', key: 'agent', label: 'User agent', default: '' },
+              ],
+            },
+          ],
+        },
+      },
+    }));
   },
 
   'permission-one'() {
