@@ -5,8 +5,12 @@ the app, the website (`claude/audit-followups`) and the Cloud Backup extension
 (`cloud-backup-plus-revamp`) — and worked through in the same session.
 
 Everything here was reproduced, not inferred, and every fix is verified the same
-way it was found. All nineteen are closed. Four of them — #16 to #19 — were
+way it was found. All twenty-four are closed. Four of them — #16 to #19 — were
 found while closing the others, which is the usual way.
+
+#20 to #24 came in later, from one screenshot and the two lines sent with it.
+Three of the five were invisible in the dark default, which is where everything
+gets looked at, and two of the five could not happen on a desktop at all.
 
 There is a section at the bottom of things that **look** like bugs and are not.
 That is the half of a list like this that stops getting re-investigated every
@@ -33,6 +37,11 @@ few months.
 | 17 | Backgrounding the app could cost the last word typed | app | **fixed** |
 | 18 | `save-book-bytes` wrote to any path over Electron IPC | app | **fixed** |
 | 19 | `extbk check` could not read what `extbk build` writes | cli | **fixed** |
+| 20 | Overlay panels never followed the theme | app | **fixed** |
+| 21 | `${COLORS.warning}1e` is not a colour; 11 sites painted nothing | app | **fixed** |
+| 22 | The install panel covered the question it was waiting on | app | **fixed** |
+| 23 | Seven taps on the version could not be performed on a phone | app | **fixed** |
+| 24 | A tapped `.extbk` did nothing | app | **fixed** |
 
 ---
 
@@ -257,10 +266,6 @@ The rest of the Electron main process holds up: `nodeIntegration` off, context
 isolation on, navigation guarded, and `openExternal` refusing anything that is
 not https on both the IPC handler and the window-open path.
 
----
-
----
-
 ### 19. The CLI could not validate its own output
 
 `extbk build` writes VCHS-EPK for an `apiVersion: 2` extension and VCHS-ECS
@@ -286,6 +291,109 @@ package.
 Found while packaging Cloud Backup 2.0.0 for release — which is the only way
 it could have been found, because nothing else in the toolchain runs `check`
 on a v2 build.
+
+
+### 20. Frosted panels were the last thing in the app not following the theme
+
+v1.1.16 repointed the DesignSystem's text, surface and border tokens at the
+`--ds-*` variables `applyTheme` writes, so the whole system would follow the
+active theme. The grounds those tokens are read *on* were left as literals:
+
+```
+FrostedModal   background: 'rgba(20,20,26,0.82)'
+BottomSheet    background: 'rgba(22,22,28,0.96)'
+Toast          background: 'rgba(26,27,30,0.92)'
+```
+
+On Sepia or Paper that is `--ds-text-primary` — near-black — on a near-black
+sheet. `tokens.js` still carries the comment *"Text — follow the active theme
+(THIS is the white-on-light fix)"* directly above the line that fixed the text
+half. The panels were simply not part of that pass.
+
+Invisible in the dark default, which is where everything gets looked at.
+
+**Fixed**: `ThemeBase` derives `--ds-panel`, `--ds-sheet` and `--ds-toast` from
+the theme's own modal ground, and the white-alpha tints painted on them
+(`--ds-tint*`) flip to black on a light theme — "lighter than what is
+underneath" is the intent, and white-over-cream is not lighter, it is gone.
+
+### 21. Appending a hex alpha to a token stopped working in the same release
+
+`${COLORS.danger}1a` is fine while `COLORS.danger` is `'#ed4245'`. Once it is
+`'var(--ds-danger, #ed4245)'` the result is `var(--ds-danger, #ed4245)1a`,
+which is not a colour, so the declaration is dropped and the element paints
+nothing.
+
+Eleven sites: every `Badge` and `Pill` variant, the danger and success
+`Button` fills, and the "worth a look" chip on the permission sheet — which is
+why that chip read as stray orange text beside the title rather than as a
+badge. It had been transparent since v1.1.16 and nothing errored.
+
+**Fixed**: the alpha is applied in `ThemeBase`, where the value is still a hex,
+and arrives as a finished token (`dangerSoft` / `dangerLine` / `dangerFill`).
+`COLORS.indigo` and `COLORS.sky` are still literals and their concatenations
+are still valid, so those are left alone.
+
+### 22. The install panel sat on top of the question it was waiting for
+
+The installer stops mid-install to ask about permissions and awaits the answer.
+The sheet that asks is bottom-anchored; so is `InstallSheet`, at z-index 3000
+against the sheet's 300. So the question arrived underneath a progress panel.
+
+The panel also had no entry for the `permissions` stage in either of its
+tables — the stage is emitted by the installer and is not in `installEvents`'
+documented list either — so its title stayed "Installing…" while the sheet
+underneath said the extension was already installed, and its progress bar fell
+to the 0.1 default and ran backwards from 90% to 10% while somebody read the
+question.
+
+**Fixed**: the panel steps aside for that stage. Nothing is lost — the event is
+kept and the panel returns with the next stage — and the contradiction goes
+with it.
+
+### 23. The seven taps could not be performed on a phone
+
+`devMode.js` is correct: a counter, a three-second window, a countdown that
+stays quiet for the first four taps. It had never run.
+
+The version line that receives the taps was rendered inside the desktop sidebar
+branch of `Settings`, and the portrait branch has no sidebar. On a phone — every
+Android install — there was no version to tap, and developer options were
+unreachable by the only route to them.
+
+**Fixed**: the line is built once and rendered in both layouts, so the two
+cannot drift again. The new tests fail against the old layout, 4 of 5.
+
+### 24. A tapped `.extbk` did nothing at all
+
+Two halves, and either alone is fatal.
+
+The manifest matched on names: a `mimeType` only we would have registered, or a
+`pathPattern` ending in `.extbk`. A file handed over by Downloads, Files or
+Drive has neither — the URI is an opaque row id and the type is
+`application/octet-stream`, because Android has no mapping for our extensions.
+So AuthNo was never offered in the chooser.
+
+And `MainActivity` asked the same question three times, once per handler:
+`uriStr.endsWith(".extbk")`. A content URI does not end in anything. Every
+test failed, every handler returned early, and the app opened on the home
+screen as if nothing had been tapped. No error, nowhere to look.
+
+**Fixed**: the name is in the provider under `OpenableColumns.DISPLAY_NAME`,
+and failing that the bytes say it themselves — both containers open with a
+magic number. That decision is now one pure function, `OpenedFile.kindOf`,
+with no Android imports, so it can be compiled and exercised without the SDK.
+
+The manifest accepts `application/octet-stream`. One filter, not three: that is
+every unnamed binary on the device, and appearing three times in that chooser
+would be three times the noise for the same file. Routing happens where the
+name and the bytes are both available, and anything that is not ours is
+recognised as not ours before it reaches the WebView.
+
+Not verified on a device — Gradle needs `dl.google.com`. It has the javac
+syntax pass and the fourteen-case `OpenedFile` check, and nothing more.
+
+---
 
 
 ## Checked, and NOT bugs
@@ -346,3 +454,15 @@ Recording these because each cost real time to rule out.
   valid" and "the app renders it" had never been the same statement.
 - `npm run check:boot` — boots the built app in a browser and fails on anything
   uncaught. Already in `check:all`.
+- `node scripts/shot-components.mjs <dir>` — draws the real components in a real
+  browser, in the dark default and again under the shipped Sepia theme. The
+  light pass is built from the theme through the same `themeVars()` the app
+  calls, not a transcribed palette. Found #20 and #21, which no dark-only
+  screenshot can show.
+- `npm run check:theme-tokens` — both shapes of the token bug: alpha appended to
+  a `var()`, and a hardcoded neutral panel ground under themed text. Checked
+  against the pre-fix source, where it reports all three sites. In `check:all`.
+- `npm run check:opened-file` — compiles `OpenedFile.java` on its own and runs
+  fourteen cases through it. It is the one piece of the Android source that can
+  be exercised in an environment with no SDK, which is why the decision was
+  moved there. In `check:all`.
