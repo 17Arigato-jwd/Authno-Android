@@ -43,7 +43,11 @@ import HomeDesktop from "./components/HomeDesktop";
 import BookStudio from "./components/BookStudio";
 import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
+import PermissionRequestSheet from "./components/PermissionRequestSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
+import ExtensionDots from "./components/ExtensionDots";
+import ExtensionPanel from "./components/ExtensionPanel";
+import ExtensionPromptDialog from "./components/ExtensionPromptDialog";
 import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
@@ -53,7 +57,8 @@ import {
   getTourState, startFirstBookTour, setTourBookId, emitTourSignal, subscribeTour,
 } from "./utils/firstBookTour";
 import { ExtensionProvider } from "./utils/ExtensionContext";
-import { setImportSessionHandler, setGetSessionsHandler } from "./utils/extensionRuntime";
+import { setImportSessionHandler, setGetSessionsHandler, setCurrentBookHandler } from "./utils/extensionRuntime";
+import { prompts as promptQueue } from "./utils/extensionPrompts";
 import { bookFingerprint } from "./utils/bookFingerprint";
 import { makeGate } from "./utils/exclusive";
 import {
@@ -345,6 +350,12 @@ function Editor({
 
   return (
     <div style={{ flex: 1, display: "flex", minWidth: 0, position: "relative", overflow: "hidden" }}>
+    {/* The editor column and, beside it, whatever panel an extension has open.
+        A row rather than an overlay: a docked panel has to take width FROM the
+        editor, not sit on top of it. Overlaying would leave the measure
+        unchanged and the text underneath — which is the one outcome
+        panelPlacement exists to prevent. */}
+    <div style={{ flex: 1, display: "flex", minWidth: 0, overflow: "hidden" }}>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", overflow: "hidden" }}>
       {/* Header */}
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--app-bg)" }}>
@@ -525,6 +536,8 @@ function Editor({
         )}
       </motion.main>
     </div>
+    <ExtensionPanel accentHex={accentHex} session={current} />
+    </div>
 
     {/* Selection chip + action menu (fixed-positioned; renders only with a selection) */}
     {current && (
@@ -609,6 +622,31 @@ function AppInner({ navigateRef }) {
   const [search, setSearch]       = useState("");
   const [currentId, setCurrentId] = useState(null);
   const [menuOpen, setMenuOpen]   = useState(false);
+
+  // The open book, for `library:read:current`. Without this the scope check in
+  // extensionLibraryV2 sees no current book and refuses every read — which is
+  // correct behaviour reached from a wrong fact, and reads to the user as an
+  // extension they just approved refusing to work.
+  useEffect(() => {
+    setCurrentBookHandler(() => currentId);
+  }, [currentId]);
+
+  // Whether the editor has focus, for the rule that an extension may not put a
+  // dialog in front of somebody mid-sentence.
+  //
+  // createPrompts takes this as a constructor option and `prompts()` passes
+  // none, so it defaulted to `() => false` — the rule was written, tested, and
+  // never once true. Supplied after the fact because the singleton is created
+  // the first time an extension asks anything, which is long before this runs.
+  useEffect(() => {
+    // Queried rather than held: the editor's ref belongs to a different
+    // component, and the one thing this must be is correct at the moment it
+    // is asked rather than at the moment it was wired.
+    promptQueue().setEditorFocusTest(() => {
+      const el = document.querySelector('[data-tour="editor"]');
+      return !!el && document.activeElement === el;
+    });
+  }, []);
 
   // Guided tour: the "Everything in one menu" step opens the burger menu so
   // the spotlight can walk its rows; any other step (or tour end) closes it.
@@ -2242,6 +2280,9 @@ function AppInner({ navigateRef }) {
           class here fought the theme engine and produced half-applied light mode (B2). */}
       <ToastContainer position="bottom-center" />
       <InstallSheet accentHex={customization.accentHex} />
+      {/* Above the install sheet in the tree so an install that finishes
+          while a question is up does not draw over the question. */}
+      <PermissionRequestSheet accentHex={customization.accentHex} />
       {billingOpen && (
         <Suspense fallback={null}>
           <PremiumSoonDialog accentHex={customization.accentHex} onClose={() => setBillingOpen(false)} />
@@ -2254,6 +2295,16 @@ function AppInner({ navigateRef }) {
           onClose={() => setReadAloudSession(null)}
         />
       )}
+      {/* What is running, in the corner — the shape Android uses for the
+          microphone. Hidden while the read-aloud bar is up, because that
+          occupies the same corner and two things stacked there is worse than
+          the indicator waiting; the extensions are still running either way
+          and the dot returns when the bar goes. */}
+      <ExtensionDots hidden={!!readAloudSession} />
+      {/* The question an extension asked. Nothing drew this, so ui.confirm,
+          ui.prompt and network.requestHost all awaited an answer that could
+          never arrive — a permanent hang with nothing on screen. */}
+      <ExtensionPromptDialog accentHex={customization.accentHex} />
       {showOnboarding && (
         <Suspense fallback={null}>
         <OnboardingFunnel

@@ -26,18 +26,10 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launchOptions } from './chromium.mjs';
+import { protocolScript } from './protocolScript.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4403;
-
-function protocolScript() {
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'utils', 'sandboxProtocol.js'), 'utf8');
-  const out = src.replace(/^export /gm, '');
-  if (!/const BOOTSTRAP = `/.test(out) || !/function createHostRouter\(/.test(out)) {
-    throw new Error('sandboxProtocol.js no longer has the shape this check strips');
-  }
-  return out;
-}
 
 const server = http.createServer((_q, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });

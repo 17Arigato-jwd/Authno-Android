@@ -57,12 +57,32 @@
  */
 export const FRAME_SANDBOX = 'allow-scripts';
 
-export const BOOTSTRAP = `
+/**
+ * The frame's half, as a source string, parameterised by which host API it
+ * hands the extension.
+ *
+ * There are two of those APIs and only one protocol. v1 gets a flat object
+ * whose method names ARE the dispatch names; v2 gets a namespaced one whose
+ * names are the v2 capability names, because v2's dispatch checks a permission
+ * per method and a flat `getSessions` has no permission to check.
+ *
+ * They are built from one template rather than written twice, for the reason
+ * this whole file exists: the previous pair of frame builders spelled their own
+ * sandbox attribute and drifted, and one of them carried `allow-same-origin`
+ * for months. Two hand-maintained copies of a message protocol would go the
+ * same way, and the failure would be a version of the app that talks to a
+ * version of the frame that no longer answers.
+ *
+ * @param {string} apiSource  a function expression: (call, hooks, listeners) => api
+ */
+function frameBootstrap(apiSource) {
+  return `
 (function () {
   'use strict';
   var pending = {};
   var seq = 0;
   var hooks = {};
+  var listeners = [];
 
   function call(method, args) {
     return new Promise(function (res, rej) {
@@ -76,60 +96,10 @@ export const BOOTSTRAP = `
     parent.postMessage({ type: 'ext-reply', id: id, result: result, error: error }, '*');
   }
 
-  // The host API. Every one of these is a round trip the host can refuse; there
-  // is no other surface, because there is no other origin to reach.
-  function makeStorage() {
-    return {
-      get: function (k) { return call('storage.get', [k]); },
-      set: function (k, v) { return call('storage.set', [k, v]); },
-      remove: function (k) { return call('storage.set', [k, null]); },
-      keys: function () { return call('storage.keys', []); },
-      getJSON: function (k, fallback) {
-        return call('storage.get', [k]).then(function (v) {
-          if (v === null || v === undefined) return fallback === undefined ? null : fallback;
-          try { return JSON.parse(v); } catch (e) { return fallback === undefined ? null : fallback; }
-        });
-      },
-      setJSON: function (k, v) { return call('storage.set', [k, JSON.stringify(v)]); },
-    };
-  }
-
-  var api = {
-    version: 4,
-    storage: makeStorage(),
-    navigate: function (pageId, session) { return call('navigate', [pageId, session]); },
-    toast: function (m, o) { return call('toast', [String(m == null ? '' : m), o || {}]); },
-    openBrowser: function (url) { return call('openBrowser', [url]); },
-    closeBrowser: function () { return call('closeBrowser', []); },
-    // Accepts a bare client id (what Android has always taken) or an options
-    // object, so one call works on both platforms.
-    googleSignIn: function (opts) { return call('googleSignIn', [opts]); },
-    // The portable round trip. Opens authUrl in a browser this app cannot see
-    // into, waits for the redirect to come home on one of the app's schemes,
-    // and resolves with its query parameters. Works the same on a phone and a
-    // laptop, which googleSignIn and requestDriveToken cannot.
-    oauth: function (opts) { return call('oauth', [opts || {}]); },
-    getSessions: function () { return call('getSessions', []); },
-    encodeSession: function (s) { return call('encodeSession', [s]); },
-    importSession: function (b64) { return call('importSession', [b64]); },
-    replaceSession: function (id, b64) { return call('replaceSession', [id, b64]); },
-    exportSessionAs: function (s, fmt) { return call('exportSessionAs', [s, fmt]); },
-    // Takes no arguments on Android — Play Services derives the caller from the
-    // package name and signing certificate. Off Android there is nothing to
-    // derive from, so it takes { clientId }, and the options have to actually
-    // reach the host: this used to drop them on the floor, which would have
-    // made the desktop path impossible to call correctly.
-    requestDriveToken: function (opts) { return call('native.GoogleDrive.requestDriveToken', [opts]); },
-    // Registering is local; the host only needs to know the name so it can
-    // subscribe on the bus and forward. The handler itself never leaves here.
-    registerHook: function (name, handler) {
-      (hooks[name] = hooks[name] || []).push(handler);
-      call('registerHook', [name]);
-      return function off() {
-        hooks[name] = (hooks[name] || []).filter(function (h) { return h !== handler; });
-      };
-    },
-  };
+  // The host API, built by whichever version this frame is for. Every method on
+  // it is a round trip the host can refuse; there is no other surface, because
+  // there is no other origin to reach.
+  var api = (${apiSource})(call, hooks, listeners);
 
   window.AuthnoHostAPI = api;
 
@@ -142,6 +112,16 @@ export const BOOTSTRAP = `
       if (!p) return;
       delete pending[msg.id];
       if (msg.error) p.rej(new Error(msg.error)); else p.res(msg.result);
+      return;
+    }
+
+    // A push from the host — the activity meter, so far. Unlike a hook it
+    // wants no answer, which is why it is a separate message type: a listener
+    // that throws must not look like a handler that refused.
+    if (msg.type === 'ext-event') {
+      for (var li = 0; li < listeners.length; li++) {
+        try { listeners[li](msg.event); } catch (err) { /* one listener, not all */ }
+      }
       return;
     }
 
@@ -224,6 +204,258 @@ export const BOOTSTRAP = `
   parent.postMessage({ type: 'ext-boot' }, '*');
 })();
 `;
+}
+
+/**
+ * v1's API: flat names that are also the dispatch names.
+ *
+ * Frozen. v1 extensions are built against exactly this and the whole v1 path
+ * is deleted in one commit when Cloud Backup ships as 2.0.0 — nothing new
+ * should be added here.
+ */
+const API_V1 = `function (call, hooks) {
+  function makeStorage() {
+    return {
+      get: function (k) { return call('storage.get', [k]); },
+      set: function (k, v) { return call('storage.set', [k, v]); },
+      remove: function (k) { return call('storage.set', [k, null]); },
+      keys: function () { return call('storage.keys', []); },
+      getJSON: function (k, fallback) {
+        return call('storage.get', [k]).then(function (v) {
+          if (v === null || v === undefined) return fallback === undefined ? null : fallback;
+          try { return JSON.parse(v); } catch (e) { return fallback === undefined ? null : fallback; }
+        });
+      },
+      setJSON: function (k, v) { return call('storage.set', [k, JSON.stringify(v)]); },
+    };
+  }
+
+  return {
+    version: 4,
+    storage: makeStorage(),
+    navigate: function (pageId, session) { return call('navigate', [pageId, session]); },
+    toast: function (m, o) { return call('toast', [String(m == null ? '' : m), o || {}]); },
+    openBrowser: function (url) { return call('openBrowser', [url]); },
+    closeBrowser: function () { return call('closeBrowser', []); },
+    googleSignIn: function (opts) { return call('googleSignIn', [opts]); },
+    oauth: function (opts) { return call('oauth', [opts || {}]); },
+    getSessions: function () { return call('getSessions', []); },
+    encodeSession: function (s) { return call('encodeSession', [s]); },
+    importSession: function (b64) { return call('importSession', [b64]); },
+    replaceSession: function (id, b64) { return call('replaceSession', [id, b64]); },
+    exportSessionAs: function (s, fmt) { return call('exportSessionAs', [s, fmt]); },
+    requestDriveToken: function (opts) { return call('native.GoogleDrive.requestDriveToken', [opts]); },
+    registerHook: function (name, handler) {
+      (hooks[name] = hooks[name] || []).push(handler);
+      call('registerHook', [name]);
+      return function off() {
+        hooks[name] = (hooks[name] || []).filter(function (h) { return h !== handler; });
+      };
+    },
+  };
+}`;
+
+export const BOOTSTRAP = frameBootstrap(API_V1);
+
+/**
+ * v2's API: namespaced, and the names are the capability names.
+ *
+ * The shape is not decoration. v2's dispatch looks up a permission per method
+ * (`library.get` needs `library:read:current`, `browser.open` needs `browser`),
+ * so a flat `getSessions` has nothing to check and could only ever be
+ * ungoverned. Writing the frame's API as `authno.library.get(id)` means the
+ * call an author writes and the permission a user approved are the same word.
+ *
+ * Three things an author should know, because each is a real edge:
+ *
+ * 1. **`network` has no method here.** The permission is enforced by the CSP in
+ *    this document, so an extension just calls `fetch()` and the browser
+ *    refuses anything off the manifest's host list. `network.requestHost` is
+ *    the one exception, because adding a host is an act, not a request.
+ *
+ * 2. **A granted host does not reach a running frame.** A document cannot be
+ *    re-policied after it loads, so `requestHost` resolves with
+ *    `needsRestart: true` and the extension should say so rather than retrying
+ *    a fetch that will keep failing.
+ *
+ * 3. **`library.get` is scoped by argument, not by name.** With only
+ *    `library:read:current` it answers for the open book and refuses every
+ *    other id. `library.getAny` is the one that needs `library:read:all`.
+ */
+export const API_V2 = `function (call, hooks, listeners) {
+  function ns(prefix) {
+    return function (name, args) { return call(prefix + '.' + name, args || []); };
+  }
+  var s = ns('storage'), u = ns('ui'), l = ns('library'), a = ns('app');
+
+  return {
+    version: 2,
+
+    app: {
+      version: function () { return a('version'); },
+      platform: function () { return a('platform'); },
+      locale: function () { return a('locale'); },
+    },
+
+    ui: {
+      toast: function (m, o) { return u('toast', [String(m == null ? '' : m), o || {}]); },
+      navigate: function (pageId, session) { return u('navigate', [pageId, session || null]); },
+      prompt: function (o) { return u('prompt', [o || {}]); },
+      confirm: function (o) { return u('confirm', [o || {}]); },
+      overlay: {
+        set: function (text) { return call('ui.overlay.set', [text]); },
+        clear: function () { return call('ui.overlay.clear', []); },
+      },
+    },
+
+    storage: {
+      get: function (k) { return s('get', [k]); },
+      set: function (k, v) { return s('set', [k, v]); },
+      remove: function (k) { return s('remove', [k]); },
+      keys: function () { return s('keys', []); },
+      getJSON: function (k, fallback) { return s('getJSON', [k, fallback]); },
+      setJSON: function (k, v) { return s('setJSON', [k, v]); },
+    },
+
+    library: {
+      list: function (o) { return l('list', [o || {}]); },
+      get: function (id, o) { return l('get', [id, o || {}]); },
+      getAny: function (id, o) { return l('getAny', [id, o || {}]); },
+      create: function (book) { return l('create', [book]); },
+      update: function (id, patch) { return l('update', [id, patch]); },
+      exportAs: function (id, format) { return l('export', [id, format]); },
+    },
+
+    browser: {
+      open: function (url) { return call('browser.open', [url]); },
+      close: function () { return call('browser.close', []); },
+    },
+
+    auth: {
+      oauth: function (o) { return call('auth.oauth', [o || {}]); },
+      googleSignIn: function (o) { return call('auth.googleSignIn', [o]); },
+      requestDriveToken: function (o) { return call('auth.requestDriveToken', [o]); },
+      // Pass the access token you hold: revoking it is what ends the grant,
+      // and without it the next connect lands on the same account.
+      // Resolves { ok: false, reason } rather than throwing when there is no
+      // native session to end, so a teardown can await it unconditionally.
+      signOut: function (o) { return call('auth.signOut', [o || {}]); },
+    },
+
+    network: {
+      requestHost: function (url) { return call('network.requestHost', [url]); },
+    },
+
+    activity: {
+      getRate: function () { return call('activity.getRate', []); },
+      onWriting: function (handler) {
+        if (typeof handler !== 'function') return call('activity.onWriting', [false]);
+        listeners.push(handler);
+        call('activity.onWriting', [true]);
+        return function off() {
+          var i = listeners.indexOf(handler);
+          if (i >= 0) listeners.splice(i, 1);
+          if (listeners.length === 0) call('activity.onWriting', [false]);
+        };
+      },
+    },
+
+    /**
+     * Something a button, a settings action or a readout can invoke.
+     *
+     * Only names in the manifest's \`commands\` array are accepted — the host
+     * refuses the rest — so what a contribution might trigger is knowable by
+     * reading the manifest rather than by running the code. That is what makes
+     * a contribution reviewable before it is installed.
+     *
+     * Registered under a reserved prefix so a command and a hook can share the
+     * same name without either shadowing the other.
+     */
+    commands: {
+      register: function (name, handler) {
+        var key = '__command:' + name;
+        hooks[key] = [handler];
+        return call('commands.register', [name]).then(function () {
+          return function off() { delete hooks[key]; };
+        });
+      },
+    },
+
+    registerHook: function (name, handler) {
+      (hooks[name] = hooks[name] || []).push(handler);
+      call('registerHook', [name]);
+      return function off() {
+        hooks[name] = (hooks[name] || []).filter(function (h) { return h !== handler; });
+      };
+    },
+  };
+}`;
+
+export const BOOTSTRAP_V2 = frameBootstrap(API_V2);
+
+/**
+ * The same API, for a v2 extension's UI page.
+ *
+ * A page is a second frame of the same extension, and the whole point of it
+ * being second is that it must not be more powerful than the first. v1's page
+ * bridge was a hand-written object with `getSessions`, `importSession` and
+ * `encodeSession` on it and no permission check anywhere — so an extension
+ * that had been refused the library could open its own settings page and read
+ * every book from there.
+ *
+ * This builds the identical object from the identical source and the host
+ * routes it through the identical dispatch, so a page can do exactly what the
+ * background half can do and nothing else.
+ *
+ * Two differences, both because a page is not a background worker: `hooks` is
+ * an empty object (a page cannot register one — it is gone when the user
+ * navigates away, and a hook that outlived its frame would fire into nothing),
+ * and `close()` is added, which is the one thing only a page needs.
+ */
+export function pageApiV2() {
+  return `
+(function () {
+  'use strict';
+  var pending = {};
+  var seq = 0;
+  var listeners = [];
+
+  function call(method, args) {
+    return new Promise(function (res, rej) {
+      var id = ++seq;
+      pending[id] = { res: res, rej: rej };
+      window.parent.postMessage({ type: 'api-call', id: id, method: method, args: args }, '*');
+    });
+  }
+
+  var api = (${API_V2})(call, {}, listeners);
+  api.close = function () { window.parent.postMessage({ type: 'ext-close' }, '*'); };
+  // A page cannot outlive itself, so a hook it registered could only fire into
+  // a frame that is gone. Refused with a reason rather than silently ignored.
+  api.registerHook = function () {
+    throw new Error('a page cannot register a hook — do that in the extension\\'s background half');
+  };
+  window.authno = api;
+
+  window.addEventListener('message', function (e) {
+    var msg = e.data;
+    if (!msg) return;
+    if (msg.type === 'api-result') {
+      var p = pending[msg.id];
+      if (!p) return;
+      delete pending[msg.id];
+      if (msg.error) p.rej(new Error(msg.error)); else p.res(msg.result);
+      return;
+    }
+    if (msg.type === 'ext-event') {
+      for (var i = 0; i < listeners.length; i++) {
+        try { listeners[i](msg.event); } catch (err) { /* one listener, not all */ }
+      }
+    }
+  });
+})();
+`;
+}
 
 /**
  * The srcdoc for one extension's frame.
@@ -265,6 +497,26 @@ export function createHostRouter({
   const hookOffs = [];
   const hookPending = new Map();
   let hookSeq = 0;
+
+  /**
+   * Ask the frame to run something it registered, and wait for the answer.
+   *
+   * Used by two callers that look different and are not: a hook the app's own
+   * bus fired, and a command a button invoked. Both are "the host has a name
+   * the frame gave it and wants the handler behind it run", and both must be
+   * bounded — a frame that never answers must not stall the app's hook chain
+   * or leave a button spinning. The extension is a listener here, not a
+   * gatekeeper.
+   */
+  function fire(name, args) {
+    return new Promise((resolve) => {
+      if (torn) return resolve(undefined);
+      const id = ++hookSeq;
+      hookPending.set(id, resolve);
+      setTimeout(() => { if (hookPending.delete(id)) resolve(undefined); }, hookTimeoutMs);
+      post({ type: 'ext-hook', id, name, args: sendable(args) });
+    });
+  }
   let closing = false;   // deactivate sent; still answering the frame
   let torn = false;      // done; the frame is on its own
   let closed = null;     // resolves when the frame says it has finished
@@ -308,15 +560,7 @@ export function createHostRouter({
       // frame is about to stop answering.
       if (closing) { post({ type: 'ext-reply', id: msg.id, result: null, error: null }); return; }
       const name = String(msg.args?.[0] ?? '');
-      hookOffs.push(registerHook(name, (...args) => new Promise((resolve) => {
-        if (torn) return resolve(undefined);
-        const id = ++hookSeq;
-        hookPending.set(id, resolve);
-        // A frame that never answers must not stall the app's own hook chain.
-        // The app fired this; the extension is a listener, not a gatekeeper.
-        setTimeout(() => { if (hookPending.delete(id)) resolve(undefined); }, hookTimeoutMs);
-        post({ type: 'ext-hook', id, name, args: sendable(args) });
-      })));
+      hookOffs.push(registerHook(name, (...args) => fire(name, args)));
       post({ type: 'ext-reply', id: msg.id, result: null, error: null });
       return;
     }
@@ -364,7 +608,10 @@ export function createHostRouter({
 
   let closedPromise = new Promise((res) => { closed = res; });
 
-  return { onMessage, teardown };
+  // `fire` is exposed so the command registry can reach a handler the frame
+  // registered without going through the app's hook bus — a command is
+  // invoked by a button, not broadcast to every listener.
+  return { onMessage, teardown, fire };
 }
 
 /**

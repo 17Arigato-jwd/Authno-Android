@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.widget.RemoteViews;
 
 import org.json.JSONArray;
@@ -31,8 +32,29 @@ import org.json.JSONObject;
  */
 public class NotesWidgetProvider extends AppWidgetProvider {
 
-    /** What fits a 4×2 without the text shrinking past reading size. */
+    /**
+     * How many rows the layout HAS. How many are shown is a different number —
+     * see rowsThatFit.
+     *
+     * RemoteViews has no inflater, so a provider can only address views that
+     * already exist in the layout. Four slots is the ceiling; the widget is
+     * frequently smaller than four slots.
+     */
     private static final int MAX_ROWS = 4;
+
+    /**
+     * One row's height in dp: 4dp padding top and bottom, a 13sp title and an
+     * 11sp subtitle. Kept here rather than measured because a provider cannot
+     * measure — RemoteViews are built in this process and laid out in the
+     * launcher's, and nothing crosses back.
+     */
+    private static final int ROW_DP = 40;
+
+    /** Everything above the list: padding, the header line, the button, a gap. */
+    private static final int CHROME_DP = 80;
+
+    /** The "+n more" line, when there is one. */
+    private static final int MORE_DP = 19;
 
     private static final int[] ROW_IDS   = { R.id.note_row_0,   R.id.note_row_1,   R.id.note_row_2,   R.id.note_row_3 };
     private static final int[] TITLE_IDS = { R.id.note_title_0, R.id.note_title_1, R.id.note_title_2, R.id.note_title_3 };
@@ -41,6 +63,21 @@ public class NotesWidgetProvider extends AppWidgetProvider {
     @Override
     public void onUpdate(Context ctx, AppWidgetManager mgr, int[] widgetIds) {
         for (int id : widgetIds) updateWidget(ctx, mgr, id);
+    }
+
+    /**
+     * Re-render when the user resizes the widget.
+     *
+     * Without this the row count is decided once, at placement, and a widget
+     * dragged taller keeps showing the number of notes that fitted the size it
+     * used to be. Every provider here wants this; this is the one where the
+     * layout actually changes with height.
+     */
+    @Override
+    public void onAppWidgetOptionsChanged(Context ctx, AppWidgetManager mgr,
+                                          int widgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(ctx, mgr, widgetId, newOptions);
+        updateWidget(ctx, mgr, widgetId);
     }
 
     /** Also called by WidgetDataPlugin after every sync. */
@@ -68,9 +105,29 @@ public class NotesWidgetProvider extends AppWidgetProvider {
         // anything else and never depends on there being notes to show.
         views.setOnClickPendingIntent(R.id.notes_new_button, launch(ctx, widgetId, 8, "new-note", null));
 
+        // Decided before the loop, because the "+n more" line takes a row's
+        // worth of space itself and there is no point fitting a row only to
+        // push the explanation of the missing ones off the bottom.
+        // How many rows this widget is tall enough for, right now.
+        //
+        // The layout declares four and the provider used to reveal all four
+        // whenever there were four notes — regardless of room. At the default
+        // 4x2 size there is not: four rows plus the header and the capture
+        // button come to about 260dp against a widget that asks for 140. The
+        // surplus rows did not shrink, they fell off the bottom, taking the
+        // "+n more" line that would have explained them.
+        //
+        // The "+n more" line is decided first because it costs a row's worth
+        // of space itself, and there is no point fitting a row only to push
+        // the explanation of the missing ones off the bottom.
+        int available = notes == null ? 0 : notes.length();
+        WidgetSize size = WidgetSize.of(mgr, widgetId, 250, 140);
+        boolean hasMore = total > available;
+        int limit = size.rowsFor(CHROME_DP + (hasMore ? MORE_DP : 0), ROW_DP, MAX_ROWS);
+
         int shown = 0;
         for (int i = 0; i < MAX_ROWS; i++) {
-            JSONObject n = notes == null ? null : notes.optJSONObject(i);
+            JSONObject n = (notes == null || i >= limit) ? null : notes.optJSONObject(i);
             if (n == null) {
                 views.setViewVisibility(ROW_IDS[i], android.view.View.GONE);
                 continue;

@@ -32,20 +32,40 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { launchOptions } from './chromium.mjs';
+import { protocolScript } from './protocolScript.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4402;
 
-/** The real protocol module, as a classic script. */
-function protocolScript() {
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'utils', 'sandboxProtocol.js'), 'utf8');
-  const out = src.replace(/^export /gm, '');
-  // If this ever stops matching, everything below would silently test nothing.
-  if (!/const BOOTSTRAP = `/.test(out) || !/function createHostRouter\(/.test(out)) {
-    throw new Error('sandboxProtocol.js no longer has the shape this check strips — fix the transform, do not delete the check');
-  }
-  return out;
+/** The v2 probe extension, written the way an author would write one. */
+const files = {
+  index: `
+export async function activate(authno) {
+  if (authno.version !== 2) throw new Error('not the v2 API: version=' + authno.version);
+
+  const books = await authno.library.list();
+  await authno.storage.set('sawBooks', String(books.length));
+
+  const open = await authno.library.get('b1', { chapters: false });
+  await authno.storage.set('openTitle', open.title);
+
+  await authno.ui.toast('hello');
+
+  const grant = await authno.network.requestHost('https://example.com');
+  await authno.storage.set('needsRestart', String(grant.needsRestart));
+
+  await authno.commands.register('probe.run', function (args) {
+    return 'ran:' + (args && args.what);
+  });
+
+  authno.activity.onWriting(function (e) {
+    authno.storage.set('rate', String(e.rate));
+  });
+
+  return function deactivate() { return authno.storage.set('tornDown', 'yes'); };
 }
+`,
+};
 
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });
@@ -212,6 +232,83 @@ const badResult = await page.evaluate(async () => {
   return outcome;
 });
 
+/**
+ * The v2 frame, which is a different bootstrap and had never been executed
+ * anywhere — the exact condition the note at the top of sandboxProtocol.js
+ * describes as how the v1 bootstrap went untested for so long.
+ *
+ * What this proves is the part v2 changed: the API object is namespaced, and
+ * the names it calls are the capability names the v2 dispatch checks
+ * permissions against. A v2 extension handed the v1 bootstrap fails every call
+ * with `unknown-method`, and does it at runtime, on a user's phone.
+ */
+const v2Result = await page.evaluate(async ({ source }) => {
+  const log = [];
+  const registered = [];
+  const frame = document.createElement('iframe');
+  frame.setAttribute('sandbox', 'allow-scripts');
+  frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden;';
+  // Built here rather than via sandboxDocument(), which carries v1's bootstrap.
+  frame.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"><scr'
+    + 'ipt>' + BOOTSTRAP_V2 + '</scr' + 'ipt></head><body></body></html>';
+
+  const store = {};
+  let settle;
+  const ready = new Promise((r) => { settle = r; });
+  const post = (m) => { try { frame.contentWindow?.postMessage(m, '*'); } catch { /* gone */ } };
+
+  const router = window.createHostRouter({
+    post,
+    payload: () => ({
+      modules: [{ path: 'index.js', source }],
+      entry: 'index.js',
+      manifest: { id: 'probe2', name: 'Probe 2', apiVersion: 2 },
+      app: {},
+    }),
+    dispatch: async (method, args) => {
+      log.push(method);
+      if (method === 'storage.set') { store[args[0]] = args[1]; return null; }
+      if (method === 'storage.get') return store[args[0]] ?? null;
+      if (method === 'library.list') return [{ id: 'b1', title: 'A Book' }];
+      if (method === 'library.get') return { id: args[0], title: 'The Open One' };
+      if (method === 'ui.toast') return null;
+      if (method === 'activity.onWriting') return args[0];
+      if (method === 'network.requestHost') return { ok: true, host: args[0], needsRestart: true };
+      if (method === 'commands.register') { registered.push(args[0]); return true; }
+      throw new Error('no such method: ' + method);
+    },
+    onReady: (o) => settle(o),
+    registerHook: () => () => {},
+    sendable: window.toSendable,
+  });
+  window.addEventListener('message', (e) => {
+    if (e.source !== frame.contentWindow) return;
+    router.onMessage(e.data);
+  });
+  document.body.appendChild(frame);
+
+  const outcome = await Promise.race([
+    ready,
+    new Promise((r) => setTimeout(() => r({ ok: false, error: 'timed out waiting for ext-ready' }), 8000)),
+  ]);
+
+  // An event pushed from the host must reach a listener registered through
+  // activity.onWriting. v1 has no such message and would drop it silently.
+  post({ type: 'ext-event', event: { rate: 42 } });
+  await new Promise((r) => setTimeout(r, 100));
+
+  // A command invoked the way a button invokes one: straight into the frame,
+  // not broadcast on the app's hook bus.
+  const commandAnswer = await Promise.race([
+    router.fire('__command:probe.run', [{ what: 'it' }]),
+    new Promise((r) => setTimeout(() => r('COMMAND TIMED OUT'), 4000)),
+  ]);
+
+  await router.teardown();
+  frame.remove();
+  return { outcome, log, store, registered, commandAnswer };
+}, { source: files.index });
+
 await browser.close();
 server.close();
 
@@ -228,6 +325,26 @@ const checks = [
   ['an extension with no activate() is refused, not hung',
     badResult.ok === false && badResult.error !== 'HUNG', JSON.stringify(badResult)],
   ['nothing threw in the page', pageErrors.length === 0, pageErrors.join(' | ')],
+
+  // ── v2 ──────────────────────────────────────────────────────────────────
+  ['v2: activate() ran against the namespaced API', v2Result.outcome.ok === true,
+    JSON.stringify(v2Result.outcome)],
+  ['v2: library.list is called by its capability name', v2Result.log.includes('library.list'),
+    v2Result.log.join(',')],
+  ['v2: library.get carries its argument', v2Result.store.openTitle === 'The Open One',
+    String(v2Result.store.openTitle)],
+  ['v2: ui.toast is namespaced, not bare toast',
+    v2Result.log.includes('ui.toast') && !v2Result.log.includes('toast'), v2Result.log.join(',')],
+  ['v2: network.requestHost reports needsRestart', v2Result.store.needsRestart === 'true',
+    String(v2Result.store.needsRestart)],
+  ['v2: a pushed ext-event reaches an activity listener', v2Result.store.rate === '42',
+    String(v2Result.store.rate)],
+  ['v2: deactivate still round-trips', v2Result.store.tornDown === 'yes',
+    String(v2Result.store.tornDown)],
+  ['v2: a command is registered by name', v2Result.registered.includes('probe.run'),
+    v2Result.registered.join(',')],
+  ['v2: invoking that command reaches its handler', v2Result.commandAnswer === 'ran:it',
+    String(v2Result.commandAnswer)],
 ];
 
 let ok = true;

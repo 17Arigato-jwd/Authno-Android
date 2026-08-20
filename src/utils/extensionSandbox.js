@@ -61,7 +61,13 @@ import { toast as _toast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { planModuleGraph, rewriteSpecifiers } from './moduleGraph';
 import { sandboxDocument, createHostRouter, toSendable, FRAME_SANDBOX } from './sandboxProtocol';
-import { OAUTH_SCHEME } from './deepLinkBus';
+import {
+  openBrowser as hostOpenBrowser,
+  closeBrowser as hostCloseBrowser,
+  oauth as hostOauth,
+  googleSignIn as hostGoogleSignIn,
+  requestDriveToken as hostRequestDriveToken,
+} from './extensionBrowserHost';
 
 // Re-exported so callers and tests have one import for the sandbox. The
 // protocol lives in its own file because it imports nothing, which is what
@@ -165,86 +171,11 @@ function extStorage(extId) {
  * refused by default, which is the property the old runtime could not have: it
  * handed over the app's context and hoped.
  */
-/**
- * The portable OAuth round trip: open a URL, wait for the redirect to come
- * home, hand back its parameters.
- *
- * Exported because there are two extension surfaces and only one of them had
- * this. The background half reaches it through `host.oauth`; a `ui-file` page
- * talks to an older postMessage bridge that proxied `openBrowser` and stopped
- * there, so an extension wanting to authorise from its settings page had to
- * hand the request to its background half first.
- *
- * Shared as a function rather than copied into the second bridge, because the
- * redirect check below is the load-bearing part and a second copy of a
- * security check is a second chance to write it slightly differently. An
- * extension that could name any prefix could ask to be woken by
- * `authno://auth/google` — the app's own sign-in coming home — and read the
- * handoff that trades for an account.
- *
- * @param opts    {{ authUrl: string, redirect: string }} from the extension
- * @param open    how this surface opens a browser; both end at the same place
- */
-export async function oauthRoundTrip(opts, open) {
-  const authUrl = String(opts?.authUrl ?? '');
-  const redirect = String(opts?.redirect ?? '');
-  if (!/^https:\/\//i.test(authUrl)) throw new Error('oauth needs an https authUrl');
-  if (!redirect.toLowerCase().startsWith(OAUTH_SCHEME)) {
-    throw new Error(`oauth redirect must start with ${OAUTH_SCHEME}`);
-  }
-  const { awaitDeepLink } = await import('./deepLinkBus');
-  // Listen before opening. A provider that has already granted consent can
-  // bounce back before an await scheduled after the open would have run.
-  const landing = awaitDeepLink(redirect, { timeoutMs: 5 * 60 * 1000 });
-  await open(authUrl);
-  return landing;
-}
-
-/**
- * Sign in to Google from a desktop or web build, with PKCE.
- *
- * Reuses the same browser round trip `oauth` does — including its refusal to
- * accept a redirect on the app's own sign-in scheme — so there is one place
- * that opens a browser and one place that decides which redirects are ours.
- *
- * `state` is generated and checked. Without it, any redirect landing on the
- * app's scheme while a flow is open would be taken as this flow's answer.
- */
-export async function desktopGoogleAuth({ clientId, scopes, what }) {
-  if (!clientId) {
-    throw new Error(
-      `${what} needs a clientId on this platform. Android derives one from the `
-      + 'package name and signing certificate; a desktop build has neither, so '
-      + 'create an OAuth "Desktop app" client and pass its id. No client secret '
-      + 'is needed — the flow uses PKCE.',
-    );
-  }
-
-  const { createVerifier, challengeFor, createState, buildAuthUrl, exchangeCode } =
-    await import('./pkce');
-
-  const verifier = createVerifier();
-  const state = createState();
-  const redirect = `${OAUTH_SCHEME}oauth2/google`;
-
-  const authUrl = buildAuthUrl({
-    clientId,
-    redirect,
-    scopes,
-    challenge: await challengeFor(verifier),
-    state,
-  });
-
-  const landing = await oauthRoundTrip({ authUrl, redirect }, (url) => dispatch('openBrowser', [url], {}));
-
-  // A provider refusal is an answer, and it arrives in the query string rather
-  // than as a rejection. Saying "access_denied" beats timing out.
-  if (landing?.error) throw new Error(`Google refused: ${landing.error}`);
-  if (landing?.state !== state) throw new Error('the redirect did not match this sign-in (state mismatch)');
-  if (!landing?.code) throw new Error('Google sent no authorization code back');
-
-  return exchangeCode({ clientId, code: landing.code, verifier, redirect });
-}
+// oauthRoundTrip and desktopGoogleAuth moved to extensionBrowserHost.js when
+// v2 needed them too. Re-exported here because this is where every caller
+// already imports them from, and because a second import path for one security
+// check is how a codebase ends up with two of the check.
+export { oauthRoundTrip, desktopGoogleAuth, openBrowser, closeBrowser } from './extensionBrowserHost';
 
 async function dispatch(method, args, ctx) {
   const { extId, manifest, handlers } = ctx;
@@ -265,42 +196,9 @@ async function dispatch(method, args, ctx) {
     // calls one deserves to be told which of those it is rather than handed a
     // raw Capacitor "not implemented" string it cannot act on.
 
-    case 'openBrowser': {
-      const url = String(args[0] ?? '');
-      if (!/^https:\/\//i.test(url)) throw new Error('openBrowser needs an https URL');
-      if (isAndroid()) {
-        // Custom Tabs. Deliberately not @capacitor/browser, which hardcodes
-        // com.android.chrome and hangs silently when Chrome is not default.
-        const { registerPlugin } = await import('@capacitor/core');
-        return registerPlugin('OAuth').openAuthUrl({ url });
-      }
-      // Desktop: through the preload bridge, which asks the main process to
-      // hand the URL to the OS browser.
-      //
-      // This used to be the window.open below, and the comment beside it said
-      // "the real browser", which is not what window.open does in Electron.
-      // Measured: it creates a second BrowserWindow inside AuthNo. So the
-      // consent screen opened in an app window with no address bar, where
-      // Google refuses to serve it at all (`disallowed_useragent`), and where
-      // a `com.aurorastudios.authno://` redirect could never reach the app —
-      // leaving `oauth` below waiting out its full five-minute timeout. The
-      // whole point of the capability is the round trip, and the round trip
-      // could not close.
-      if (typeof window !== 'undefined' && window.electron?.openExternal) {
-        const r = await window.electron.openExternal(url);
-        if (r && r.ok === false) throw new Error(`could not open a browser: ${r.error}`);
-        return null;
-      }
-      // Plain web: a tab is a tab.
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return null;
-    }
+    case 'openBrowser': return hostOpenBrowser(args[0]);
 
-    case 'closeBrowser': {
-      if (!isAndroid()) return null; // a real browser tab is not ours to close
-      const { registerPlugin } = await import('@capacitor/core');
-      return registerPlugin('OAuth').closeAuthBrowser().catch(() => {});
-    }
+    case 'closeBrowser': return hostCloseBrowser();
 
     /**
      * The portable round trip: open a URL, wait for the redirect to come home
@@ -317,7 +215,7 @@ async function dispatch(method, args, ctx) {
      * woken by a link meant for the app's own sign-in, and read the handoff.
      */
     case 'oauth': {
-      return oauthRoundTrip(args[0], (url) => dispatch('openBrowser', [url], ctx));
+      return hostOauth(args[0]);
     }
 
     /**
@@ -342,37 +240,9 @@ async function dispatch(method, args, ctx) {
      * client id from a package name, so the extension has to supply one. The
      * error below says exactly that rather than "unsupported".
      */
-    case 'googleSignIn': {
-      // Android's plugin takes the id positionally; desktop takes an object.
-      // Accept either shape on both, so one call site works on both platforms.
-      const opts = (args[0] && typeof args[0] === 'object') ? args[0] : { clientId: args[0] };
-      if (isAndroid()) {
-        const { registerPlugin } = await import('@capacitor/core');
-        return registerPlugin('GoogleSignIn').signIn({ clientId: opts.clientId });
-      }
-      return desktopGoogleAuth({
-        clientId: opts.clientId,
-        scopes: opts.scopes ?? ['openid', 'email', 'profile'],
-        what: 'googleSignIn',
-      });
-    }
+    case 'googleSignIn': return hostGoogleSignIn(args[0]);
 
-    case 'native.GoogleDrive.requestDriveToken': {
-      const opts = args[0] && typeof args[0] === 'object' ? args[0] : {};
-      if (isAndroid()) {
-        // Unchanged: Identity.authorize() derives the caller from the package
-        // name and signing certificate, and takes no client id at all.
-        const { registerPlugin } = await import('@capacitor/core');
-        return registerPlugin('GoogleDrive').requestDriveToken();
-      }
-      return desktopGoogleAuth({
-        clientId: opts.clientId,
-        // drive.file rather than drive: the narrow one, which grants access
-        // only to files this app created or the user explicitly opened.
-        scopes: opts.scopes ?? ['https://www.googleapis.com/auth/drive.file'],
-        what: 'requestDriveToken',
-      });
-    }
+    case 'native.GoogleDrive.requestDriveToken': return hostRequestDriveToken(args[0]);
 
     case 'getSessions': return handlers.getSessions?.() ?? [];
     case 'importSession': return handlers.importSession?.(args[0]);

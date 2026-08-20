@@ -52,11 +52,6 @@ function gfPow(a, n) {
   return GF_EXP[((GF_LOG[a] * n) % 255 + 255) % 255];
 }
 
-function gfInv(a) {
-  if (a === 0) throw new Error('GF inverse of zero');
-  return GF_EXP[255 - GF_LOG[a]];
-}
-
 // ─── Polynomial helpers (coefficient arrays, index 0 = highest degree) ───────
 
 function polyMul(p, q) {

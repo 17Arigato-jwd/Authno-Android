@@ -137,6 +137,7 @@ function devStoreManifests() {
  */
 export async function discoverExtensions() {
   const found = new Map();
+  let readFailure = null;
 
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
@@ -156,7 +157,13 @@ export async function discoverExtensions() {
         directory: Directory.Data,
       });
       files = result.files ?? [];
-    } catch { files = []; }
+    } catch (e) {
+      // An empty extensions directory and an unreadable one both arrive here,
+      // and they are not the same thing — see the note on `error` below.
+      // ENOENT is the ordinary case on a fresh install and stays quiet.
+      if (!/no such (file|directory)/i.test(String(e?.message ?? ''))) readFailure = e;
+      files = [];
+    }
 
     // Capacitor 3 → string[], Capacitor 4+ → FileInfo[].
     // Don't filter by .type (unreliable across versions).
@@ -169,11 +176,28 @@ export async function discoverExtensions() {
     for (const m of manifests) if (m) found.set(m.id, m);
   } catch (e) {
     logError('extensionLoader:discoverExtensions', e);
+    readFailure = readFailure ?? e;
   }
 
   for (const m of devStoreManifests()) if (!found.has(m.id)) found.set(m.id, m);
 
-  return [...found.values()];
+  const list = [...found.values()];
+
+  // "Nothing is installed" and "I could not look" both used to return [], and
+  // the UI drew an empty list either way. So a storage backend that fails —
+  // IndexedDB unavailable in private browsing, a quota wall, a permission
+  // refusal — made every extension silently disappear, with no way for anyone
+  // to tell that from having installed none. That is the failure mode this
+  // codebase works hardest to avoid everywhere else: a closed door, never a
+  // bonfire, and never a closed door that pretends the room was always empty.
+  //
+  // Non-enumerable so `[...]` spreads, `toEqual([])` compares and every
+  // existing caller behaves exactly as before; a caller that wants to tell the
+  // two apart reads `.error`.
+  Object.defineProperty(list, 'error', {
+    value: readFailure || null, enumerable: false, writable: false,
+  });
+  return list;
 }
 
 // ─── Per-extension config ─────────────────────────────────────────────────────

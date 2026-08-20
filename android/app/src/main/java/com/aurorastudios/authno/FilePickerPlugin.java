@@ -356,6 +356,38 @@ public class FilePickerPlugin extends Plugin {
         } catch (Exception ignored) {}
     }
 
+    /**
+     * The largest file this bridge can carry, for this device, right now.
+     *
+     * Everything on this path is held whole, several times over. For an N-byte
+     * file: ByteArrayOutputStream grows to as much as 2N, toByteArray() copies
+     * to 3N, Base64.encodeToString adds 1.37N, and then the same bytes cross
+     * to JavaScript as a UTF-16 string (2.7N) and are decoded back into a
+     * Uint8Array (N). Peak is six to eight times the file.
+     *
+     * Nothing capped it. A 200 MB extension — which the format allows, its
+     * policy cap being 1 GB — was read, encoded and handed over until the
+     * process died, and an OutOfMemoryError mid-bridge is a crash rather than
+     * a refusal: no message, no toast, nothing for anyone to act on.
+     *
+     * Derived from the app's own heap rather than a fixed number, because
+     * "how much is too much" genuinely differs by a factor of eight across
+     * the devices this runs on. maxMemory() is what Android will actually let
+     * this process have.
+     */
+    private static long maxBridgeBytes() {
+        long heap = Runtime.getRuntime().maxMemory();
+        long budget = heap / 8;                       // the 6-8x above, rounded up
+        long floor  = 4L * 1024 * 1024;               // even a tiny heap takes a small extension
+        long ceil   = 64L * 1024 * 1024;              // MAX_JS_READ in epkFormat.js
+        return Math.max(floor, Math.min(budget, ceil));
+    }
+
+    /** Human-readable, for a message somebody has to read. */
+    private static String mb(long bytes) {
+        return (bytes / (1024 * 1024)) + " MB";
+    }
+
     private byte[] readAllBytes(Uri uri) throws Exception {
         try (InputStream is = getActivity().getContentResolver().openInputStream(uri)) {
             if (is == null) throw new Exception("InputStream null for " + uri);
@@ -363,11 +395,31 @@ public class FilePickerPlugin extends Plugin {
         }
     }
 
+    /**
+     * Read a stream whole, refusing before the memory is spent rather than
+     * after.
+     *
+     * The check is inside the loop because the size is not known in advance —
+     * a content:// URI need not report one, and a reported one need not be
+     * true. Stopping at the limit means the worst case is one chunk past it,
+     * not the whole file.
+     */
     private byte[] drain(InputStream is) throws Exception {
+        final long limit = maxBridgeBytes();
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         byte[] chunk = new byte[8192];
         int n;
-        while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+        long total = 0;
+        while ((n = is.read(chunk)) != -1) {
+            total += n;
+            if (total > limit) {
+                throw new Exception(
+                    "This file is too large for this device to open — the limit here is "
+                    + mb(limit) + ". Extensions this size are usually shipping something "
+                    + "they should be fetching.");
+            }
+            buf.write(chunk, 0, n);
+        }
         return buf.toByteArray();
     }
 

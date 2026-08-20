@@ -13,7 +13,7 @@
     android:minWidth="250dp"
     android:minHeight="250dp"
     android:minResizeWidth="180dp"
-    android:minResizeHeight="200dp"
+    android:minResizeHeight="250dp"
 
     android:updatePeriodMillis="1800000"
 
@@ -45,6 +45,13 @@
   targetCell* (API 31+) asks for a sensible default size in grid cells rather
   than letting the launcher derive one from minWidth. maxResize* stops it being
   stretched to a size the calendar bitmap cannot fill cleanly.
+
+  minResizeHeight now equals minHeight, so the widget resizes across but not
+  down. Everything above the calendar — header, meta line, progress, and the
+  four buttons — is fixed height and comes to roughly 185dp; the calendar gets
+  the remainder. At the old 200dp floor that remainder was about 15dp, so
+  shrinking the widget did not make the calendar smaller, it deleted it and
+  left a gap where a month had been.
 
   All four are ignored below API 31, and compileSdk is 34, so they resolve at
   build time on every device.

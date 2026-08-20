@@ -318,29 +318,46 @@ backstop, count the doors.
 
 ## Notes on things that look like issues and are not
 
-- **The JS suite fails 4 tests roughly once in ten runs.** Caught a third time
-  and the output captured, so this is no longer "somewhere". It is always the
-  same four, always in `src/utils/crossPlatformInstall.test.js`, and they are
-  exactly the four tests that call `discoverExtensions()`:
+- **The JS suite failing a handful of tests roughly once in ten runs. FIXED.**
+  Kept here because it took four attempts and the wrong theories cost the most
+  time.
 
-  > `and the app then finds it` · `an update replaces rather than duplicates` ·
-  > `sits alongside an installed extension rather than hiding it` ·
-  > `loses to an installed extension of the same id`
+  It was always `src/utils/crossPlatformInstall.test.js`, always the tests that
+  call `discoverExtensions()`, and the symptom was `[]` after an install that
+  returned a manifest without throwing. Earlier notes said nothing was logged
+  from its own catch. That was the problem rather than evidence: the `catch`
+  around `Filesystem.readdir` discarded the error. Instrumenting it produced
+  the real message on the first hit —
 
-  The symptom is precise: `discoverExtensions()` returns `[]` after an install
-  that returned a manifest without throwing. Nothing is logged from its own
-  catch, so the dynamic `import('@capacitor/filesystem')` resolved and
-  `readdir` genuinely saw an empty directory — meaning the mock's `mockFiles`
-  map was empty at that moment, after an awaited write that could not have
-  failed silently. The file passes 19/19 in isolation, every time.
+  > `This browser doesn't support IndexedDB`
 
-  No cause found, and still none invented. What the next person should NOT
-  spend time on, because it has been ruled out: the two `EXTENSIONS_DIR`
-  constants agree; nothing shares state across test files, since the mock map
-  and jsdom's localStorage are both per-file; the install throws rather than
-  returning quietly, so a silent failure would surface on the install line and
-  does not. Eleven consecutive full runs after the capture were green, so
-  reproducing it costs a loop rather than a run.
+  — which is the **real** `@capacitor/filesystem` talking, not the mock. Those
+  suites reach it through a *dynamic* `await import('@capacitor/filesystem')`,
+  and with the real package also resolvable, jest could satisfy that import
+  from the real path while the test's `jest.mock` factory sat under another.
+  Intermittently, because which happens depends on how files land across
+  workers — which is why adding unrelated suites moved the rate, and why the
+  file always passed 19/19 alone.
+
+  **The fix** is a `moduleNameMapper` entry in `package.json` pointing
+  `@capacitor/filesystem` at `src/testMocks/capacitorFilesystem.js`, so there
+  is exactly one resolved path however the module is reached. Tests with their
+  own factory still win; a test that forgets one now gets a loud "not mocked"
+  error instead of an IndexedDB message from an implementation it never meant
+  to touch. Twenty consecutive full runs green, from a baseline of about one
+  failure in six.
+
+  **What did not work**, so nobody repeats it: dropping `{ virtual: true }`
+  from the `jest.mock` call. That took the rate from roughly 1 in 10 to 14 in
+  15, with different tests failing, because `require()` in the test and the
+  dynamic `import()` in the source then resolved to different instances.
+
+  **What it was hiding** was worse than the flake, and is fixed separately:
+  `discoverExtensions` returned `[]` both for "nothing installed" and for
+  "could not look". A storage backend that fails on a real device — private
+  browsing, a quota wall, a permission refusal — made every installed
+  extension silently disappear. It now reports the difference.
+
 - **`console.debug` about `WidgetData` off-device.** Expected, and only ever as
   a caught error. If it returns as an uncaught page error, that is the
   Capacitor thenable bug back — see the comment on `getPlugin`.

@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "chalk": "^5.3.0",
-    "commander": "^11.1.0"
+    "commander": "^11.1.0",
+    "pako": "^2.1.0"
   },
   "engines": {
     "node": ">=18"

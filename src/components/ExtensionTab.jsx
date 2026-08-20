@@ -12,6 +12,9 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import { createPortal } from 'react-dom';
 import { useExtensions } from '../utils/ExtensionContext';
+import ExtensionPermissions from './ExtensionPermissions';
+import ExtensionSettingsPage from './ExtensionSettingsPage';
+import { hostV2 } from '../utils/extensionRuntime';
 import { isAndroid } from '../utils/platform';
 import { hapticDelete } from '../utils/haptics';
 import { openBilling } from '../utils/billingBus';
@@ -117,6 +120,7 @@ const CHIPS_VISIBLE_DEFAULT = 3;
 function ExtensionCard({ ext, accentHex, session, onClose }) {
   const { navigate, clearConfig, uninstall } = useExtensions();
   const [expanded, setExpanded] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
@@ -134,6 +138,10 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
     ...bdActions.map(c  => ({ ...c, _group: 'Book' })),
     ...settItems.map(c  => ({ ...c, _group: 'Settings' })),
   ];
+
+  // Declared controls the app renders itself (v2 §6). Separate from
+  // `contributes.settings`, which are links out to an extension's own page.
+  const hasSettings = (ext.settings?.schema?.length ?? 0) > 0;
 
   const hasMain = !!ext.contributes?.pages?.main;
   if (hasMain && !allContribs.find(c => c.page === 'main')) {
@@ -369,9 +377,43 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
           </div>
         )}
 
-        {allContribs.length === 0 && (
+        {allContribs.length === 0 && !hasSettings && (
           <div style={{ fontSize: '11px', color: 'var(--text-5)', fontStyle: 'italic' }}>
             No contributions declared
+          </div>
+        )}
+
+        {/* The controls the manifest declared.
+            Inside the extension's own card rather than in a section of their
+            own, because "where are this extension's settings" is a question
+            asked about one extension at a time. Collapsed by default: a card
+            is a summary, and a card that unrolls six fields is a screen. */}
+        {hasSettings && !ext._locked && !ext._tooOld && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <button
+              data-ext-action="true"
+              onClick={(e) => { e.stopPropagation(); setSettingsOpen(v => !v); }}
+              aria-expanded={settingsOpen}
+              style={{
+                alignSelf: 'flex-start',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                background: 'none', border: 'none', color: 'var(--text-4)',
+                fontSize: '11px', cursor: 'pointer', padding: '2px 0',
+              }}
+            >
+              {settingsOpen
+                ? <><DSIcons.ChevronUp size={12} style={{ marginRight: 2 }} /> Hide settings</>
+                : <><DSIcons.ChevronDown size={12} style={{ marginRight: 2 }} /> Settings</>}
+            </button>
+            {settingsOpen && (
+              <div data-ext-action="true" onClick={(e) => e.stopPropagation()}>
+                <ExtensionSettingsPage
+                  manifest={ext}
+                  accentHex={accentHex}
+                  running={!!hostV2(ext.id)}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -629,6 +671,12 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             onClose={onClose}
           />
         ))}
+
+        {/* What each extension may do, and what it has been refused.
+            Below the cards rather than above: the cards are what somebody
+            came here for, and this is the answer to a question they have not
+            asked yet — until one of them has a warning on it. */}
+        <ExtensionPermissions accentHex={accentHex} />
 
         {/* Install from file */}
         <button

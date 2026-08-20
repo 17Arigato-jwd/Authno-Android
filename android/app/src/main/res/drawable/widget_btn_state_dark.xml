@@ -13,6 +13,11 @@
   (surfaces.low / surfaces.mid are rgba(255,255,255,…) in every dark theme).
   That is what makes one drawable correct on Dark, OLED and Material You alike:
   it tints the theme's own background rather than replacing it.
+
+  The corner radius is RADIUS.lg (14dp), which is also what the app's own
+  medium button uses. It was 12dp, which is on no scale at all — near enough
+  to look intentional, far enough that a widget button and an app button
+  sitting on the same screen do not match.
 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android"
     android:enterFadeDuration="130"
@@ -22,7 +27,7 @@
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
             <solid android:color="#26ffffff" />
-            <corners android:radius="12dp" />
+            <corners android:radius="14dp" />
         </shape>
     </item>
 
@@ -30,7 +35,7 @@
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#0dffffff" />
-            <corners android:radius="12dp" />
+            <corners android:radius="14dp" />
         </shape>
     </item>
 </selector>

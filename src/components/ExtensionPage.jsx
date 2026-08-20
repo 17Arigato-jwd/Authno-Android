@@ -3,6 +3,8 @@ import { DSIcons } from '../DesignSystem';
 import { useExtensions } from '../utils/ExtensionContext';
 import { callExtensionApi } from '../utils/extensionLoader';
 import { readExtensionTree, oauthRoundTrip, desktopGoogleAuth } from '../utils/extensionSandbox';
+import { pageApiV2 } from '../utils/sandboxProtocol';
+import { hostV2 } from '../utils/extensionRunnerV2';
 import { FRAME_SANDBOX } from '../utils/sandboxProtocol';
 import { planModuleGraph, rewriteSpecifiers } from '../utils/moduleGraph';
 import { isAndroid } from '../utils/platform';
@@ -229,13 +231,23 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
           source: rewriteSpecifiers(path, files[path], files, (t) => placeholders[t]),
         }));
 
+        // A v2 page gets the SAME api object the background half gets, built
+        // from the same source and routed through the same dispatch. That is
+        // the whole difference from the v1 bridge below: this one is checked.
+        //
+        // v1's bridge hands out `getSessions`, `importSession` and
+        // `encodeSession` with no permission check anywhere, so an extension
+        // refused the library could open its own settings page and read every
+        // book from there. It stays only for v1 extensions, and goes with them.
+        const isV2 = extension?.apiVersion === 2;
+
         // The bridge shim is injected as an inline <script> that runs BEFORE
         // the extension script. It sets up window.CloudBackupAPI (and any future
         // window.*API objects) as async proxies backed by postMessage to the parent.
         //
         // Every storage.get / storage.set / navigate call from the extension UI
         // goes through this bridge — the iframe never needs direct filesystem access.
-        const bridgeShim = `
+        const bridgeShim = isV2 ? pageApiV2() : `
 (function() {
   var _pending = {};
   var _seq = 0;
@@ -461,6 +473,28 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
 
       try {
         let result;
+
+        // ── v2: one door, the same one ────────────────────────────────────
+        //
+        // Straight to the running extension's dispatch, so this page is
+        // governed by the grants the user actually gave. If the extension is
+        // not running there is no host to ask, and that is reported rather
+        // than quietly falling through to the v1 branches below — which would
+        // hand a v2 page the unchecked bridge and undo the entire point.
+        if (extension?.apiVersion === 2) {
+          const host = hostV2(extension.id);
+          if (!host) {
+            reply(undefined, 'This extension is not running.');
+            return;
+          }
+          try {
+            reply(await host.dispatch(method, args ?? []));
+          } catch (err) {
+            reply(undefined, String(err?.message ?? err));
+          }
+          return;
+        }
+
         if (method === 'storage.get')  result = extStorage.get(args[0]);
         else if (method === 'storage.set') { extStorage.set(args[0], args[1]); result = null; }
         else if (method === 'getStatus') {
@@ -998,7 +1032,12 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
 // ─── Main ExtensionPage ───────────────────────────────────────────────────────
 
 export default function ExtensionPage({ extension, pageId, session, accentHex, onBack, inline = false }) {
-  const pageDef = extension?.contributes?.pages?.[pageId];
+  // v2 declares pages at the top level; v1 put them under `contributes`.
+  // Both are checked because both shapes are installable right now, and a v2
+  // extension whose page was looked for in the wrong place got "Page not
+  // found" from every single ui.navigate — which reads as the extension being
+  // broken rather than as the host looking in the wrong object.
+  const pageDef = extension?.pages?.[pageId] ?? extension?.contributes?.pages?.[pageId];
 
   if (!pageDef) {
     return (

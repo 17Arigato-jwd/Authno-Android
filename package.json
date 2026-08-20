@@ -1,6 +1,6 @@
 {
   "name": "authno",
-  "version": "1.1.19-beta.5",
+  "version": "1.1.20-beta.0",
   "description": "AuthNo — offline story editor",
   "author": {
     "name": "VCHS Studios",
@@ -47,6 +47,15 @@
     "start": "react-scripts start",
     "build": "cross-env CI=false react-scripts build",
     "test": "react-scripts test",
+    "check:all": "node scripts/check-all.mjs",
+    "test:epk-crosscheck": "node scripts/epk-crosscheck.mjs",
+    "check:vendored": "node scripts/check-vendored.mjs",
+    "check:cli-build": "node scripts/check-cli-build.mjs",
+    "check:widget-scale": "node scripts/check-widget-scale.mjs",
+    "check:widget-fit": "node scripts/check-widget-fit.mjs",
+    "check:widget-ids": "node scripts/check-widget-ids.mjs",
+    "shots": "node scripts/shot-components.mjs",
+    "check:cloud-backup": "node scripts/check-cloud-backup-v2.mjs",
     "eject": "react-scripts eject",
     "electron": "cross-env NODE_ENV=development electron .",
     "electron-build": "cross-env NODE_ENV=production electron .",
@@ -216,5 +225,10 @@
         "role": "Viewer"
       }
     ]
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "^@capacitor/filesystem$": "<rootDir>/src/testMocks/capacitorFilesystem.js"
+    }
   }
 }

@@ -387,7 +387,7 @@ export default function BookDashboard({
 
   // ── Extension contributions ─────────────────────────────────────────────
   const { navigate } = useExtensions();
-  const { tabs: extTabs, actions: extActions } = useBookDashboardExtensions();
+  const { tabs: extTabs, actions: extActions } = useBookDashboardExtensions(session);
 
   // Sub-panel state
   const [showExport,   setShowExport]   = useState(false);

@@ -21,16 +21,42 @@
 
 import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
+import { isEpk, readEpk } from './epkFormat';
+import { validateManifestV2 } from './extensionHostV2';
+import { promptPlan } from './extensionPermissionsV2';
+import { readGrants, writeGrants, clearGrants } from './extensionGrants';
 import { emitInstall, newInstallId } from './installEvents';
 import { isAndroid }    from './platform';
-import { DEV_STORE_KEY } from './extensionLoader';
+import { DEV_STORE_KEY, clearExtensionConfig } from './extensionLoader';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 const ASSETS_PLUGIN  = 'ExtbkAssets';
 
 // ─── Base64 helpers ───────────────────────────────────────────────────────────
 
+/**
+ * How much base64 this will decode before refusing.
+ *
+ * 64 MB of package is MAX_JS_READ in epkFormat.js; base64 of it is about
+ * 85 MB. The check is on the string LENGTH rather than the decoded size
+ * because by the time there is a decoded size the memory has been spent —
+ * `atob` allocates a binary string as long as the input before anything else
+ * happens.
+ *
+ * Android refuses earlier, in FilePickerPlugin, at a limit derived from the
+ * device's own heap. This one covers desktop and web, where the file arrives
+ * some other way, and is the backstop for a path that forgets to ask.
+ */
+const MAX_BASE64_CHARS = 90 * 1024 * 1024;
+
 function base64ToBytes(b64) {
+  if (typeof b64 !== 'string') throw new Error('expected base64');
+  if (b64.length > MAX_BASE64_CHARS) {
+    throw new Error(
+      'This extension is too large to open — about '
+      + `${Math.round((b64.length * 0.75) / (1024 * 1024))} MB, and the limit is 64 MB.`,
+    );
+  }
   const bin   = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -99,13 +125,20 @@ function validateManifest(raw) {
  * @param {string} base64
  * @returns {Promise<object>} validated manifest
  */
-export async function installExtbkBytes(base64, { installId, silent = false } = {}) {
+export async function installExtbkBytes(base64, { installId, silent = false, askPermissions = null } = {}) {
   const id   = installId ?? newInstallId();
   const emit = (evt) => { if (!silent) emitInstall({ id, kind: 'extension', ...evt }); };
 
   try {
     emit({ stage: 'validating' });
     const bytes = base64ToBytes(base64);
+
+    // A v2 package is a different container entirely, told apart by its magic
+    // rather than by anything the caller passes. Both formats keep the .extbk
+    // extension, so the file a user picks looks the same either way and the
+    // reader decides — which is the only arrangement where picking the wrong
+    // one is impossible.
+    if (isEpk(bytes)) return installEpkBytes(bytes, { id, emit, askPermissions });
 
     // Quick magic check before full validation
     for (let i = 0; i < FILE_MAGIC.length; i++) {
@@ -160,6 +193,136 @@ export async function installExtbkBytes(base64, { installId, silent = false } = 
     emit({ stage: 'error', error: err?.message ?? String(err) });
     throw err;
   }
+}
+
+/**
+ * Install a VCHS-EPK package.
+ *
+ * The order is the point and it is not the same as v1's. Everything is read,
+ * repaired and checked in memory first; nothing is written until the package
+ * has passed. v1 writes as it decodes, so a package that fails halfway leaves
+ * a partial extension on disk for the next scan to find.
+ *
+ * `fromChannel` is deliberately absent here: this path is a file the user
+ * chose, and §7.2 allows an unsigned package exactly there. The update-channel
+ * path passes it and gets the stricter answer.
+ */
+async function installEpkBytes(bytes, { id, emit, askPermissions = null }) {
+  emit({ stage: 'decoding' });
+
+  let pkg;
+  try {
+    pkg = await readEpk(bytes);
+  } catch (e) {
+    // A truncated download is not a corrupt package; it is a finishable one,
+    // and saying so is the difference between "try again" and "start again".
+    if (e?.reason === 'incomplete') {
+      throw new Error(`This file is incomplete — ${e.have} of about ${e.need} bytes arrived.`);
+    }
+    throw new Error(`Invalid .extbk: ${e?.message ?? e}`);
+  }
+
+  const check = validateManifestV2(pkg.manifest);
+  if (!check.ok) throw new Error(`Invalid manifest: ${check.errors.join('; ')}`);
+
+  const manifest = pkg.manifest;
+  const previous = await readInstalledManifest(manifest.id);
+  const fromVersion = previous?.version;
+
+  const files = Object.entries(pkg.modules);
+  const totalFiles = 1 + files.length;
+  emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion,
+         fileCount: totalFiles, filesWritten: 0, progress: 0 });
+
+  const { Filesystem, Directory } = await fs();
+  try {
+    await Filesystem.mkdir({ path: EXTENSIONS_DIR, directory: Directory.Data, recursive: true });
+  } catch (_) { /* already there */ }
+
+  let written = 0;
+  const step = () => {
+    written += 1;
+    emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion,
+           fileCount: totalFiles, filesWritten: written, progress: written / totalFiles });
+  };
+
+  await writeExtensionFile(Filesystem, Directory, manifest.id, 'manifest.json',
+    JSON.stringify(manifest, null, 2));
+  step();
+  for (const [path, source] of files) {
+    await writeExtensionFile(Filesystem, Directory, manifest.id, path, source);
+    step();
+  }
+
+  // Blob entries are assets rather than code. Each is verified against its own
+  // digest as it is read, and one that fails is dropped rather than failing the
+  // install — the same graceful degradation the app already applies to a
+  // partially recoverable book.
+  const dropped = [];
+  for (const path of pkg.entries.keys()) {
+    const data = await pkg.read(path);
+    if (data === null) { dropped.push(path); continue; }
+    await writeExtensionFile(Filesystem, Directory, manifest.id, path, data);
+  }
+
+  if (pkg.repairs.length) {
+    console.log(`[extbkInstaller] repaired ${manifest.id}:`,
+      pkg.repairs.map((r) => `rung ${r.rung} ${r.what}`).join(', '));
+  }
+  if (dropped.length) {
+    console.warn(`[extbkInstaller] ${manifest.id}: dropped unreadable asset(s):`, dropped.join(', '));
+  }
+
+  // ── Permissions ───────────────────────────────────────────────────────────
+  //
+  // Only the delta on an update, so a decision already made is not re-asked.
+  //
+  // With no asker supplied the question is not silently answered "no". An
+  // extension installed with empty grants runs perfectly, does nothing, and
+  // explains nothing — which is indistinguishable from broken, and is what
+  // this path did until the flag below existed. `permissionsPending` is what
+  // lets the Extensions tab tell "you said no" from "nobody asked you".
+  const heldBefore = readGrants(manifest.id);
+  const plan = promptPlan(manifest.permissions, heldBefore.granted);
+  let granted = plan.carried;
+  let permissionsPending = false;
+
+  if (plan.prompt.length > 0) {
+    if (typeof askPermissions === 'function') {
+      emit({ stage: 'permissions', name: manifest.name, asking: plan.prompt.length });
+      // The manifest's own identity goes with the question. A dialog that can
+      // only say "cloud-backup wants…" is naming a directory; a person agreed
+      // to install "Cloud Backup".
+      const answered = (await askPermissions(manifest.id, plan, {
+        name: manifest.name,
+        version: manifest.version,
+        icon: manifest.icon ?? null,
+      })) ?? [];
+      // Filtered against what was actually asked: a dialog cannot grant
+      // something it never showed.
+      const askable = new Set(plan.prompt.map((p) => p.permission));
+      granted = [...new Set([...plan.carried, ...answered.filter((p) => askable.has(p))])];
+    } else {
+      permissionsPending = true;
+    }
+  }
+  writeGrants(manifest.id, granted, heldBefore.userHosts);
+
+  console.log(`[extbkInstaller] ${fromVersion ? 'Updated' : 'Installed'} (EPK): ${manifest.id} v${manifest.version}`);
+  emit({ stage: 'activating', name: manifest.name, version: manifest.version, fromVersion });
+  return {
+    ...manifest,
+    _installId: id,
+    _fromVersion: fromVersion,
+    _format: 'epk',
+    _repairs: pkg.repairs,
+    _droppedAssets: dropped,
+    _warnings: check.warnings,
+    _granted: granted,
+    _refused: plan.prompt.map((p) => p.permission).filter((p) => !granted.includes(p)),
+    _dropped: plan.dropped,
+    _permissionsPending: permissionsPending,
+  };
 }
 
 /** Read the manifest of an already-installed extension (null if absent). */
@@ -252,6 +415,30 @@ export async function seedPreinstalledExtensions() {
 export async function uninstallExtension(extId) {
   if (!/^[\w.-]+$/.test(extId) || extId.includes('..'))
     throw new Error(`Invalid extension id: ${extId}`);
+
+  // Everything the id owned goes first, before anything that can fail.
+  //
+  // Grants used to survive an uninstall entirely, and `promptPlan` carries
+  // every already-held permission without asking — right for an update, wrong
+  // for a reinstall. So removing an extension and installing a package that
+  // declares the same id handed the new one every permission the old one had
+  // been granted, silently, with no question put to anybody. Ids are
+  // author-chosen strings; nothing outside a signed channel ties one to a
+  // particular author.
+  //
+  // It is also just what uninstalling means. Somebody who removes an extension
+  // has revoked it, and an answer they gave a version that is no longer
+  // installed is not an answer they are still giving.
+  //
+  // Ahead of the removal rather than after it, because revoking must not
+  // depend on a directory going away. If the rmdir fails, the extension is
+  // still there and now holds nothing — which is the safe direction, and the
+  // one `readGrants` already takes when the store will not parse.
+  //
+  // Config goes too: it is where an extension keeps its tokens, and one caller
+  // remembering to clear it separately is one caller.
+  clearGrants(extId);
+  clearExtensionConfig(extId);
 
   let removed = false;
 

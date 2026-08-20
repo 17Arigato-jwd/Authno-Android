@@ -170,6 +170,16 @@ export const DangerButton = (props) => <GradientButton variant="danger" {...prop
  *   icon      ReactNode
  *   disabled  bool
  */
+/**
+ * MinimalButton
+ *
+ * `disabled` sets the attribute as well as the styling. It used to do neither
+ * — it greyed the button to 40% and dropped the click handler, and that is all.
+ * The element stayed in the tab order, announced to a screen reader as an
+ * ordinary button, and answered Enter by doing nothing at all. Greyed out and
+ * unreachable have to be the same state, or the only people who can tell a
+ * disabled button from a broken one are the people who can see it.
+ */
 export function MinimalButton({ variant = 'smooth', size = 'md', color = '#ffffff', icon, disabled = false, onClick, style = {}, children }) {
   const [hovered, setHovered] = useState(false);
 
@@ -182,6 +192,8 @@ export function MinimalButton({ variant = 'smooth', size = 'md', color = '#fffff
     }[size] ?? { padding: '9px 17px', fontSize: 13, radius: 13, iconSize: 14, gap: 7 };
     return (
       <button
+        disabled={disabled}
+        aria-disabled={disabled || undefined}
         onClick={disabled ? undefined : onClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -216,6 +228,8 @@ export function MinimalButton({ variant = 'smooth', size = 'md', color = '#fffff
 
   return (
     <button
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
       onClick={disabled ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
