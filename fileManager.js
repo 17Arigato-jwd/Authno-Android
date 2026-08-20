@@ -33,9 +33,19 @@ function registerHandlers() {
   console.log('🟢 Registering IPC handlers...');
 
   // ── Overwrite existing file ────────────────────────────────────────────────
+  // Same rule as delete: only .authbook goes over this channel. The renderer
+  // never saves anything else — `save-book-bytes` has exactly one caller, and
+  // it passes `session.filePath`, which storage.js builds with an .authbook
+  // extension — so anything else arriving here is a bug on the way to
+  // overwriting a file somebody cared about.
+  //
+  // Delete was guarded and this was not, which is the asymmetry worth naming:
+  // overwriting an arbitrary file is at least as destructive as removing a
+  // book, and the door was wider.
   ipcMain.handle('save-book-bytes', async (_event, { filePath, base64 }) => {
     try {
-      if (!filePath) throw new Error('No file path provided');
+      if (!filePath || typeof filePath !== 'string') throw new Error('No file path provided');
+      if (path.extname(filePath).toLowerCase() !== '.authbook') throw new Error('Not an .authbook file');
       fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
       return { success: true };
     } catch (err) {
