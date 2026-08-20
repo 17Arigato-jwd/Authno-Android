@@ -3,6 +3,65 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.20-beta.0
+
+_Extensions can finally do the things they said they could, the widgets fit
+what is in them, and the app stops losing the last word you typed._
+
+### Extensions
+
+- **A new kind of extension, and a new package to put one in.** Bigger
+  extensions than the old format could hold, and packages that survive being
+  copied around — a damaged one is repaired where it can be and refused clearly
+  where it cannot, instead of half-installing.
+- **You are asked what an extension may do, in words, before it does it.**
+  Every request comes with the author's own reason for wanting it, each one
+  can be refused on its own, and saying no to all of them still installs the
+  extension.
+- **The Extensions tab shows what each one may do, and lets you change your
+  mind.** It also says when an extension keeps asking for something you have
+  not given it, so one that looks broken can explain itself.
+- **Removing an extension now removes what you allowed it to do.** It used to
+  leave that behind, so something installed later under the same name inherited
+  every answer you had given the old one without asking again.
+- **An extension's settings are drawn by AuthNo.** Authors declare the controls
+  and the app renders them, so they match the rest of the app, follow your
+  theme, and cannot pretend to be part of AuthNo while behaving like something
+  else.
+- **Extension buttons do what they say.** A button meant to run something ran
+  nothing and opened a blank page instead. "Back up now" now backs up.
+- **Extension actions appear where the author put them.** Three places a button
+  could be added were accepted and then quietly never drawn.
+- Extensions can ask you a question, and get an answer. Anything that asked one
+  used to wait forever, with nothing on screen.
+- Extensions can put a small panel beside your writing, and a coloured dot when
+  something wants your attention. The text column keeps its width — the panel
+  gets out of the way instead.
+- An extension too large to open is refused with the size, rather than taking
+  the app down with it.
+- An extension can be told to use a server you name, and you are shown the
+  address, on its own, before you agree to it.
+
+### Widgets
+
+- **The widgets fit what is in them.** Several asked the launcher for less room
+  than their contents needed, so the bottom of a widget was simply cut off.
+- **They resize when you resize them.** Dragging a widget bigger or smaller now
+  changes what it shows, instead of drawing the same thing at the same size in
+  a different-shaped box.
+- Their proportions, spacing and type are on the same scale as the rest of the
+  app, so they look like it.
+
+### Writing
+
+- **Pressing home mid-sentence no longer costs you the word.** Typing was
+  written down a fraction of a second after you stopped, and backgrounding the
+  app in that gap could lose it.
+
+### Everywhere
+
+- **The app opens with its own logo.** The splash was showing a stand-in.
+
 ## 1.1.19-beta.5
 
 _Extensions work the same on a laptop as on a phone, saving tells you the

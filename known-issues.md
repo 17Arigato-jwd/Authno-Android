@@ -5,8 +5,8 @@ the app, the website (`claude/audit-followups`) and the Cloud Backup extension
 (`cloud-backup-plus-revamp`) — and worked through in the same session.
 
 Everything here was reproduced, not inferred, and every fix is verified the same
-way it was found. Three entries are still open; all three are open because they
-need a decision rather than a change, and each says which decision.
+way it was found. All fifteen are closed, plus one more (#16) found while
+closing #6.
 
 There is a section at the bottom of things that **look** like bugs and are not.
 That is the half of a list like this that stops getting re-investigated every
@@ -16,10 +16,10 @@ few months.
 |---|---|---|---|
 | 1 | A `command` contribution navigated to `undefined` | app | **fixed** |
 | 2 | `bookActions` / `chapterActions` validated, never rendered | app | **fixed** |
-| 3 | `tier: "premium"` means Cloud Backup will not run on a free build | app | **open — your call** |
+| 3 | `tier: "premium"` meant Cloud Backup would not run on a free build | extension | **fixed** — free for now |
 | 4 | `suffix` and `collapsed` accepted and ignored | app | **fixed** |
-| 5 | No `## 1.1.20-beta.0` in CHANGELOG.md; a release cannot be cut | app | **open — needs your copy** |
-| 6 | `extensionInstall.js` is a second, unused installer | app | **open — your call** |
+| 5 | No `## 1.1.20-beta.0` in CHANGELOG.md; a release cannot be cut | app | **fixed** |
+| 6 | `extensionInstall.js` was a second, unused installer | app | **fixed** |
 | 7 | `validateWidgets` had no caller | app | **fixed** |
 | 8 | `check:csp` could not run at all | website | **fixed** |
 | 9 | A deploy without `VITE_GATE_API` silently narrowed the CSP | website | **fixed** |
@@ -29,77 +29,73 @@ few months.
 | 13 | No IPv6 origin could ever be granted | app | **fixed** |
 | 14 | Worker flow tokens were not actually single-use | website | **fixed** |
 | 15 | Two auth routes had no rate limit | website | **fixed** |
+| 16 | An update replaced a running extension's files underneath it | app | **fixed** |
+| 17 | Backgrounding the app could cost the last word typed | app | **fixed** |
 
 ---
 
-## Still open
+## Resolved by decision
 
-### 3. `tier: "premium"` means Cloud Backup does not activate on a free build
+### 3. `tier: "premium"` meant Cloud Backup never activated on a free build
 
-Cloud Backup's manifest sets `"tier": "premium"`, and the loader honours it:
+The loader honours the tier, so it installed, sat greyed in the list, and ran
+nothing — indistinguishable from broken on any build without Pro.
 
-```js
-_locked: m.tier === 'premium' && !pro,
-…
-if (manifest._locked) continue;   // never activated
-```
+**Free for now**, at the owner's decision. One word in the extension's
+manifest.
 
-On a build with no Pro entitlement it installs, appears greyed in the list, and
-never runs — no commands, no sync, no readouts. That is the tier lock working.
+### 5. `CHANGELOG.md` had no section for the current version
 
-It stays on this list for two reasons. On a test device it will read as a
-fault — "I installed it and nothing happened" — so it is worth knowing before
-you look. And whether Cloud Backup should be premium at all is a commercial
-decision, which is yours to make and not a thing to change in a sweep.
+The release job builds its body from the matching `## <version>` section and
+hard-fails without one, and ordinary CI never notices because the check is
+gated on a tag or a release dispatch.
 
-### 5. `CHANGELOG.md` has no section for the current version
+**Written**, from the commits, at the owner's request. Consequences rather than
+mechanism, and deliberately silent about anything not shipping in it.
 
-`package.json` is at `1.1.20-beta.0`; the newest heading is `## 1.1.19-beta.5`.
-The release job builds its body from the matching section and hard-fails
-without one:
+### 6. `extensionInstall.js` was a second, unused implementation
 
-```yaml
-if [ ! -s release-notes.md ]; then
-  echo "::error title=Empty release notes::No '## $VER' section in CHANGELOG.md."
-  exit 1
-fi
-```
+Rather than delete it and lose what it knew, the live path was checked against
+all 27 of its assertions.
 
-Ordinary CI is unaffected — the heading check is gated on a tag or a
-`release_version` dispatch — so this stays invisible until somebody publishes.
+Most already held — verify-before-write, permission prompting, carried and
+dropped grants, the unasked-vs-refused distinction. Onboarding is absent and
+correctly so: the spec marks it **[later]**. The id-mismatch rule has nothing
+to protect, because the live design has no "update this extension" verb; there
+is one "install this file" door and the package's own manifest names what it
+is.
 
-Changelog copy needs your approval before it is written. Say the word and the
-section gets drafted from the commits for you to edit.
+One was real, and is #16 below. Then the module went, because 27 tests of code
+nothing runs is worse than no tests — it reads as coverage of installing, and
+installs do not go through it.
 
-### 6. `src/utils/extensionInstall.js` is a second, unused implementation
+### 16. An update replaced a running extension's files underneath it
 
-No consumer. `extbkInstaller.js` does the job and is what every install path
-calls.
+Found while doing the above. The directory was overwritten while the old
+version was still live: its frame executing modules loaded from files that no
+longer said what they had said, its hooks still registered. `refresh()`
+converged afterwards, so the window was short rather than absent.
 
-I went looking for what the live path was missing, using the unused module's
-27 tests as a specification. Most of it holds:
+**Fixed**: the running copy is stopped first, and one that will not stop is
+logged rather than allowed to fail the update — the files still land and
+`refresh()` re-activates either way. Tested through the real install path
+against the filesystem harness `epkInstall.test.js` already had.
 
-- **Verify before writing** — the EPK path reads at line 215, validates at 225,
-  writes at 239. Correct order.
-- **Grants destroyed on uninstall** — was genuinely missing, and is fixed.
-- **Onboarding before permissions** — the live path has no onboarding step, and
-  that is not a gap: the spec marks `onboarding` **[later]** (§7).
+### 17. Backgrounding the app could cost the last word typed
 
-What is left is one real difference and one decision.
+Not from #6 — from checking CLAUDE.md's three "things that must stay true"
+against the code. The other two hold. This one did not.
 
-The difference: an update writes the new files while the old version is still
-running. `ExtensionContext.installExtbk` calls `refresh()` immediately after,
-which deactivates everything and re-activates, so it converges — but between
-the write and the refresh the old frame is live against replaced files. The
-dead module stopped the old version first.
+Typing is debounced 400 ms into the sessions array, and everything that flushed
+it early was something happening inside the app: a blur, a chapter change, an
+unmount. None of those fire when somebody presses home mid-sentence, and on
+Android the WebView can be reclaimed after that without another line of JS
+running.
 
-The decision is what to do with the module. Deleting it removes 27 tests that
-encode real requirements. Migrating the live path onto it touches every install
-surface, including the cold-start intent path. Neither is a change to make
-unilaterally at the end of a fix batch, which is why it is here rather than in
-the diff.
-
----
+**Fixed** in `utils/flushOnHide.js` — `visibilitychange` while the page is
+still alive, `pagehide` as best effort for a hard close. In its own file
+because App.js cannot be mounted in jsdom without standing up the whole
+application, which is how a rule this small ends up with no test at all.
 
 ## Fixed
 
