@@ -66,6 +66,23 @@ public class StreakWidgetRenderer {
 
     public static void populate(Context ctx, RemoteViews views,
                                 JSONObject book, String accentHex, WidgetTheme pal) {
+        populate(ctx, views, book, accentHex, pal, 0);
+    }
+
+    /**
+     * @param calendarDp how tall the calendar's slot is, or 0 if unknown.
+     *
+     * The bitmap is drawn at the size of the space it lands in rather than at
+     * a fixed one. The ImageView is fitCenter, so a bitmap taller than its
+     * slot is scaled down uniformly — undistorted, but small, with the month
+     * shrunk into the middle of a band of empty widget. Sizing the cells to
+     * the slot instead means the month fills it at every widget size, and the
+     * day numbers stay at a readable fraction of the cell rather than being
+     * scaled to whatever is left.
+     */
+    public static void populate(Context ctx, RemoteViews views,
+                                JSONObject book, String accentHex, WidgetTheme pal,
+                                int calendarDp) {
         if (pal == null) pal = WidgetTheme.fallback(true);
         int accent = DSTokens.parseColor(accentHex, DSTokens.DEFAULT_ACCENT);
 
@@ -118,9 +135,9 @@ public class StreakWidgetRenderer {
             int pct = goalToday > 0 ? Math.min(100, wordsToday * 100 / goalToday) : 0;
             views.setProgressBar(R.id.widget_progress_bar, 100, pct, false);
 
-            // Calendar bitmap
+            // Calendar bitmap, sized to the slot it lands in.
             float density = ctx.getResources().getDisplayMetrics().density;
-            Bitmap calBmp = renderCalendar(log, todayKey, accent, density, pal);
+            Bitmap calBmp = renderCalendar(log, todayKey, accent, density, pal, calendarDp);
             views.setImageViewBitmap(R.id.widget_calendar, calBmp);
 
         } catch (Exception e) {
@@ -134,7 +151,8 @@ public class StreakWidgetRenderer {
                                          String todayKey,
                                          int accent,
                                          float density,
-                                         WidgetTheme pal) {
+                                         WidgetTheme pal,
+                                         int slotDp) {
         // Cell geometry on the design system's spacing scale, same as the
         // layout around it. 34×28 and an 18dp header were eyeballed, and a
         // calendar whose proportions come from nowhere is exactly what makes
@@ -145,10 +163,8 @@ public class StreakWidgetRenderer {
         // below is fitCenter into whatever height is left over: the closer the
         // bitmap's aspect is to the slot's, the less of that slot goes unused.
         final int COLS     = 7;
-        final int CELL_W   = (int) (DSTokens.SPACING.XXL * density);   // 32dp
-        final int CELL_H   = (int) (DSTokens.SPACING.XL  * density);   // 24dp
-        final int HEADER_H = (int) (DSTokens.SPACING.LG  * density);   // 16dp
-        final int PAD_V    = (int) (DSTokens.SPACING.XS  * density);   // 4dp
+        final int HEADER_H = (int) (DSTokens.SPACING.LG * density);   // 16dp
+        final int PAD_V    = (int) (DSTokens.SPACING.XS * density);   // 4dp
 
         Calendar today  = Calendar.getInstance();
         int year        = today.get(Calendar.YEAR);
@@ -161,6 +177,27 @@ public class StreakWidgetRenderer {
         int startPad = (dow + 5) % 7; // Monday-based
 
         int rows = Math.max(5, (int) Math.ceil((startPad + daysInMonth) / 7.0));
+
+        // Cell height from the slot, when the caller knows it. 24dp is the
+        // design system's SPACING.XL and the size this drew at before; the
+        // clamp is what keeps a very tall widget from turning the month into
+        // seven enormous squares, and a very short one from producing cells
+        // too small for a two-digit day number.
+        final int MIN_CELL = (int) (16 * density);
+        final int MAX_CELL = (int) (40 * density);
+        int cellH;
+        if (slotDp > 0) {
+            int usable = (int) (slotDp * density) - HEADER_H - PAD_V;
+            cellH = usable / rows;
+            if (cellH < MIN_CELL) cellH = MIN_CELL;
+            if (cellH > MAX_CELL) cellH = MAX_CELL;
+        } else {
+            cellH = (int) (DSTokens.SPACING.XL * density);   // 24dp
+        }
+        // Cells stay a little wider than tall, which is the proportion a week
+        // grid wants: seven columns across is the constrained direction.
+        final int CELL_H = cellH;
+        final int CELL_W = (int) (cellH * 1.33f);
 
         int bmpW = COLS * CELL_W;
         int bmpH = HEADER_H + PAD_V + rows * CELL_H;
@@ -176,8 +213,14 @@ public class StreakWidgetRenderer {
         // Typography from DSTokens, unscaled. The 0.9f that used to sit on the
         // header size put it at 9.9sp — between two steps of the scale, which
         // is the one place a size cannot be. size.xs IS the caption step.
+        // A fixed 11sp in a cell whose height now varies would be enormous in
+        // a small cell and lost in a large one. 44% of the cell keeps a
+        // two-digit number inside its circle at every size, and the clamp
+        // keeps it inside the design system's own range at the extremes.
         float headerTextSize = DSTokens.TYPOGRAPHY.SIZE_XS * density;   // 9sp
-        float dayTextSize    = DSTokens.TYPOGRAPHY.SIZE_SM * density;   // 11sp
+        float dayTextSize    = Math.max(DSTokens.TYPOGRAPHY.SIZE_XS * density,
+                               Math.min(DSTokens.TYPOGRAPHY.SIZE_BASE * density,
+                                        CELL_H * 0.44f));
 
         // Accent tints
         int accentFill   = DSTokens.withAlpha(accent, 0x2e);

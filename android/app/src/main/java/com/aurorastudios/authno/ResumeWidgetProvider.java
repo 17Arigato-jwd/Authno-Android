@@ -4,6 +4,7 @@ import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
+import android.os.Bundle;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.widget.RemoteViews;
@@ -23,9 +24,34 @@ import org.json.JSONObject;
  */
 public class ResumeWidgetProvider extends AppWidgetProvider {
 
+    /** Padding, the book line, one line of chapter title, and the button. */
+    private static final int CORE_DP = 99;
+
+    /** The word count and when. */
+    private static final int META_DP = 23;
+
+    /** The book icon and name. */
+    private static final int BOOK_LINE_DP = 15;
+
     @Override
     public void onUpdate(Context ctx, AppWidgetManager mgr, int[] widgetIds) {
         for (int id : widgetIds) updateWidget(ctx, mgr, id);
+    }
+
+    /**
+     * Re-render when the user resizes the widget.
+     *
+     * Without this a widget decides what to show once, when it is placed, and
+     * keeps showing that forever: dragged taller it leaves the new space
+     * empty, dragged shorter it clips. The provider is the only thing that can
+     * react, because a RemoteViews layout cannot see its own size — and this
+     * is the only callback that tells it the size changed.
+     */
+    @Override
+    public void onAppWidgetOptionsChanged(Context ctx, AppWidgetManager mgr,
+                                          int widgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(ctx, mgr, widgetId, newOptions);
+        updateWidget(ctx, mgr, widgetId);
     }
 
     /** Also called by WidgetDataPlugin after every sync. */
@@ -63,9 +89,29 @@ public class ResumeWidgetProvider extends AppWidgetProvider {
         String bookId = r.optString("bookId", null);
         views.setTextViewText(R.id.resume_book, r.optString("bookTitle", "Untitled Book"));
         views.setTextViewText(R.id.resume_chapter, r.optString("chapTitle", "Untitled chapter"));
-        views.setTextViewText(R.id.resume_meta,
-                ResumeText.meta(r.optInt("words", 0), r.optLong("ts", 0L)));
         views.setTextViewText(R.id.resume_button, "Continue writing");
+
+        // ── What this widget is tall enough for ────────────────────────────
+        //
+        // The chapter name and the button are the card. The word-count-and-
+        // when line is the extra, and it is the one to drop: the button is the
+        // only control here, so if anything falls off the bottom it is the
+        // thing the widget exists for.
+        //
+        // The book line goes at the very smallest, because the chapter name
+        // usually implies the book and a card with no chapter and no button is
+        // not worth showing at all.
+        WidgetSize size = WidgetSize.of(mgr, widgetId, 160, 130);
+
+        boolean showMeta = size.roomFor(CORE_DP, META_DP);
+        views.setTextViewText(R.id.resume_meta,
+                showMeta ? ResumeText.meta(r.optInt("words", 0), r.optLong("ts", 0L)) : "");
+        views.setViewVisibility(R.id.resume_meta,
+                showMeta ? android.view.View.VISIBLE : android.view.View.GONE);
+
+        boolean showBook = size.roomFor(CORE_DP - BOOK_LINE_DP, 0);
+        views.setViewVisibility(R.id.resume_book_row,
+                showBook ? android.view.View.VISIBLE : android.view.View.GONE);
 
         // ONLY the button. The card is information; a whole-surface tap target
         // on a home screen gets hit while scrolling, swiping between pages, or

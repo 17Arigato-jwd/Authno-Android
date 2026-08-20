@@ -4,6 +4,7 @@ import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
+import android.os.Bundle;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -49,9 +50,34 @@ import java.util.Map;
  */
 public class CountdownWidgetProvider extends AppWidgetProvider {
 
+    /** Padding, the header row, the clock, its caption and the progress line. */
+    private static final int CORE_DP = 116;
+
+    /** The "N words to go" line. */
+    private static final int REMAINING_DP = 15;
+
+    /** Below this the book title has no room left once the chip takes its share. */
+    private static final int STREAK_CHIP_MIN_WIDTH_DP = 180;
+
     @Override
     public void onUpdate(Context ctx, AppWidgetManager mgr, int[] widgetIds) {
         for (int id : widgetIds) updateWidget(ctx, mgr, id);
+    }
+
+    /**
+     * Re-render when the user resizes the widget.
+     *
+     * Without this a widget decides what to show once, when it is placed, and
+     * keeps showing that forever: dragged taller it leaves the new space
+     * empty, dragged shorter it clips. The provider is the only thing that can
+     * react, because a RemoteViews layout cannot see its own size — and this
+     * is the only callback that tells it the size changed.
+     */
+    @Override
+    public void onAppWidgetOptionsChanged(Context ctx, AppWidgetManager mgr,
+                                          int widgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(ctx, mgr, widgetId, newOptions);
+        updateWidget(ctx, mgr, widgetId);
     }
 
     /** Placing several and removing one must not leave the others' books behind. */
@@ -120,13 +146,33 @@ public class CountdownWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.countdown_caption,
                 CountdownText.caption(streakDays, met, extendedHours));
 
-        String left = CountdownText.remaining(wordsToday, goalWords);
-        views.setTextViewText(R.id.countdown_remaining, left == null ? "" : left);
-        views.setViewVisibility(R.id.countdown_remaining, left == null ? View.GONE : View.VISIBLE);
+        // ── What this widget is tall enough for ────────────────────────────
+        //
+        // The clock, its caption and the progress line are the widget. The
+        // "N words to go" line and the streak chip are extras, and at the
+        // smallest allowed size there is no room for the first of them —
+        // where "no room" means it falls off the bottom rather than
+        // compressing, because a vertical LinearLayout allocates top-down.
+        //
+        // Hiding it deliberately is the same outcome the layout would have
+        // reached by accident, except the caller knows, the spacer above it
+        // gets the height back, and the line that remains is not the one the
+        // user needed least.
+        WidgetSize size = WidgetSize.of(mgr, widgetId, 160, 130);
 
+        String left = CountdownText.remaining(wordsToday, goalWords);
+        boolean showRemaining = left != null && size.roomFor(CORE_DP, REMAINING_DP);
+        views.setTextViewText(R.id.countdown_remaining, showRemaining ? left : "");
+        views.setViewVisibility(R.id.countdown_remaining, showRemaining ? View.VISIBLE : View.GONE);
+
+        // The streak chip sits on the header row beside the book title, so it
+        // costs width rather than height. A narrow widget ellipsises the title
+        // to nothing to make room for it, which trades the more useful label
+        // for the less useful one.
         String streakLabel = CountdownText.streakLabel(streakDays);
+        boolean showStreak = !streakLabel.isEmpty() && size.width >= STREAK_CHIP_MIN_WIDTH_DP;
         views.setTextViewText(R.id.countdown_streak, streakLabel);
-        views.setViewVisibility(R.id.countdown_streak, streakLabel.isEmpty() ? View.GONE : View.VISIBLE);
+        views.setViewVisibility(R.id.countdown_streak, showStreak ? View.VISIBLE : View.GONE);
 
         long msLeft = Math.max(0L, deadline - System.currentTimeMillis());
 

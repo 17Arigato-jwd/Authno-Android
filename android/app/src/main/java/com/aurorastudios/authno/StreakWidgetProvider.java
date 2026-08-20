@@ -4,6 +4,7 @@ import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
+import android.os.Bundle;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.widget.RemoteViews;
@@ -23,6 +24,20 @@ import org.json.JSONObject;
  * "widget_book_<appWidgetId>" in SharedPreferences.
  */
 public class StreakWidgetProvider extends AppWidgetProvider {
+
+    /**
+     * Fixed-height content above the calendar, excluding the action row: the
+     * card's padding, the header, the meta line, the progress bar and the
+     * primary button. Measured from the layout rather than guessed — see
+     * scripts/check-widget-fit.mjs, which does the same arithmetic in CI.
+     */
+    private static final int CHROME_WITHOUT_ACTIONS_DP = 153;
+
+    /** The three secondary buttons, plus the margin below them. */
+    private static final int ACTION_ROW_DP = 39;
+
+    /** Below this a month is a smudge, and the row above it is worth more. */
+    private static final int CALENDAR_MIN_DP = 80;
 
     // SharedPreferences file shared between this provider, the config activity,
     // and the WidgetDataPlugin so all three see the same data.
@@ -67,6 +82,22 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         for (int id : widgetIds) {
             updateWidget(ctx, mgr, id);
         }
+    }
+
+    /**
+     * Re-render when the user resizes the widget.
+     *
+     * Without this a widget decides what to show once, when it is placed, and
+     * keeps showing that forever: dragged taller it leaves the new space
+     * empty, dragged shorter it clips. The provider is the only thing that can
+     * react, because a RemoteViews layout cannot see its own size — and this
+     * is the only callback that tells it the size changed.
+     */
+    @Override
+    public void onAppWidgetOptionsChanged(Context ctx, AppWidgetManager mgr,
+                                          int widgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(ctx, mgr, widgetId, newOptions);
+        updateWidget(ctx, mgr, widgetId);
     }
 
     /**
@@ -244,8 +275,29 @@ public class StreakWidgetProvider extends AppWidgetProvider {
         views.setViewVisibility(R.id.widget_next_book_btn,
                 bookCount(booksJson) > 1 ? android.view.View.VISIBLE : android.view.View.GONE);
 
+        // ── What this widget is tall enough for ────────────────────────────
+        //
+        // Everything above the calendar is fixed height and comes to roughly
+        // 185dp: the header, the meta line, the progress bar and two rows of
+        // buttons. The calendar gets the remainder, and at the smaller sizes
+        // the remainder is not enough to draw a month in.
+        //
+        // So the secondary action row goes first. It is the most expendable
+        // thing on the card — every one of its three buttons is reachable
+        // inside the app, and two of them are conveniences — whereas a streak
+        // widget with no calendar is not a streak widget.
+        WidgetSize size = WidgetSize.of(mgr, widgetId, 250, 250);
+
+        boolean showActions = size.roomFor(CHROME_WITHOUT_ACTIONS_DP, ACTION_ROW_DP + CALENDAR_MIN_DP);
+        views.setViewVisibility(R.id.widget_action_row,
+                showActions ? android.view.View.VISIBLE : android.view.View.GONE);
+
+        int calendarDp = size.height - CHROME_WITHOUT_ACTIONS_DP
+                - (showActions ? ACTION_ROW_DP : 0);
+        if (calendarDp < 0) calendarDp = 0;
+
         if (book != null) {
-            StreakWidgetRenderer.populate(ctx, views, book, accentHex, theme);
+            StreakWidgetRenderer.populate(ctx, views, book, accentHex, theme, calendarDp);
         } else {
             // Three different reasons the book is not here, and saying the
             // wrong one is worse than saying nothing: a writer who switched

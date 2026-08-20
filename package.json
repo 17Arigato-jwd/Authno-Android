@@ -52,6 +52,7 @@
     "check:cli-build": "node scripts/check-cli-build.mjs",
     "check:widget-scale": "node scripts/check-widget-scale.mjs",
     "check:widget-fit": "node scripts/check-widget-fit.mjs",
+    "check:widget-ids": "node scripts/check-widget-ids.mjs",
     "check:cloud-backup": "node scripts/check-cloud-backup-v2.mjs",
     "eject": "react-scripts eject",
     "electron": "cross-env NODE_ENV=development electron .",

@@ -80,44 +80,6 @@ public class NotesWidgetProvider extends AppWidgetProvider {
         updateWidget(ctx, mgr, widgetId);
     }
 
-    /**
-     * How many note rows this widget is currently tall enough for.
-     *
-     * The layout declares four and the provider used to reveal all four
-     * whenever there were four notes to show — regardless of whether the
-     * widget had room. At its default 4×2 size it does not: four rows plus the
-     * header and the capture button come to about 260dp, and the widget asks
-     * the launcher for 140. A vertical LinearLayout allocates top-down and does
-     * not shrink its children to fit, so the surplus rows were not squeezed,
-     * they fell off the bottom — along with the "+n more" line that would have
-     * explained the missing ones.
-     *
-     * OPTION_APPWIDGET_MIN_HEIGHT is the height the launcher has actually given
-     * this widget in its current layout, in dp. It is the only measurement
-     * available on this side of the boundary.
-     */
-    private static int rowsThatFit(AppWidgetManager mgr, int widgetId, boolean hasMore) {
-        int availableDp;
-        try {
-            Bundle opts = mgr.getAppWidgetOptions(widgetId);
-            // MIN_HEIGHT is the portrait height; MAX_HEIGHT is landscape. The
-            // smaller one is the one that has to work.
-            availableDp = opts == null ? 0 : opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
-        } catch (Exception ignored) {
-            availableDp = 0;
-        }
-        // No options yet — a launcher that does not report them, or a widget
-        // mid-placement. Two rows is what the smallest allowed size holds, and
-        // showing too few is recoverable by resizing; showing too many is not
-        // recoverable at all, because the user cannot see what was dropped.
-        if (availableDp <= 0) return 2;
-
-        int forRows = availableDp - CHROME_DP - (hasMore ? MORE_DP : 0);
-        int fits = forRows / ROW_DP;
-        if (fits < 1) fits = 1;
-        return Math.min(fits, MAX_ROWS);
-    }
-
     /** Also called by WidgetDataPlugin after every sync. */
     static void updateWidget(Context ctx, AppWidgetManager mgr, int widgetId) {
         SharedPreferences prefs = ctx.getSharedPreferences(
@@ -146,8 +108,22 @@ public class NotesWidgetProvider extends AppWidgetProvider {
         // Decided before the loop, because the "+n more" line takes a row's
         // worth of space itself and there is no point fitting a row only to
         // push the explanation of the missing ones off the bottom.
+        // How many rows this widget is tall enough for, right now.
+        //
+        // The layout declares four and the provider used to reveal all four
+        // whenever there were four notes — regardless of room. At the default
+        // 4x2 size there is not: four rows plus the header and the capture
+        // button come to about 260dp against a widget that asks for 140. The
+        // surplus rows did not shrink, they fell off the bottom, taking the
+        // "+n more" line that would have explained them.
+        //
+        // The "+n more" line is decided first because it costs a row's worth
+        // of space itself, and there is no point fitting a row only to push
+        // the explanation of the missing ones off the bottom.
         int available = notes == null ? 0 : notes.length();
-        int limit = rowsThatFit(mgr, widgetId, total > available);
+        WidgetSize size = WidgetSize.of(mgr, widgetId, 250, 140);
+        boolean hasMore = total > available;
+        int limit = size.rowsFor(CHROME_DP + (hasMore ? MORE_DP : 0), ROW_DP, MAX_ROWS);
 
         int shown = 0;
         for (int i = 0; i < MAX_ROWS; i++) {

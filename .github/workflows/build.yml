@@ -105,6 +105,13 @@ jobs:
       - name: Widget content fits the widget
         run: npm run check:widget-fit
 
+      # Gradle needs dl.google.com and cannot run everywhere this repo is
+      # worked on, so the Android half gets the checks that do not need it: a
+      # RemoteViews action naming an id no layout declares does not throw
+      # anywhere visible — the widget just silently does not do the thing.
+      - name: Widget providers match their layouts, and the Java parses
+        run: npm run check:widget-ids
+
       # The writing day on the two days a year that are 23 and 25 hours long.
       # Pure node, no browser.
       - name: The writing day in every timezone
