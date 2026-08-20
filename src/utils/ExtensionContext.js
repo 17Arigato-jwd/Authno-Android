@@ -35,6 +35,10 @@ import {
   deactivateExtension,
   deactivateAll,
 } from './extensionRuntime';
+import { whenAllows, whenContext } from './whenClause';
+import { readGrants } from './extensionGrants';
+import { getPlatform } from './deviceId';
+import { APP_VERSION } from '../version';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -251,14 +255,98 @@ export function ExtensionProvider({ children, onNavigate }) {
   );
 }
 
+// ─── `when` ──────────────────────────────────────────────────────────────────
+
+/**
+ * Decide which contributions are on screen right now.
+ *
+ * `whenClause.js` has parsed, evaluated and tested this expression language
+ * since the v2 work, and `extensionHostV2` refuses to install a manifest whose
+ * clauses do not parse. Nothing ever *evaluated* one. A `when` was checked for
+ * syntax at install and then thrown away, so
+ *
+ *     "when": "ext.hasPermission('network')"
+ *
+ * put the button on screen for somebody who had said no to the network — and
+ * pressing it did the only thing it could, which is fail. The author wrote the
+ * rule that would have hidden it, the app read the rule, and then ignored it.
+ *
+ * Grants and settings are read per extension and cached for the pass, because
+ * both come from localStorage and a book with a dozen contributions would
+ * otherwise re-read the same two keys a dozen times inside one render.
+ */
+function visibleContributions(items, book) {
+  const app = { platform: getPlatform(), version: APP_VERSION };
+  const perExt = new Map();
+
+  return items.filter((item) => {
+    if (!item.when) return true;
+
+    let cached = perExt.get(item._extId);
+    if (!cached) {
+      cached = {
+        ctx: whenContext({ app, book, settings: getExtensionConfig(item._extId) }),
+        grants: readGrants(item._extId).granted ?? [],
+      };
+      perExt.set(item._extId, cached);
+    }
+
+    // A clause that does not parse hides its contribution rather than throwing
+    // into a render. Installation should already have caught it — this is the
+    // manifest that got past validation, and a blank screen would be a worse
+    // way to find out than a missing button and a line in the log.
+    return whenAllows(item.when, cached.ctx, cached.grants, (e) => {
+      warnClauseOnce(item._extId, item.when, e);
+    });
+  });
+}
+
+/**
+ * One warning per bad clause, not one per render.
+ *
+ * A contribution is re-evaluated whenever the book changes, which while
+ * somebody is typing is often. A `console.warn` on the render path with no
+ * memory turns one broken clause into a log nobody can read past.
+ */
+const warnedClauses = new Set();
+function warnClauseOnce(extId, clause, err) {
+  const key = `${extId} ${clause}`;
+  if (warnedClauses.has(key)) return;
+  warnedClauses.add(key);
+  console.warn(`[ExtensionContext] ${extId} has a "when" that does not parse: ${err.message}`);
+}
+
+/**
+ * The book, as a `when` clause sees it.
+ *
+ * A session is the app's object and carries far more than a visibility rule
+ * has any business reading. `isSaved` is `filePath`, because on disk is what
+ * saved means here — an unsaved draft has never been written anywhere.
+ */
+function bookFacts(session) {
+  return {
+    isOpen: !!session,
+    isSaved: !!session?.filePath,
+    chapterCount: session?.chapters?.length ?? 0,
+  };
+}
+
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export function useExtensions() {
   return useContext(ExtensionContext);
 }
 
-export function useExtensionContributions(type) {
+/**
+ * Contributions of one kind, filtered by their `when`.
+ *
+ * `session` is optional: the home screen and the settings list are not inside
+ * a book, and a clause asking about one there is answered with "there isn't
+ * one" rather than being skipped.
+ */
+export function useExtensionContributions(type, session = null) {
   const { extensions } = useExtensions();
+  const { isOpen, isSaved, chapterCount } = bookFacts(session);
   return useMemo(() => {
     const results = [];
     for (const ext of extensions) {
@@ -273,12 +361,17 @@ export function useExtensionContributions(type) {
         _ext:     ext,
       }));
     }
-    return results;
-  }, [extensions, type]);
+    return visibleContributions(results, { isOpen, isSaved, chapterCount });
+    // Keyed on what a clause can actually read, not on the session's identity.
+    // App.js hands down a fresh object on every keystroke, and depending on
+    // that would re-read every extension's grants from localStorage as
+    // somebody types.
+  }, [extensions, type, isOpen, isSaved, chapterCount]);
 }
 
-export function useBookDashboardExtensions() {
+export function useBookDashboardExtensions(session = null) {
   const { extensions } = useExtensions();
+  const { isOpen, isSaved, chapterCount } = bookFacts(session);
   return useMemo(() => {
     const tabs    = [];
     const actions = [];
@@ -289,12 +382,17 @@ export function useBookDashboardExtensions() {
       (bd.tabs    ?? []).forEach(t => tabs.push({ ...t,    ...meta }));
       (bd.actions ?? []).forEach(a => actions.push({ ...a, ...meta }));
     }
-    return { tabs, actions };
-  }, [extensions]);
+    const book = { isOpen, isSaved, chapterCount };
+    return {
+      tabs: visibleContributions(tabs, book),
+      actions: visibleContributions(actions, book),
+    };
+  }, [extensions, isOpen, isSaved, chapterCount]);
 }
 
-export function useEditorToolbarExtensions() {
+export function useEditorToolbarExtensions(session = null) {
   const { extensions } = useExtensions();
+  const { isOpen, isSaved, chapterCount } = bookFacts(session);
   return useMemo(() => {
     const buttons = [];
     for (const ext of extensions) {
@@ -303,6 +401,6 @@ export function useEditorToolbarExtensions() {
       const meta = { _extId: ext.id, _extName: ext.name, _ext: ext };
       items.forEach(item => buttons.push({ ...item, ...meta }));
     }
-    return buttons;
-  }, [extensions]);
+    return visibleContributions(buttons, { isOpen, isSaved, chapterCount });
+  }, [extensions, isOpen, isSaved, chapterCount]);
 }

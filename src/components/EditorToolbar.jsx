@@ -188,7 +188,7 @@ export default function EditorToolbar({ execCommand, accentHex, session, editorR
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl]   = useState('');
   const [linkText, setLinkText] = useState('');
-  const extButtons = useEditorToolbarExtensions();
+  const extButtons = useEditorToolbarExtensions(session);
   const { navigate } = useExtensions();
   const { theme } = useTheme();
   const android = isAndroid();
