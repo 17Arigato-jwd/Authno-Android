@@ -69,6 +69,11 @@ for (const file of files) {
 
   for (const [, attr, num] of body.matchAll(/android:(\w+)="(\d+(?:\.\d+)?)sp"/g)) {
     const v = Number(num);
+    // A step granularity is how finely autosize may search between the min and
+    // the max. It is not a size anything is ever rendered at, so it has no
+    // business being on a type scale — 1sp is exactly right and would be
+    // reported as three steps below the smallest real size.
+    if (attr === 'autoSizeStepGranularity') continue;
     if (!onScale(v, T.size)) found.push({ kind: 'text', attr, v, near: nearest(v, T.size) });
   }
 

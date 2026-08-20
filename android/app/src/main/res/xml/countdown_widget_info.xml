@@ -18,9 +18,9 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
 
     android:minWidth="160dp"
-    android:minHeight="110dp"
+    android:minHeight="130dp"
     android:minResizeWidth="110dp"
-    android:minResizeHeight="110dp"
+    android:minResizeHeight="130dp"
 
     android:updatePeriodMillis="1800000"
 
@@ -39,3 +39,14 @@
     android:previewLayout="@layout/countdown_widget"
 
     android:description="@string/countdown_widget_description" />
+
+<!--
+  110dp was six short. The clock, its caption and the two progress lines come
+  to about 116dp before the spacer gets anything, so the spacer collapsed to
+  nothing and the last line sat against the bottom edge — or past it, once the
+  user's font scale was above 1.0, since every one of those heights is in sp
+  and grows with it.
+
+  130dp gives the spacer something to spend and leaves room for a large-font
+  setting to grow into.
+-->

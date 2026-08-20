@@ -18,23 +18,41 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
 
     android:minWidth="160dp"
-    android:minHeight="70dp"
+    android:minHeight="130dp"
     android:minResizeWidth="110dp"
-    android:minResizeHeight="70dp"
+    android:minResizeHeight="130dp"
 
     android:updatePeriodMillis="1800000"
 
     android:initialLayout="@layout/resume_widget"
 
-    android:resizeMode="horizontal"
+    android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
 
     android:previewImage="@mipmap/ic_launcher"
 
     android:targetCellWidth="2"
-    android:targetCellHeight="1"
+    android:targetCellHeight="2"
     android:maxResizeWidth="360dp"
-    android:maxResizeHeight="110dp"
+    android:maxResizeHeight="180dp"
     android:previewLayout="@layout/resume_widget"
 
     android:description="@string/resume_widget_description" />
+
+<!--
+  On the height, which changed in 1.1.20.
+
+  This widget declared 70dp and one cell. Its content — a book line, the
+  chapter name, a word-count line and the button — comes to about 99dp, and a
+  vertical LinearLayout does not shrink its children to fit: it allocates
+  top-down and gives the last ones whatever is left. So the button, the only
+  thing on the card that opens anything, was the first thing to be cut.
+
+  That was not a launcher squeezing it. 70dp was the size the widget ASKED
+  for, so every user who placed it got it too small on the first day.
+
+  130dp and two cells is what the content measures, with the chapter
+  title given a line of its own to live on. maxResizeHeight went up
+  with it because a widget that cannot grow past 110 could never show a
+  two-line chapter title, and chapter titles are long.
+-->

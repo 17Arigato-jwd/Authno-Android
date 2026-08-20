@@ -15,6 +15,16 @@
 
   Nothing here is an emoji.
 
+  ── On autoSizeTextType ──────────────────────────────────────────────────────
+  Every size in this file is in sp, which multiplies by the user's font-size
+  setting — up to 2.0 in Accessibility. A layout that exactly fits at 1.0
+  overflows at 1.3, and a widget cannot scroll. The headline text below is
+  therefore allowed to shrink within a floor rather than be cut off; the floor
+  is a real one, because text too small to read is not a better outcome than
+  text that is clipped.
+
+  API 26+. Below that the attribute is ignored and the text behaves as it did.
+
   Sizes are the design system's scale too, not just the colours:
   TYPOGRAPHY.size for sp, SPACING for dp, RADIUS for corners. There is no
   separate widget ramp — inventing one is how this ended up with 10sp, 10.5sp,
@@ -74,20 +84,30 @@
         <!-- The clock. One of these two is visible; see the note above. -->
         <Chronometer
             android:id="@+id/countdown_clock"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:textSize="28sp"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="18sp"
+            android:autoSizeMaxTextSize="28sp"
+            android:autoSizeStepGranularity="1sp"
             android:textStyle="bold"
             android:includeFontPadding="false"
             android:textColor="@color/ds_text_primary" />
 
         <TextView
             android:id="@+id/countdown_static"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:textSize="28sp"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="18sp"
+            android:autoSizeMaxTextSize="28sp"
+            android:autoSizeStepGranularity="1sp"
             android:textStyle="bold"
             android:includeFontPadding="false"
             android:visibility="gone"

@@ -98,6 +98,13 @@ jobs:
       - name: Widgets on the design system scale
         run: npm run check:widget-scale
 
+      # And whether the numbers ADD UP, which is the half a person sees. Three
+      # of the four widgets asked the launcher for less height than their own
+      # content needs — resume by 41%, notes by 86% — and a vertical
+      # LinearLayout does not shrink to fit, it drops whatever it put last.
+      - name: Widget content fits the widget
+        run: npm run check:widget-fit
+
       # The writing day on the two days a year that are 23 and 25 hours long.
       # Pure node, no browser.
       - name: The writing day in every timezone

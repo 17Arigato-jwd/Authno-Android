@@ -82,7 +82,12 @@
             android:textColor="@color/ds_violet_dark"
             android:textSize="28sp"
             android:textStyle="bold"
-            android:includeFontPadding="false" />
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="18sp"
+            android:autoSizeMaxTextSize="28sp"
+            android:autoSizeStepGranularity="1sp" />
 
         <!-- Flame icon -->
         <ImageView

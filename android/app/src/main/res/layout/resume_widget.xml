@@ -19,6 +19,16 @@
   Colours reference @color/ds_* (ds_colors.xml, mirroring tokens.js) as the
   first paint; the provider replaces them with the active theme's values.
 
+  ── On autoSizeTextType ──────────────────────────────────────────────────────
+  Every size in this file is in sp, which multiplies by the user's font-size
+  setting — up to 2.0 in Accessibility. A layout that exactly fits at 1.0
+  overflows at 1.3, and a widget cannot scroll. The headline text below is
+  therefore allowed to shrink within a floor rather than be cut off; the floor
+  is a real one, because text too small to read is not a better outcome than
+  text that is clipped.
+
+  API 26+. Below that the attribute is ignored and the text behaves as it did.
+
   Sizes are the design system's scale too, not just the colours:
   TYPOGRAPHY.size for sp, SPACING for dp, RADIUS for corners. There is no
   separate widget ramp — inventing one is how this ended up with 10sp, 10.5sp,
@@ -88,6 +98,10 @@
             android:textColor="@color/ds_text_secondary"
             android:textSize="15sp"
             android:textStyle="bold"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="11sp"
+            android:autoSizeMaxTextSize="15sp"
+            android:autoSizeStepGranularity="1sp"
             android:maxLines="2"
             android:ellipsize="end" />
 
