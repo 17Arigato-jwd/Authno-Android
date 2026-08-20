@@ -26,3 +26,53 @@ describe('a package too large to open', () => {
       .rejects.toThrow(/72 MB.*limit is 64 MB/);
   });
 });
+
+describe('what an uninstall takes with it', () => {
+  const EXT = 'com.example.leaver';
+
+  beforeEach(() => {
+    const { clearGrants } = require('./extensionGrants');
+    const { clearExtensionConfig } = require('./extensionLoader');
+    clearGrants(EXT);
+    clearExtensionConfig(EXT);
+  });
+
+  // `.catch` on every call here is load-bearing: there is no filesystem under
+  // jsdom, so the rmdir throws. That is the case worth pinning — revoking must
+  // not be something a failed removal can skip past.
+  it('destroys the grants', async () => {
+    const { writeGrants, readGrants } = require('./extensionGrants');
+    writeGrants(EXT, ['library:read:all']);
+    expect(readGrants(EXT).granted).toEqual(['library:read:all']);
+
+    const { uninstallExtension } = require('./extbkInstaller');
+    await uninstallExtension(EXT).catch(() => {});
+    expect(readGrants(EXT).granted).toEqual([]);
+  });
+
+  it('destroys the config, which is where an extension keeps its tokens', async () => {
+    const { setExtensionConfig, getExtensionConfig } = require('./extensionLoader');
+    setExtensionConfig(EXT, { token: 'secret' });
+    expect(getExtensionConfig(EXT).token).toBe('secret');
+
+    const { uninstallExtension } = require('./extbkInstaller');
+    await uninstallExtension(EXT).catch(() => {});
+    expect(getExtensionConfig(EXT).token).toBeUndefined();
+  });
+
+  it('means a package reinstalling under the same id is asked again', async () => {
+    const { writeGrants, readGrants } = require('./extensionGrants');
+    const { promptPlan } = require('./extensionPermissionsV2');
+    writeGrants(EXT, ['library:read:all']);
+    const { uninstallExtension } = require('./extbkInstaller');
+    await uninstallExtension(EXT).catch(() => {});
+
+    // The install path builds its plan from whatever grants are on record.
+    // While they survived an uninstall, a DIFFERENT package declaring the same
+    // id carried them all and prompted for nothing — access acquired without
+    // ever being asked for.
+    const plan = promptPlan({ 'library:read:all': { reason: 'why' } }, readGrants(EXT).granted);
+    expect(plan.carried).toEqual([]);
+    expect(plan.prompt.map((p) => p.permission)).toEqual(['library:read:all']);
+  });
+});

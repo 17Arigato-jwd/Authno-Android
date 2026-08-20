@@ -24,10 +24,10 @@ import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
 import { isEpk, readEpk } from './epkFormat';
 import { validateManifestV2 } from './extensionHostV2';
 import { promptPlan } from './extensionPermissionsV2';
-import { readGrants, writeGrants } from './extensionGrants';
+import { readGrants, writeGrants, clearGrants } from './extensionGrants';
 import { emitInstall, newInstallId } from './installEvents';
 import { isAndroid }    from './platform';
-import { DEV_STORE_KEY } from './extensionLoader';
+import { DEV_STORE_KEY, clearExtensionConfig } from './extensionLoader';
 
 const EXTENSIONS_DIR = 'AuthNo/extensions';
 const ASSETS_PLUGIN  = 'ExtbkAssets';
@@ -415,6 +415,30 @@ export async function seedPreinstalledExtensions() {
 export async function uninstallExtension(extId) {
   if (!/^[\w.-]+$/.test(extId) || extId.includes('..'))
     throw new Error(`Invalid extension id: ${extId}`);
+
+  // Everything the id owned goes first, before anything that can fail.
+  //
+  // Grants used to survive an uninstall entirely, and `promptPlan` carries
+  // every already-held permission without asking — right for an update, wrong
+  // for a reinstall. So removing an extension and installing a package that
+  // declares the same id handed the new one every permission the old one had
+  // been granted, silently, with no question put to anybody. Ids are
+  // author-chosen strings; nothing outside a signed channel ties one to a
+  // particular author.
+  //
+  // It is also just what uninstalling means. Somebody who removes an extension
+  // has revoked it, and an answer they gave a version that is no longer
+  // installed is not an answer they are still giving.
+  //
+  // Ahead of the removal rather than after it, because revoking must not
+  // depend on a directory going away. If the rmdir fails, the extension is
+  // still there and now holds nothing — which is the safe direction, and the
+  // one `readGrants` already takes when the store will not parse.
+  //
+  // Config goes too: it is where an extension keeps its tokens, and one caller
+  // remembering to clear it separately is one caller.
+  clearGrants(extId);
+  clearExtensionConfig(extId);
 
   let removed = false;
 
