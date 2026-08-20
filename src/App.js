@@ -1,6 +1,7 @@
 import { BackgroundRouter, DSIcons, injectDesignSystemFonts, ToastContainer, toast } from "./DesignSystem";
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { APP_VERSION } from "./version";
+import { useFlushOnHide } from "./utils/flushOnHide";
 
 import { App as CapApp } from '@capacitor/app';
 import EditorToolbar from "./components/EditorToolbar";
@@ -275,6 +276,10 @@ function Editor({
   };
   // Flush before the editor moves to another book/chapter, and on unmount.
   useEffect(() => () => flushPendingEdit(), [current?.id, current?._editingChap, flushPendingEdit]);
+
+  // And when the app goes away — see utils/flushOnHide.js for why, and for
+  // the test that App.js is too large to host.
+  useFlushOnHide(flushPendingEdit);
 
   // Chapter switches crossfade the manuscript area (beta.1 QA: switching
   // snapped). Animation controls, not a keyed remount — remounting the
