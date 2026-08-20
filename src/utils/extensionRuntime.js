@@ -30,7 +30,7 @@
 
 import { logError } from './ErrorLogger';
 import { runExtension, stopExtension, stopAll } from './extensionSandbox';
-import { runExtensionV2, stopExtensionV2, stopAllV2, runningV2 } from './extensionRunnerV2';
+import { runExtensionV2, stopExtensionV2, stopAllV2, runningV2, hostV2, commandsV2 } from './extensionRunnerV2';
 import { readExtensionTree } from './extensionSandbox';
 import { readGrants, writeGrants } from './extensionGrants';
 import {
@@ -336,6 +336,39 @@ async function exportSessionAs(session, format) {
 }
 
 /**
+ * Change what one extension is allowed to do, and make it take effect.
+ *
+ * Exported because the Extensions tab is the only place a grant can be
+ * *withdrawn*, and withdrawing one is not symmetrical with giving one: the
+ * frame's Content-Security-Policy was built at load from the grants in force
+ * then, and a document cannot be re-policied. So a revoked network permission
+ * leaves a frame that can still reach its hosts until it is replaced.
+ *
+ * Restarting is therefore part of the change rather than a nicety. A tab that
+ * flipped a switch and left the old frame running would show a permission as
+ * off while it was still working, which is worse than not offering the switch.
+ *
+ * @param {string}   extId
+ * @param {string[]} granted    the full new set, not a delta
+ * @param {string[]} [userHosts] runtime host grants to keep; existing ones by default
+ */
+export async function setGrants(extId, granted, userHosts = null) {
+  const current = readGrants(extId);
+  writeGrants(extId, granted, userHosts ?? current.userHosts);
+
+  // Only a running extension needs replacing. One that is stopped will read
+  // the new grants when it next starts, which is the same outcome.
+  if (!runningV2().includes(extId)) return { restarted: false };
+
+  const manifest = _manifests.get(extId);
+  if (!manifest) return { restarted: false };
+
+  await stopExtensionV2(extId);
+  await activateV2(manifest, _navigateFns.get(extId) ?? null);
+  return { restarted: true };
+}
+
+/**
  * Restart one extension so a host it was just granted is in its policy.
  *
  * Deferred to a microtask rather than awaited: this is called from inside
@@ -372,3 +405,14 @@ export async function deactivateAll() {
 
 /** Which extensions are live. Exposed for the Developer section in Settings. */
 export { runningExtensions } from './extensionSandbox';
+
+/**
+ * The running host and command registry for one extension.
+ *
+ * Re-exported from here because this module is the app's side of the extension
+ * boundary and it is where a component looks. Importing extensionRunnerV2
+ * directly from a component would work and would also mean the UI knew which
+ * runner an extension is on — which is exactly the detail this file exists to
+ * absorb.
+ */
+export { hostV2, commandsV2 };

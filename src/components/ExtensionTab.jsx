@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import { createPortal } from 'react-dom';
 import { useExtensions } from '../utils/ExtensionContext';
+import ExtensionPermissions from './ExtensionPermissions';
 import { isAndroid } from '../utils/platform';
 import { hapticDelete } from '../utils/haptics';
 import { openBilling } from '../utils/billingBus';
@@ -629,6 +630,12 @@ export default function ExtensionTab({ accentHex, session, onClose }) {
             onClose={onClose}
           />
         ))}
+
+        {/* What each extension may do, and what it has been refused.
+            Below the cards rather than above: the cards are what somebody
+            came here for, and this is the answer to a question they have not
+            asked yet — until one of them has a warning on it. */}
+        <ExtensionPermissions accentHex={accentHex} />
 
         {/* Install from file */}
         <button

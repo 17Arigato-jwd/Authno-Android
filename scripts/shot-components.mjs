@@ -70,7 +70,69 @@ Module._extensions['.js'] = (module_, filename) => {
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 
+/**
+ * Stand in for a module, before anything requires it.
+ *
+ * The Extensions tab reads the installed list, the grant store and the running
+ * host — three things that only exist inside a live app. There is no jest here
+ * to mock them, and a babel-compiled ES module's exports object is frozen, so
+ * assigning over it throws "only has a getter".
+ *
+ * Seeding require.cache is the version that works: the component's own
+ * `require` finds the entry and never loads the real file. It has to happen
+ * before the component is required, which is why it is up here rather than
+ * inside the scene that needs it.
+ */
+function stubModule(relPath, exports) {
+  const abs = require.resolve(path.join(ROOT, relPath));
+  require.cache[abs] = { id: abs, filename: abs, loaded: true, exports };
+}
+
+const FIXTURE_MANIFESTS = [
+  {
+    apiVersion: 2, id: 'cloud-backup', name: 'Cloud Backup', version: '2.0.0',
+    _permissionsPending: true,
+    permissions: {
+      'library:read:all': { reason: 'To copy every book, not only the one you have open.' },
+      network: {
+        reason: 'To reach Google Drive, Dropbox, or a server you name.',
+        hosts: ['https://www.googleapis.com', 'https://api.dropboxapi.com'],
+        userHosts: { reason: 'To reach the WebDAV server you type in.', max: 2 },
+      },
+    },
+  },
+  {
+    apiVersion: 2, id: 'word-sprint', name: 'Word Sprint', version: '1.0.0',
+    permissions: {
+      'library:read:current': { reason: 'To count the words in the book you have open.' },
+      activity: { reason: 'To know when you have stopped typing.' },
+    },
+  },
+];
+
+stubModule('src/utils/ExtensionContext.js', {
+  useExtensions: () => ({ extensions: FIXTURE_MANIFESTS }),
+});
+stubModule('src/utils/extensionGrants.js', {
+  readGrants: (id) => (id === 'cloud-backup'
+    ? { granted: ['network'], userHosts: ['https://dav.example.org'] }
+    : { granted: ['activity'], userHosts: [] }),
+  writeGrants: () => true,
+  clearGrants: () => true,
+});
+stubModule('src/utils/extensionRuntime.js', {
+  setGrants: async () => ({ restarted: true }),
+  hostV2: (id) => (id === 'word-sprint'
+    ? {
+      missingPermissions: () => [
+        { permission: 'library:read:current', prompt: 'Read the book you have open', count: 47, wasRequested: true },
+      ],
+    }
+    : null),
+});
+
 const ExtensionDots = require(path.join(ROOT, 'src/components/ExtensionDots.jsx')).default;
+const ExtensionPermissions = require(path.join(ROOT, 'src/components/ExtensionPermissions.jsx')).default;
 const PermissionRequestSheet = require(path.join(ROOT, 'src/components/PermissionRequestSheet.jsx')).default;
 const { surfaces, __resetSurfaces } = require(path.join(ROOT, 'src/utils/extensionSurfaces.js'));
 const { permissionRequests, __resetPermissionRequests } = require(path.join(ROOT, 'src/utils/permissionRequests.js'));
@@ -104,6 +166,15 @@ const SCENES = {
       ['library:read:current', 'Read the book you have open', 'To count the words in the book you have open.'],
     ]), { name: 'Word Sprint', version: '1.0.0' });
     return React.createElement(PermissionRequestSheet, { accentHex: '#5a00d9' });
+  },
+  /**
+   * The Extensions tab's permission section, with everything wrong at once:
+   * one extension nobody was asked about, one being refused something it
+   * keeps reaching for, and a runtime host to take back.
+   */
+  'permissions-tab'() {
+    return React.createElement('div', { style: { padding: '16px 12px' } },
+      React.createElement(ExtensionPermissions, { accentHex: '#5a00d9' }));
   },
   'permission-many'() {
     __resetPermissionRequests();
