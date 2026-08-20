@@ -5,8 +5,8 @@ the app, the website (`claude/audit-followups`) and the Cloud Backup extension
 (`cloud-backup-plus-revamp`) — and worked through in the same session.
 
 Everything here was reproduced, not inferred, and every fix is verified the same
-way it was found. All fifteen are closed, plus one more (#16) found while
-closing #6.
+way it was found. All nineteen are closed. Four of them — #16 to #19 — were
+found while closing the others, which is the usual way.
 
 There is a section at the bottom of things that **look** like bugs and are not.
 That is the half of a list like this that stops getting re-investigated every
@@ -31,6 +31,8 @@ few months.
 | 15 | Two auth routes had no rate limit | website | **fixed** |
 | 16 | An update replaced a running extension's files underneath it | app | **fixed** |
 | 17 | Backgrounding the app could cost the last word typed | app | **fixed** |
+| 18 | `save-book-bytes` wrote to any path over Electron IPC | app | **fixed** |
+| 19 | `extbk check` could not read what `extbk build` writes | cli | **fixed** |
 
 ---
 
@@ -237,7 +239,54 @@ limiter.
 **Fixed**: both throttled, generously, since the callback is a browser landing
 from Google and a shared address is normal.
 
+### 18. `save-book-bytes` wrote to whatever path it was handed
+
+`delete-book-file` checks the extension before it unlinks; the comment above
+it says the renderer never needs to remove anything else, so anything else is
+refused outright. The write handler beside it had no such check.
+
+That asymmetry is the finding. Overwriting an arbitrary file is at least as
+destructive as removing a book, and the door was wider.
+
+**Fixed**: the same one-line guard. It costs nothing — the handler has exactly
+one caller and it passes `session.filePath`, which `storage.js` builds with an
+`.authbook` extension — so anything that trips it was a bug on its way to
+overwriting something somebody cared about.
+
+The rest of the Electron main process holds up: `nodeIntegration` off, context
+isolation on, navigation guarded, and `openExternal` refusing anything that is
+not https on both the IPC handler and the window-open path.
+
 ---
+
+---
+
+### 19. The CLI could not validate its own output
+
+`extbk build` writes VCHS-EPK for an `apiVersion: 2` extension and VCHS-ECS
+for everything else — it has branched on that since v2 shipped. `extbk check`
+and `extbk info` read every file as ECS:
+
+```
+$ extbk build ./cloud-backup
+✔ Built cloud-backup-2.0.0.extbk — 51.3 KB  (VCHS-EPK)
+
+$ extbk check cloud-backup-2.0.0.extbk
+  x Invalid magic bytes — not an .extbk file
+```
+
+An author's loop is build, check, ship. The middle step told them their own
+package was broken — and it was not: the app reads it, the manifest is intact,
+`index.js` is there.
+
+**Fixed**: both commands detect the format and route to the matching reader.
+The ECS path is untouched and still verified against a freshly built v1
+package.
+
+Found while packaging Cloud Backup 2.0.0 for release — which is the only way
+it could have been found, because nothing else in the toolchain runs `check`
+on a v2 build.
+
 
 ## Checked, and NOT bugs
 

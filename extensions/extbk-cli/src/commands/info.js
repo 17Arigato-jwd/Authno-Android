@@ -9,12 +9,18 @@ import fs    from 'fs';
 import path  from 'path';
 import chalk from 'chalk';
 import { inspectExtbk, unpackExtbk } from '../format.js';
+import { isEpk, readEpk, inspectEpk } from '../epkFormat.js';
 
 export async function cmdInfo(extbkFile) {
   const file = path.resolve(extbkFile);
   if (!fs.existsSync(file)) die(`File not found: ${file}`);
 
   const buf = fs.readFileSync(file);
+
+  // See the note in check.js: both formats ship, and this read every file as
+  // VCHS-ECS.
+  if (isEpk(buf)) return infoEpk(file, buf);
+
   let info, unpacked;
 
   try {
@@ -93,3 +99,36 @@ function dim(s)  { return chalk.dim(s); }
 function log(msg) { process.stdout.write(msg + '\n'); }
 function field(label, val) { log(`  ${chalk.dim(label.padEnd(20))} ${val}`); }
 function die(msg) { process.stderr.write(`${chalk.red('x')} ${msg}\n`); process.exit(1); }
+
+/** The same summary, for a VCHS-EPK package. */
+async function infoEpk(file, buf) {
+  let pkg, info;
+  try {
+    info = inspectEpk(buf);
+    pkg  = await readEpk(buf);
+  } catch (e) {
+    die(`Failed to parse: ${e.message}`);
+  }
+
+  const { manifest } = pkg;
+  log('');
+  log(chalk.bold(path.basename(file)));
+  log(chalk.dim(`  format      VCHS-EPK`));
+  log(chalk.dim(`  size        ${(buf.length / 1024).toFixed(1)} KB`));
+  if (info?.signed !== undefined) log(chalk.dim(`  signed      ${info.signed ? 'yes' : 'no'}`));
+  log('');
+  log(chalk.bold('Manifest'));
+  log(`  id          ${chalk.cyan(manifest.id)}`);
+  log(`  name        ${manifest.name ?? ''}`);
+  log(`  version     ${manifest.version ?? ''}`);
+  log(`  apiVersion  ${manifest.apiVersion ?? 1}`);
+  if (manifest.tier) log(`  tier        ${manifest.tier}`);
+  if (manifest.minAppVersion) log(`  minApp      ${manifest.minAppVersion}`);
+  const perms = Object.keys(manifest.permissions ?? {});
+  if (perms.length) log(`  permissions ${perms.join(', ')}`);
+  log('');
+  log(chalk.bold('Modules'));
+  for (const name of Object.keys(pkg.modules ?? {}).sort()) log(`  · ${name}`);
+  log('');
+  return true;
+}
