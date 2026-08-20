@@ -34,7 +34,29 @@ const ASSETS_PLUGIN  = 'ExtbkAssets';
 
 // ─── Base64 helpers ───────────────────────────────────────────────────────────
 
+/**
+ * How much base64 this will decode before refusing.
+ *
+ * 64 MB of package is MAX_JS_READ in epkFormat.js; base64 of it is about
+ * 85 MB. The check is on the string LENGTH rather than the decoded size
+ * because by the time there is a decoded size the memory has been spent —
+ * `atob` allocates a binary string as long as the input before anything else
+ * happens.
+ *
+ * Android refuses earlier, in FilePickerPlugin, at a limit derived from the
+ * device's own heap. This one covers desktop and web, where the file arrives
+ * some other way, and is the backstop for a path that forgets to ask.
+ */
+const MAX_BASE64_CHARS = 90 * 1024 * 1024;
+
 function base64ToBytes(b64) {
+  if (typeof b64 !== 'string') throw new Error('expected base64');
+  if (b64.length > MAX_BASE64_CHARS) {
+    throw new Error(
+      'This extension is too large to open — about '
+      + `${Math.round((b64.length * 0.75) / (1024 * 1024))} MB, and the limit is 64 MB.`,
+    );
+  }
   const bin   = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

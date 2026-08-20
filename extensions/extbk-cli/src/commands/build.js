@@ -100,8 +100,35 @@ export async function buildOnce(srcDir, outFile, opts = {}, { quiet = false } = 
   fs.writeFileSync(out, buf);
   said(`Built ${chalk.bold(path.basename(out))} — ${fmtBytes(buf.length)}`
     + chalk.dim(manifest.apiVersion === 2 ? '  (VCHS-EPK)' : '  (VCHS-ECS)'));
+
+  // The format allows a gigabyte. The app cannot open anything like that.
+  //
+  // Every install path holds the package whole and several times over — the
+  // native read, its copy, its base64, the JS string, the decoded bytes — so
+  // peak memory is six to eight times the file. The app refuses above 64 MB,
+  // and refuses lower than that on a device with a small heap.
+  //
+  // Said here because this is the last moment it costs nothing to fix. An
+  // author who learns it from a user's install failure has already shipped.
+  if (buf.length > APP_READ_LIMIT) {
+    warn(`This is larger than AuthNo will open (${fmtBytes(APP_READ_LIMIT)}).`);
+    warn('Installing it will fail on every device. Ship large assets separately');
+    warn('and fetch them, or split the extension.');
+  } else if (buf.length > APP_READ_LIMIT / 2) {
+    warn(`Over half of what AuthNo will open (${fmtBytes(APP_READ_LIMIT)}).`);
+    warn('Devices with a small heap refuse lower than that.');
+  }
+
   return { out, bytes: buf.length, manifest, assets };
 }
+
+/**
+ * The most the app will read, matching MAX_JS_READ in src/utils/epkFormat.js.
+ *
+ * Not the format's ceiling — that is 4 GiB — and not its policy cap of 1 GB
+ * either. This is what an install can actually carry across the bridge.
+ */
+const APP_READ_LIMIT = 64 * 1024 * 1024;
 
 /** Which files are code and belong in the RS-protected core (spec §4). */
 const CODE_EXT = /\.(m?js|cjs)$/i;

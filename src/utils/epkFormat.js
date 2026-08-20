@@ -25,8 +25,16 @@
  *    refuses when it runs out of rungs. `result.repairs` says what it fixed.
  *
  * The JS reader holds the whole package in memory and is therefore capped
- * (MAX_JS_READ). That is deliberate: on device the unpacker is native, and the
- * JS path exists for development, tests and the CLI. See spec §6.3.
+ * (MAX_JS_READ). This used to say the JS path was for development, tests and
+ * the CLI because on device the unpacker was native. It is not: Android reads
+ * the file whole, base64-encodes it, and hands it across the bridge for THIS
+ * reader to parse. MAX_JS_READ is the real device ceiling, not a convenience.
+ *
+ * Which is why the limit is enforced twice more, earlier, where the memory is
+ * actually spent: FilePickerPlugin.drain refuses mid-read at a limit derived
+ * from the device's own heap, and extbkInstaller checks the base64 length
+ * before `atob` allocates. Refusing here alone would mean refusing after the
+ * allocation that killed the process. See spec §6.3.
  */
 
 import { rsEncodeChunked, rsDecodeChunked, rsVerifyChunked } from './rs.js';
