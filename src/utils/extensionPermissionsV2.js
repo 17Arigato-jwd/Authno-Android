@@ -293,7 +293,22 @@ export function buildCsp(hosts = []) {
     "form-action 'none'",
     "base-uri 'none'",
     "frame-src 'none'",
-    "frame-ancestors 'none'",
+    // No `frame-ancestors`. This policy is only ever delivered in a <meta>
+    // tag, and the browser ignores that directive there — along with
+    // `report-uri` and `sandbox` — so it protected nothing and logged
+    //
+    //   The Content Security Policy directive 'frame-ancestors' is ignored
+    //   when delivered via a <meta> element.
+    //
+    // to the console every time an extension started. A directive that cannot
+    // take effect is worse than no directive: it reads as a protection that is
+    // in force, and it trains whoever is watching the console to scroll past
+    // errors from the extension system.
+    //
+    // Nothing is lost. `frame-ancestors` says who may embed THIS document, and
+    // the only thing that embeds it is AuthNo, which created it. What stops
+    // the extension embedding anything is `frame-src 'none'`, which a <meta>
+    // policy does enforce.
     "object-src 'none'",
     "worker-src blob:",
   ];

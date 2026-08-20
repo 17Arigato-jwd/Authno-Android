@@ -142,9 +142,20 @@ describe('the content security policy', () => {
     const csp = buildCsp(['https://api.dropbox.com']);
     for (const shut of [
       "form-action 'none'", "base-uri 'none'", "frame-src 'none'",
-      "frame-ancestors 'none'", "object-src 'none'",
+      "object-src 'none'",
     ]) {
       expect(csp).toContain(shut);
+    }
+  });
+
+  test('and nothing is in there that a <meta> policy cannot enforce', () => {
+    const csp = buildCsp(['https://api.dropbox.com']);
+    // This policy is only ever delivered in a meta tag, where the browser
+    // ignores these three. `frame-ancestors 'none'` used to be here: it
+    // protected nothing and logged an error to the console every time an
+    // extension started, which is how it was found.
+    for (const inert of ['frame-ancestors', 'report-uri', 'sandbox']) {
+      expect(csp).not.toContain(inert);
     }
   });
 

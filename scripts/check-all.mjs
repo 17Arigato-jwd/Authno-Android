@@ -40,6 +40,10 @@ const CHECKS = [
   ['extensions under load', 'npm', ['run', 'stress:extensions'], true],
   ['cloud backup runs', 'npm', ['run', 'check:cloud-backup'], true],
   ['production build', 'npm', ['run', 'build'], true],
+  // After the build, because it loads what the build produced. The other
+  // browser checks drive synthetic harnesses; this one boots the real app and
+  // fails on anything uncaught.
+  ['app boots clean', 'npm', ['run', 'check:boot'], true],
 ];
 
 const results = [];
