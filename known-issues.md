@@ -238,6 +238,24 @@ limiter.
 **Fixed**: both throttled, generously, since the callback is a browser landing
 from Google and a shared address is normal.
 
+### 18. `save-book-bytes` wrote to whatever path it was handed
+
+`delete-book-file` checks the extension before it unlinks; the comment above
+it says the renderer never needs to remove anything else, so anything else is
+refused outright. The write handler beside it had no such check.
+
+That asymmetry is the finding. Overwriting an arbitrary file is at least as
+destructive as removing a book, and the door was wider.
+
+**Fixed**: the same one-line guard. It costs nothing — the handler has exactly
+one caller and it passes `session.filePath`, which `storage.js` builds with an
+`.authbook` extension — so anything that trips it was a bug on its way to
+overwriting something somebody cared about.
+
+The rest of the Electron main process holds up: `nodeIntegration` off, context
+isolation on, navigation guarded, and `openExternal` refusing anything that is
+not https on both the IPC handler and the window-open path.
+
 ---
 
 ## Checked, and NOT bugs
