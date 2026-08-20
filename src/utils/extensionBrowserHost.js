@@ -172,21 +172,25 @@ export async function requestDriveToken(opts) {
 }
 
 /**
- * End the native Google session, so the next authorisation asks which account.
+ * Disconnect, so the next authorisation asks which account again.
  *
- * Throws `no-native-signout` when there is nothing to end, and that case is
- * the common one rather than an edge: **GoogleDrivePlugin.java has no signOut
- * method.** Cloud Backup v1 called `plugin.signOut()` and then
- * `plugin.revoke()` inside a try/catch, with a comment calling it "essential
- * for account switching" — neither method has ever existed, so the catch
- * swallowed a TypeError every time and the account never switched. Nobody
- * noticed, because a disconnect that clears local credentials looks like it
- * worked right up until you reconnect and land on the same account.
+ * `accessToken` is what makes this real rather than cosmetic. There is no
+ * signOut on Google's Authorization API; what undoes an authorize() grant is
+ * revoking the token, which drops the app's authorization server-side so the
+ * next authorize() has nothing to reuse. Without a token only the saved
+ * credential is cleared — the picker reappears, the grant does not go.
  *
- * Reporting it is the fix available from JavaScript. The Java side is where
- * the rest of it goes.
+ * Cloud Backup v1 called `plugin.signOut()` and then `plugin.revoke()` inside
+ * a try/catch, with a comment calling it essential for account switching.
+ * Neither method existed, so the catch ate a TypeError every time and the
+ * account never switched — invisible, because clearing the extension's own
+ * stored credentials looks like it worked until you reconnect to the same
+ * account.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.accessToken] the token to revoke, if the caller has one
  */
-export async function signOut() {
+export async function signOut(opts) {
   if (!isAndroid()) throw new Error('no-native-signout');
   const { registerPlugin } = await import('@capacitor/core');
   // No `typeof plugin.signOut === 'function'` guard: registerPlugin returns a
@@ -194,7 +198,9 @@ export async function signOut() {
   // property that made `await plugin` hang forever until getPlugin was fixed.
   // The only way to learn whether a method exists is to call it.
   try {
-    return await registerPlugin('GoogleDrive').signOut();
+    return await registerPlugin('GoogleDrive').signOut({
+      accessToken: opts?.accessToken ?? null,
+    });
   } catch (e) {
     const why = String(e?.message ?? e);
     if (/not implemented|unimplemented|is not a function/i.test(why)) {

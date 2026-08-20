@@ -375,11 +375,14 @@ export function browserCapabilities(browser) {
      * teardown must not have that teardown fail because Play Services was
      * unavailable — so it resolves either way and says which happened.
      */
-    'auth.signOut': async () => {
+    'auth.signOut': async ([opts]) => {
       if (typeof browser.signOut !== 'function') return { ok: false, reason: 'unsupported' };
       try {
-        await browser.signOut();
-        return { ok: true };
+        // The token, when the extension has one. Revoking it is what actually
+        // ends the grant; without it the next connect skips the picker and
+        // lands on the same account, which is the bug this replaced.
+        const out = await browser.signOut(opts ?? {});
+        return { ok: true, ...(out && typeof out === 'object' ? out : {}) };
       } catch (e) {
         return { ok: false, reason: 'failed', detail: String(e?.message ?? e) };
       }

@@ -335,9 +335,11 @@ export const API_V2 = `function (call, hooks, listeners) {
       oauth: function (o) { return call('auth.oauth', [o || {}]); },
       googleSignIn: function (o) { return call('auth.googleSignIn', [o]); },
       requestDriveToken: function (o) { return call('auth.requestDriveToken', [o]); },
+      // Pass the access token you hold: revoking it is what ends the grant,
+      // and without it the next connect lands on the same account.
       // Resolves { ok: false, reason } rather than throwing when there is no
       // native session to end, so a teardown can await it unconditionally.
-      signOut: function () { return call('auth.signOut', []); },
+      signOut: function (o) { return call('auth.signOut', [o || {}]); },
     },
 
     network: {

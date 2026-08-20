@@ -279,7 +279,7 @@ function v2Handlers(extId, navigateFn) {
       oauth: (opts) => hostOauth(opts),
       googleSignIn: (opts) => hostGoogleSignIn(opts),
       requestDriveToken: (opts) => hostRequestDriveToken(opts),
-      signOut: () => hostSignOut(),
+      signOut: (opts) => hostSignOut(opts),
     },
 
     // Adding a host to the policy. `ask` is the user's answer and nothing
