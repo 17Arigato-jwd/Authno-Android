@@ -45,6 +45,7 @@ import QuickSwitcher from "./components/QuickSwitcher";
 import InstallSheet from "./components/InstallSheet";
 import PermissionRequestSheet from "./components/PermissionRequestSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
+import ExtensionDots from "./components/ExtensionDots";
 import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
@@ -2266,6 +2267,12 @@ function AppInner({ navigateRef }) {
           onClose={() => setReadAloudSession(null)}
         />
       )}
+      {/* What is running, in the corner — the shape Android uses for the
+          microphone. Hidden while the read-aloud bar is up, because that
+          occupies the same corner and two things stacked there is worse than
+          the indicator waiting; the extensions are still running either way
+          and the dot returns when the bar goes. */}
+      <ExtensionDots hidden={!!readAloudSession} />
       {showOnboarding && (
         <Suspense fallback={null}>
         <OnboardingFunnel

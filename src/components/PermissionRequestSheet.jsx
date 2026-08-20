@@ -27,12 +27,25 @@
  * leave an extension in a state that is neither refused nor allowed.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { BottomSheet, Toggle, COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../DesignSystem';
 import { permissionRequests } from '../utils/permissionRequests';
 
-/** Permissions a person should look twice at, marked as such. */
-const WEIGHTY = new Set(['library:read:all', 'library:write', 'network']);
+/**
+ * Permissions a person should look twice at.
+ *
+ * Two, and the shortness is the point. Marking three of four rows makes the
+ * marker mean "this is a permission", which every row already says — a shot of
+ * the Cloud Backup sheet with read:all, write AND network flagged reads as
+ * decoration rather than as a warning.
+ *
+ * These two are the ones with no bound on them: read:all sees every manuscript
+ * and write can overwrite one. `network` is left unmarked because the origins
+ * it may reach are listed underneath it, which is a better warning than a
+ * label — and because an extension that has network and nothing else cannot
+ * send anything worth sending.
+ */
+const WEIGHTY = new Set(['library:read:all', 'library:write']);
 
 function ShieldIcon({ color }) {
   return (
@@ -59,7 +72,14 @@ function HostList({ hosts, muted }) {
 
 export default function PermissionRequestSheet({ accentHex = COLORS.violetDark }) {
   const [, forceRender] = useState(0);
-  const [granted, setGranted] = useState(() => new Set());
+
+  // Seeded from whatever is already queued rather than filled in by an effect.
+  // The effect version rendered one frame with every switch off before turning
+  // them on — a flicker on the one screen where a switch's position is the
+  // whole message.
+  const [granted, setGranted] = useState(
+    () => new Set((permissionRequests().current()?.asked ?? []).map((a) => a.permission)),
+  );
 
   // The queue notifies; the component re-reads. It holds no copy of the
   // request, so a second install arriving mid-answer cannot leave the sheet
@@ -78,13 +98,16 @@ export default function PermissionRequestSheet({ accentHex = COLORS.violetDark }
   const req = permissionRequests().current();
   const waiting = permissionRequests().waiting();
 
-  // Everything on, whenever the request changes. Keyed on extId so answering
-  // one and moving to the next resets the switches rather than carrying the
-  // previous person's answer across.
+  // Everything on again whenever the request CHANGES — answering one and
+  // moving to the next must reset the switches rather than carry the previous
+  // person's answer across. Keyed on extId, and skipped on the first render
+  // because the initial state above already did it.
+  const drawn = useRef(req?.extId ?? null);
   useEffect(() => {
-    if (!req) return;
+    if (!req || drawn.current === req.extId) return;
+    drawn.current = req.extId;
     setGranted(new Set(req.asked.map((a) => a.permission)));
-  }, [req?.extId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [req]);
 
   const toggle = useCallback((name) => {
     setGranted((prev) => {
@@ -202,12 +225,17 @@ export default function PermissionRequestSheet({ accentHex = COLORS.violetDark }
                   <HostList hosts={item.hosts} muted={muted} />
                 </div>
 
+                {/* ariaLabel, not label: the design system's `label` renders
+                    as visible text beside the switch, which took half the row
+                    and wrapped the permission's own name one word per line.
+                    A screenshot found that; jsdom cannot see it. */}
                 <Toggle
                   on={on}
                   onChange={() => toggle(item.permission)}
                   accentHex={accentHex}
                   size="sm"
-                  label={`${on ? 'Allow' : 'Do not allow'}: ${item.prompt}`}
+                  ariaLabel={`${on ? 'Allow' : 'Do not allow'}: ${item.prompt}`}
+                  style={{ flexShrink: 0 }}
                 />
               </div>
             );

@@ -92,3 +92,5 @@ android/app/src/main/assets/public/
 
 # Licence signing private key — minting keys for buyers (NEVER commit)
 authno-license-private.json
+
+component-shots/

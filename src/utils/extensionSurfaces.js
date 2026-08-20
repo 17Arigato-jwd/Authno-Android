@@ -112,9 +112,28 @@ export function createSurfaces({ now = () => Date.now(), onChange = null } = {})
   let openPanel = null;      // { extId, panelId } — at most one, ever
   let lastOpen = null;       // restored on next launch
 
-  const notify = () => { if (onChange) { try { onChange(); } catch { /* the UI's problem */ } } };
+  /**
+   * Listeners, plus the constructor's onChange for callers that build their
+   * own instance.
+   *
+   * `surfaces()` takes no options and returns whatever already exists, so a
+   * component that could only be told about changes by CONSTRUCTING the
+   * singleton would never be told about anything — the first extension to set
+   * an overlay creates it, and that happens at activation, before the editor
+   * has mounted. subscribe() is how a component joins one it did not make.
+   */
+  const listeners = new Set();
+  const notify = () => {
+    if (onChange) { try { onChange(); } catch { /* the UI's problem */ } }
+    for (const fn of listeners) { try { fn(); } catch { /* one listener's */ } }
+  };
 
   return {
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => { listeners.delete(fn); };
+    },
+
     // ── Overlay (§8b) ────────────────────────────────────────────────────────
 
     /** An extension sets its one line. The host owns colour and position. */
