@@ -386,7 +386,7 @@ export default function BookDashboard({
 }) {
 
   // ── Extension contributions ─────────────────────────────────────────────
-  const { navigate } = useExtensions();
+  const { runContribution } = useExtensions();
   const { tabs: extTabs, actions: extActions } = useBookDashboardExtensions(session);
 
   // Sub-panel state
@@ -735,7 +735,7 @@ export default function BookDashboard({
                 {extActions.map((action, i) => (
                   <button
                     key={`${action._extId}-${action.id}-${i}`}
-                    onClick={() => navigate(action._ext, action.page, session)}
+                    onClick={() => runContribution(action._ext, action, session)}
                     style={{
                       width: '100%', padding: '13px 15px', borderRadius: '12px',
                       border: `1.5px solid ${accentHex}55`,

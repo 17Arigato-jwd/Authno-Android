@@ -28,6 +28,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import {
   ExtensionProvider,
+  useExtensions,
   useExtensionContributions,
   useBookDashboardExtensions,
   useEditorToolbarExtensions,
@@ -36,6 +37,8 @@ import { writeGrants, clearGrants } from './extensionGrants';
 import { setExtensionConfig, clearExtensionConfig } from './extensionLoader';
 
 let mockInstalled = [];
+let mockInvoked = [];
+let mockRegistry = { invoke: async (name, args) => { mockInvoked.push([name, args]); } };
 
 jest.mock('./extensionLoader', () => {
   const actual = jest.requireActual('./extensionLoader');
@@ -45,6 +48,7 @@ jest.mock('./extensionRuntime', () => ({
   activateExtension: async () => {},
   deactivateExtension: async () => {},
   deactivateAll: async () => {},
+  commandsV2: () => mockRegistry,
 }));
 jest.mock('./extbkInstaller', () => ({
   installExtbkBytes: async () => {},
@@ -74,6 +78,8 @@ const homescreen = (when) => ([{
 
 beforeEach(() => {
   mockInstalled = [];
+  mockInvoked = [];
+  mockRegistry = { invoke: async (name, args) => { mockInvoked.push([name, args]); } };
   clearGrants(EXT);
   clearExtensionConfig(EXT);
 });
@@ -210,5 +216,106 @@ describe('both halves of the book dashboard', () => {
       expect(both().tabs).toHaveLength(1);
       expect(both().actions).toHaveLength(1);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('what a contribution does when you press it', () => {
+  const contributes = (item) => ([{
+    id: EXT,
+    name: 'Demo',
+    contributes: { homescreen: [{ id: 'tile', label: 'Tile', ...item }] },
+  }]);
+
+  it('runs a command rather than navigating to undefined', async () => {
+    mockInstalled = contributes({ command: 'sync.now' });
+    const run = await shown(() => useExtensions().runContribution);
+    await waitFor(() => expect(typeof run()).toBe('function'));
+
+    // The whole bug: every activation site called navigate(ext, item.page),
+    // and a command contribution has no page.
+    const r = await run()(mockInstalled[0], { id: 'tile', command: 'sync.now' });
+    expect(r.did).toBe('command');
+    expect(mockInvoked).toEqual([['sync.now', []]]);
+  });
+
+  it('navigates for a page', async () => {
+    mockInstalled = contributes({ page: 'main' });
+    const run = await shown(() => useExtensions().runContribution);
+    const r = await run()(mockInstalled[0], { id: 'tile', page: 'main' });
+    expect(r.did).toBe('page');
+    expect(mockInvoked).toEqual([]);
+  });
+
+  it('opens a panel for a panel', async () => {
+    mockInstalled = contributes({ panel: 'stats' });
+    const run = await shown(() => useExtensions().runContribution);
+    const r = await run()(mockInstalled[0], { id: 'tile', panel: 'stats' });
+    expect(r.did).toBe('panel');
+  });
+
+  it('says so when the extension is not running rather than doing nothing', async () => {
+    mockRegistry = null;
+    mockInstalled = contributes({ command: 'sync.now' });
+    const run = await shown(() => useExtensions().runContribution);
+    const r = await run()(mockInstalled[0], { id: 'tile', command: 'sync.now' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('not-running');
+  });
+
+  it('reports a contribution that names no target at all', async () => {
+    mockInstalled = contributes({});
+    const run = await shown(() => useExtensions().runContribution);
+    const r = await run()(mockInstalled[0], { id: 'tile' });
+    expect(r).toEqual({ ok: false, reason: 'no-target' });
+  });
+});
+
+describe('the book screen reads the slot the spec documents', () => {
+  const actionsOf = (r) => r.actions;
+
+  it('renders contributes.bookActions', async () => {
+    // Cloud Backup declares this one. It validated, and nothing drew it.
+    mockInstalled = ([{
+      id: EXT, name: 'Demo',
+      contributes: { bookActions: [{ id: 'backup-now', label: 'Back up now', command: 'sync.now' }] },
+    }]);
+    const rows = await shown(() => useBookDashboardExtensions({ id: '1' }), actionsOf);
+    await waitFor(() => expect(rows().map((a) => a.id)).toEqual(['backup-now']));
+  });
+
+  it('renders contributes.chapterActions too', async () => {
+    mockInstalled = ([{
+      id: EXT, name: 'Demo',
+      contributes: { chapterActions: [{ id: 'ch', label: 'Do', command: 'c' }] },
+    }]);
+    const rows = await shown(() => useBookDashboardExtensions({ id: '1' }), actionsOf);
+    await waitFor(() => expect(rows().map((a) => a.id)).toEqual(['ch']));
+  });
+
+  it('still renders the v1 bookDashboard shape', async () => {
+    // v1 extensions are installed and use this. Breaking them to tidy a name
+    // is not a trade worth making.
+    mockInstalled = ([{
+      id: EXT, name: 'Demo',
+      contributes: { bookDashboard: { actions: [{ id: 'old', label: 'Old' }], tabs: [{ id: 't', label: 'T' }] } },
+    }]);
+    const both = await shown(() => useBookDashboardExtensions({ id: '1' }));
+    await waitFor(() => {
+      expect(both().actions.map((a) => a.id)).toEqual(['old']);
+      expect(both().tabs.map((t) => t.id)).toEqual(['t']);
+    });
+  });
+
+  it('applies `when` to the new slots as well', async () => {
+    mockInstalled = ([{
+      id: EXT, name: 'Demo',
+      contributes: { bookActions: [
+        { id: 'needs-net', label: 'Back up now', command: 'sync.now', when: "ext.hasPermission('network')" },
+      ] },
+    }]);
+    const rows = await shown(() => useBookDashboardExtensions({ id: '1' }), actionsOf);
+    await waitFor(() => expect(rows()).toHaveLength(0));
   });
 });

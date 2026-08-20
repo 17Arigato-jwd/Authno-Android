@@ -236,6 +236,31 @@ async function installEpkBytes(bytes, { id, emit, askPermissions = null }) {
 
   const { Filesystem, Directory } = await fs();
   try {
+    // Stop the running copy before its files are replaced under it.
+    //
+    // An update overwrote the directory while the old version was still live:
+    // its frame was executing modules loaded from files that no longer said
+    // what they had said, and its hooks were still registered. `refresh()`
+    // converges afterwards — it deactivates everything and re-activates — but
+    // between the write and that refresh the old extension is running against
+    // a package that is half the new one. Stopping first makes the window not
+    // exist rather than making it short.
+    //
+    // Imported lazily: this module is on the cold-start path and the runner
+    // pulls in the whole v2 host with it. Nothing here needs that until there
+    // is actually something to stop.
+    if (previous) {
+      try {
+        const { stopExtensionV2 } = await import('./extensionRunnerV2');
+        await stopExtensionV2(manifest.id);
+      } catch (e) {
+        // A version that will not stop is not a reason to refuse the update —
+        // the files still land and refresh() still re-activates. Worth saying
+        // out loud, because it means the old frame outlived its package.
+        console.warn(`[extbkInstaller] could not stop ${manifest.id} before updating:`, e?.message ?? e);
+      }
+    }
+
     await Filesystem.mkdir({ path: EXTENSIONS_DIR, directory: Directory.Data, recursive: true });
   } catch (_) { /* already there */ }
 

@@ -142,9 +142,20 @@ describe('the content security policy', () => {
     const csp = buildCsp(['https://api.dropbox.com']);
     for (const shut of [
       "form-action 'none'", "base-uri 'none'", "frame-src 'none'",
-      "frame-ancestors 'none'", "object-src 'none'",
+      "object-src 'none'",
     ]) {
       expect(csp).toContain(shut);
+    }
+  });
+
+  test('and nothing is in there that a <meta> policy cannot enforce', () => {
+    const csp = buildCsp(['https://api.dropbox.com']);
+    // This policy is only ever delivered in a meta tag, where the browser
+    // ignores these three. `frame-ancestors 'none'` used to be here: it
+    // protected nothing and logged an error to the console every time an
+    // extension started, which is how it was found.
+    for (const inert of ['frame-ancestors', 'report-uri', 'sandbox']) {
+      expect(csp).not.toContain(inert);
     }
   });
 
@@ -502,5 +513,57 @@ describe('runtime host grants, for a server only the user knows', () => {
     const p = permissionSetFor(WEBDAV, ['network'], ['https://*', 'https://ok.example.com']);
     expect(p.userHosts()).toEqual(['https://ok.example.com']);
     expect(p.csp()).not.toContain('*');
+  });
+});
+
+describe('a host has to be its own origin', () => {
+  const { canonicalHost } = require('./extensionPermissionsV2');
+
+  test('a host the URL parser had to repair is refused', () => {
+    // The parser STRIPS tabs, newlines and carriage returns anywhere in the
+    // input, so this validated as `https://ab` and was then stored and written
+    // into the policy with the newline still in it — and building the frame
+    // threw, every time, for the life of the install.
+    expect(new URL('https://a\nb').origin).toBe('https://ab');
+    expect(hostProblem('https://a\nb')).toMatch(/exactly as its own origin/);
+  });
+
+  test('a host carrying a character no policy may contain is refused', () => {
+    // This one survives `origin` untouched, so the comparison above passes it.
+    expect(new URL('https://a"').origin).toBe('https://a"');
+    expect(hostProblem('https://a"')).toMatch(/may not contain/);
+  });
+
+  test('an ordinary host is still fine', () => {
+    expect(hostProblem('https://api.dropboxapi.com')).toBeNull();
+    expect(hostProblem('https://*.example.com')).toBeNull();
+  });
+
+  test('an IPv6 origin can be granted', () => {
+    // Legal in a CSP source expression, and impossible to write without
+    // brackets. The charset omitted them, so somebody self-hosting on IPv6
+    // could approve the host and then watch the extension stop starting.
+    expect(hostProblem('https://[::1]')).toBeNull();
+    expect(buildCsp(['https://[::1]'])).toContain('https://[::1]');
+  });
+
+  test('canonicalHost gives back the form that is safe to store', () => {
+    expect(canonicalHost('https://a.example.com')).toBe('https://a.example.com');
+    expect(canonicalHost('https://*.example.com')).toBe('https://*.example.com');
+    expect(canonicalHost('not a url')).toBeNull();
+  });
+
+  test('everything hostProblem accepts survives policy assembly', () => {
+    // The invariant the two used to break. They share one charset now, so this
+    // is a statement about the list rather than a spot check.
+    const { POLICY_UNSAFE } = require('./extensionPermissionsV2');
+    for (const h of [
+      'https://a.com', 'https://*.a.com', 'https://[::1]', 'https://a.com:8443',
+      'https://xn--80ak6aa92e.com',
+    ]) {
+      expect(hostProblem(h)).toBeNull();
+      POLICY_UNSAFE.lastIndex = 0;
+      expect(buildCsp([h]).match(POLICY_UNSAFE)).toBeNull();
+    }
   });
 });

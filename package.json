@@ -72,7 +72,9 @@
     "check:extensions": "node scripts/check-extensions.mjs",
     "check:timezones": "node scripts/check-timezones.mjs",
     "stress:extensions": "node scripts/stress-extensions.mjs",
-    "check:extbk": "node scripts/check-extbk-crossread.mjs"
+    "check:extbk": "node scripts/check-extbk-crossread.mjs",
+    "check:boot": "node scripts/check-boot.mjs",
+    "fuzz:parsers": "node scripts/fuzz-parsers.mjs"
   },
   "eslintConfig": {
     "extends": [
