@@ -133,6 +133,8 @@ stubModule('src/utils/extensionRuntime.js', {
 
 const ExtensionDots = require(path.join(ROOT, 'src/components/ExtensionDots.jsx')).default;
 const ExtensionPermissions = require(path.join(ROOT, 'src/components/ExtensionPermissions.jsx')).default;
+const ExtensionPromptDialog = require(path.join(ROOT, 'src/components/ExtensionPromptDialog.jsx')).default;
+const { prompts, __resetPrompts } = require(path.join(ROOT, 'src/utils/extensionPrompts.js'));
 const PermissionRequestSheet = require(path.join(ROOT, 'src/components/PermissionRequestSheet.jsx')).default;
 const { surfaces, __resetSurfaces } = require(path.join(ROOT, 'src/utils/extensionSurfaces.js'));
 const { permissionRequests, __resetPermissionRequests } = require(path.join(ROOT, 'src/utils/permissionRequests.js'));
@@ -160,6 +162,32 @@ const SCENES = {
     ]) surfaces().setOverlay(id, line);
     return React.createElement(ExtensionDots, {});
   },
+  /** The host-grant question — the one that used to hang forever. */
+  'prompt-host'() {
+    __resetPrompts();
+    prompts().hostConfirm('cloud-backup', {
+      title: 'Connect to a new address?',
+      message: 'Cloud Backup wants to connect to:',
+      // Long on purpose. A self-hosted WebDAV address is routinely this shape,
+      // and it is the string that decides whether the panel holds together.
+      emphasis: 'https://dav.example.org/remote.php/dav/files/rowan/Manuscripts/AuthNo',
+      note: 'Only allow this if you recognise the address.',
+    }).catch(() => {});
+    return React.createElement(ExtensionPromptDialog, { accentHex: '#5a00d9' });
+  },
+
+  /** A text question, with a field. */
+  'prompt-text'() {
+    __resetPrompts();
+    prompts().prompt('cloud-backup', {
+      title: 'Which folder?',
+      message: 'Where copies of your books should go on the server.',
+      placeholder: '/AuthNo',
+      initial: '/AuthNo',
+    }).catch(() => {});
+    return React.createElement(ExtensionPromptDialog, { accentHex: '#5a00d9' });
+  },
+
   'permission-one'() {
     __resetPermissionRequests();
     permissionRequests().ask('word-sprint', plan([
@@ -235,6 +263,13 @@ for (const name of Object.keys(SCENES)) {
   const p = await browser.newPage({ viewport: { width: 412, height: 860 }, deviceScaleFactor: 2 });
   p.on('pageerror', (e) => errors.push(`${name}: ${e}`));
   await p.goto(`http://127.0.0.1:${PORT}/${name}`, { waitUntil: 'domcontentloaded' });
+  // Let entrance animations finish. FrostedModal fades and scales in over
+  // 200ms, and shooting through that produced two photographs of the same
+  // dialog at different opacities — which reads as a contrast bug in the
+  // component rather than as the shutter being early.
+  await p.evaluate(() => Promise.all(
+    document.getAnimations().map((a) => a.finished.catch(() => {})),
+  ));
   await p.screenshot({ path: path.join(OUT, `${name}.png`) });
   await p.close();
 }

@@ -1,5 +1,5 @@
 import {
-  createPrompts, PromptRefused, MAX_TITLE, MAX_MESSAGE,
+  createPrompts, PromptRefused, MAX_TITLE, MAX_MESSAGE, MAX_EMPHASIS,
   prompts, __resetPrompts,
 } from './extensionPrompts.js';
 
@@ -270,5 +270,81 @@ describe('notification', () => {
 
   test('the shared instance is one object', () => {
     expect(prompts()).toBe(prompts());
+  });
+});
+
+describe('what only the app may say', () => {
+  test('an extension cannot set the emphasised line', () => {
+    const { p } = harness();
+    p.confirm('sneaky', {
+      title: 'Sign in',
+      message: 'Enter your pen name',
+      emphasis: 'authno.app',
+      note: 'This is safe.',
+    });
+    // Dropped, not honoured. An extension that could pick out one line of its
+    // own question as the authoritative one would be styling the dialog, which
+    // is the thing host-drawing exists to prevent.
+    expect(p.current().emphasis).toBe('');
+    expect(p.current().note).toBe('');
+  });
+
+  test('a question the app composed may', () => {
+    const { p } = harness();
+    p.hostConfirm('cloud-backup', {
+      title: 'Connect to a new address?',
+      message: 'Cloud Backup wants to connect to:',
+      emphasis: 'https://dav.example.org',
+      note: 'Only allow this if you recognise the address.',
+    });
+    expect(p.current().emphasis).toBe('https://dav.example.org');
+    expect(p.current().note).toBe('Only allow this if you recognise the address.');
+  });
+
+  test('a long address is carried, not refused', async () => {
+    const { p } = harness();
+    // A perfectly ordinary self-hosted WebDAV path, over the message budget.
+    const long = 'https://dav.example.org/remote.php/dav/files/rowan/' + 'a'.repeat(200);
+    expect(long.length).toBeGreaterThan(MAX_MESSAGE);
+
+    // Where it used to live: inside the sentence, counting against its 240.
+    // The throw became a silent "no" at the runtime's `.catch(() => false)` —
+    // a server that simply could not be reached, with nothing said about why.
+    await expect(p.confirm('cloud-backup', {
+      title: 'Connect to a new address?',
+      message: `Cloud Backup wants to connect to:\n\n${long}`,
+    })).rejects.toMatchObject({ code: 'message-too-long' });
+
+    // Where it lives now: budgeted as an address rather than as prose.
+    const settled = p.hostConfirm('cloud-backup', {
+      title: 'Connect to a new address?',
+      message: 'Cloud Backup wants to connect to:',
+      emphasis: long,
+    });
+    expect(p.current().emphasis).toBe(long);
+    p.answer();
+    await expect(settled).resolves.toBe(true);
+  });
+
+  test('an absurd one is cut rather than allowed to fill the screen', () => {
+    const { p } = harness();
+    p.hostConfirm('x', { title: 'Connect?', emphasis: 'h'.repeat(5000) });
+    expect(p.current().emphasis).toHaveLength(MAX_EMPHASIS);
+  });
+});
+
+describe('telling two questions apart', () => {
+  test('identical questions are still two questions', async () => {
+    const { p } = harness();
+    const first = p.prompt('cloud-backup', { title: 'Which folder?' });
+    const seqA = p.current().seq;
+    p.answer('/Drafts');
+    await expect(first).resolves.toBe('/Drafts');
+
+    p.prompt('cloud-backup', { title: 'Which folder?' });
+    // Word for word the same question about a different book. The dialog keys
+    // its field reset on this, and comparing content instead left the first
+    // book's answer sitting in the field.
+    expect(p.current().seq).not.toBe(seqA);
   });
 });

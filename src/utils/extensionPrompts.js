@@ -27,6 +27,18 @@
 export const MAX_TITLE = 60;
 export const MAX_MESSAGE = 240;
 
+/**
+ * The verbatim line, budgeted apart from the message.
+ *
+ * A URL used to live inside `message` and count against its 240, so a long but
+ * perfectly ordinary self-hosted WebDAV address pushed the host-grant question
+ * over the limit — and the runtime's `.catch(() => false)` turned that into a
+ * silent refusal to connect, with nothing on screen and no reason given. The
+ * address is not prose and should never have been competing with prose for
+ * room.
+ */
+export const MAX_EMPHASIS = 300;
+
 export class PromptRefused extends Error {
   constructor(code, message) {
     super(message);
@@ -41,16 +53,32 @@ export class PromptRefused extends Error {
  * @param {Function} [o.onChange]       called when the visible dialog changes
  */
 export function createPrompts({
-  editorHasFocus = () => false,
+  editorHasFocus: initialFocusTest = () => false,
   onChange = null,
 } = {}) {
+  // `let`, because the app supplies this after the singleton exists — see
+  // setEditorFocusTest.
+  let editorHasFocus = initialFocusTest;
   /** At most one visible; others wait. extId → pending entry. */
   const queue = [];
   let visible = null;
 
-  const notify = () => { if (onChange) { try { onChange(); } catch { /* the UI's problem */ } } };
+  /**
+   * Listeners, plus the constructor's onChange for callers that build their own.
+   *
+   * `prompts()` returns whatever already exists and ignores its argument, so a
+   * component that could only be told about changes by CONSTRUCTING the
+   * singleton would never be told about anything — extensionRuntime creates it
+   * the first time an extension asks a question, which is long before the
+   * dialog mounts. subscribe() is how a component joins one it did not make.
+   */
+  const listeners = new Set();
+  const notify = () => {
+    if (onChange) { try { onChange(); } catch { /* the UI's problem */ } }
+    for (const fn of listeners) { try { fn(); } catch { /* one listener's */ } }
+  };
 
-  function shape(kind, extId, opts) {
+  function shape(kind, extId, opts, trusted) {
     const title = String(opts?.title ?? '');
     const message = String(opts?.message ?? '');
 
@@ -73,6 +101,12 @@ export function createPrompts({
       extId: String(extId),
       title,
       message,
+      // Read only for questions the APP composed. An extension that could set
+      // these would be choosing which part of its own question looks
+      // authoritative, and the whole reason these dialogs are host-drawn is
+      // that it does not get to choose what the question looks like.
+      emphasis: trusted ? String(opts?.emphasis ?? '').slice(0, MAX_EMPHASIS) : '',
+      note: trusted ? String(opts?.note ?? '').slice(0, MAX_MESSAGE) : '',
       placeholder: kind === 'prompt' ? String(opts?.placeholder ?? '') : undefined,
       initial: kind === 'prompt' ? String(opts?.initial ?? '') : undefined,
       danger: kind === 'confirm' ? !!opts?.danger : undefined,
@@ -85,7 +119,18 @@ export function createPrompts({
     notify();
   }
 
-  function enqueue(kind, extId, opts) {
+  /**
+   * Which question this is, not what it says.
+   *
+   * The dialog resets its text field when the question changes, and it needs
+   * something to compare. Identity by content — extId + title + message —
+   * says two IDENTICAL questions are the same one, and asking "Which folder?"
+   * about a second book is exactly that: the field would still hold the answer
+   * typed for the first.
+   */
+  let seq = 0;
+
+  function enqueue(kind, extId, opts, trusted = false) {
     const id = String(extId);
 
     // Rule 1. Not deferred — refused, so the extension learns it asked at the
@@ -99,10 +144,11 @@ export function createPrompts({
 
     let entry;
     try {
-      entry = shape(kind, id, opts);
+      entry = shape(kind, id, opts, trusted);
     } catch (e) {
       return Promise.reject(e);
     }
+    entry.seq = ++seq;
 
     const settled = new Promise((resolve) => { entry.resolve = resolve; });
     queue.push(entry);
@@ -111,8 +157,29 @@ export function createPrompts({
   }
 
   return {
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => { listeners.delete(fn); };
+    },
+
     prompt(extId, opts) { return enqueue('prompt', extId, opts); },
     confirm(extId, opts) { return enqueue('confirm', extId, opts); },
+
+    /**
+     * A question the app asks ON BEHALF of an extension.
+     *
+     * Same dialog, same attribution — the person is still told which extension
+     * caused it — but the app wrote every word, so it may also say which part
+     * is the fact being decided (`emphasis`) and which is the caution after it
+     * (`note`). The host-grant question is the case: the address is the one
+     * thing the answer turns on, and set in running prose it reads as
+     * background.
+     *
+     * Deliberately not an option on `confirm`: `handlers.ui.confirm` hands the
+     * sandbox's options straight through, so anything `confirm` honours is
+     * something an extension can set.
+     */
+    hostConfirm(extId, opts) { return enqueue('confirm', extId, opts, true); },
 
     /**
      * What to draw, without the resolver.
@@ -178,6 +245,18 @@ export function createPrompts({
     },
 
     pending() { return queue.length + (visible ? 1 : 0); },
+
+    /**
+     * Tell the queue how to find out whether the editor has focus.
+     *
+     * A constructor option, and `prompts()` takes none — so the rule it
+     * governs ("not while the editor has focus") defaulted to `() => false`
+     * and never fired. An extension could put a dialog in front of somebody
+     * mid-sentence, which is the exact thing the rule exists to stop.
+     */
+    setEditorFocusTest(fn) {
+      if (typeof fn === 'function') editorHasFocus = fn;
+    },
 
     reset() {
       for (const q of queue) q.resolve(q.kind === 'prompt' ? null : false);

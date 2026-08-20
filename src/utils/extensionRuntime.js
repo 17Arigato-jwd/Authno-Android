@@ -287,14 +287,18 @@ function v2Handlers(extId, navigateFn) {
     // make the CSP a list of hosts it had chosen rather than ones anyone
     // approved.
     network: {
-      ask: (id, url) => prompts().confirm(id, {
+      // hostConfirm, not confirm: every word here is the app's, so the dialog
+      // may also be told which part is the address. An extension calling
+      // `ui.confirm` gets prose and nothing else.
+      ask: (id, url) => prompts().hostConfirm(id, {
         title: 'Connect to a new address?',
-        // The origin, on its own line and unaltered. This is the one fact the
-        // answer turns on, and an extension that could dress it up — or bury
-        // it in a sentence it also wrote — would be choosing what the question
-        // looks like as well as asking it.
-        message: `${_extName(id)} wants to connect to:\n\n${url}\n\n`
-          + 'Only allow this if you recognise the address.',
+        message: `${_extName(id)} wants to connect to:`,
+        // The origin, set apart and unaltered. This is the one fact the answer
+        // turns on, and an extension that could dress it up — or bury it in a
+        // sentence it also wrote — would be choosing what the question looks
+        // like as well as asking it.
+        emphasis: String(url ?? ''),
+        note: 'Only allow this if you recognise the address.',
       }).catch(() => false),
       persist: (id, hosts) => {
         const current = readGrants(id);

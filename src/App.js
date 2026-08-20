@@ -47,6 +47,7 @@ import PermissionRequestSheet from "./components/PermissionRequestSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import ExtensionDots from "./components/ExtensionDots";
 import ExtensionPanel from "./components/ExtensionPanel";
+import ExtensionPromptDialog from "./components/ExtensionPromptDialog";
 import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
@@ -57,6 +58,7 @@ import {
 } from "./utils/firstBookTour";
 import { ExtensionProvider } from "./utils/ExtensionContext";
 import { setImportSessionHandler, setGetSessionsHandler, setCurrentBookHandler } from "./utils/extensionRuntime";
+import { prompts as promptQueue } from "./utils/extensionPrompts";
 import { bookFingerprint } from "./utils/bookFingerprint";
 import { makeGate } from "./utils/exclusive";
 import {
@@ -628,6 +630,23 @@ function AppInner({ navigateRef }) {
   useEffect(() => {
     setCurrentBookHandler(() => currentId);
   }, [currentId]);
+
+  // Whether the editor has focus, for the rule that an extension may not put a
+  // dialog in front of somebody mid-sentence.
+  //
+  // createPrompts takes this as a constructor option and `prompts()` passes
+  // none, so it defaulted to `() => false` — the rule was written, tested, and
+  // never once true. Supplied after the fact because the singleton is created
+  // the first time an extension asks anything, which is long before this runs.
+  useEffect(() => {
+    // Queried rather than held: the editor's ref belongs to a different
+    // component, and the one thing this must be is correct at the moment it
+    // is asked rather than at the moment it was wired.
+    promptQueue().setEditorFocusTest(() => {
+      const el = document.querySelector('[data-tour="editor"]');
+      return !!el && document.activeElement === el;
+    });
+  }, []);
 
   // Guided tour: the "Everything in one menu" step opens the burger menu so
   // the spotlight can walk its rows; any other step (or tour end) closes it.
@@ -2282,6 +2301,10 @@ function AppInner({ navigateRef }) {
           the indicator waiting; the extensions are still running either way
           and the dot returns when the bar goes. */}
       <ExtensionDots hidden={!!readAloudSession} />
+      {/* The question an extension asked. Nothing drew this, so ui.confirm,
+          ui.prompt and network.requestHost all awaited an answer that could
+          never arrive — a permanent hang with nothing on screen. */}
+      <ExtensionPromptDialog accentHex={customization.accentHex} />
       {showOnboarding && (
         <Suspense fallback={null}>
         <OnboardingFunnel
