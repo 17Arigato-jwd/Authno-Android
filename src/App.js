@@ -46,6 +46,7 @@ import InstallSheet from "./components/InstallSheet";
 import PermissionRequestSheet from "./components/PermissionRequestSheet";
 import ReadAloudBar from "./components/ReadAloudBar";
 import ExtensionDots from "./components/ExtensionDots";
+import ExtensionPanel from "./components/ExtensionPanel";
 import { subscribeBilling } from "./utils/billingBus";
 import { UpdateOnboarding, hasSeenUpdate, hasSeenOnboarding } from "./components/Onboarding";
 import { getProfile, setProfile } from "./utils/profile";
@@ -347,6 +348,12 @@ function Editor({
 
   return (
     <div style={{ flex: 1, display: "flex", minWidth: 0, position: "relative", overflow: "hidden" }}>
+    {/* The editor column and, beside it, whatever panel an extension has open.
+        A row rather than an overlay: a docked panel has to take width FROM the
+        editor, not sit on top of it. Overlaying would leave the measure
+        unchanged and the text underneath — which is the one outcome
+        panelPlacement exists to prevent. */}
+    <div style={{ flex: 1, display: "flex", minWidth: 0, overflow: "hidden" }}>
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", overflow: "hidden" }}>
       {/* Header */}
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--app-bg)" }}>
@@ -526,6 +533,8 @@ function Editor({
           </div>
         )}
       </motion.main>
+    </div>
+    <ExtensionPanel accentHex={accentHex} session={current} />
     </div>
 
     {/* Selection chip + action menu (fixed-positioned; renders only with a selection) */}

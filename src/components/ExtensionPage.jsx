@@ -1032,7 +1032,12 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
 // ─── Main ExtensionPage ───────────────────────────────────────────────────────
 
 export default function ExtensionPage({ extension, pageId, session, accentHex, onBack, inline = false }) {
-  const pageDef = extension?.contributes?.pages?.[pageId];
+  // v2 declares pages at the top level; v1 put them under `contributes`.
+  // Both are checked because both shapes are installable right now, and a v2
+  // extension whose page was looked for in the wrong place got "Page not
+  // found" from every single ui.navigate — which reads as the extension being
+  // broken rather than as the host looking in the wrong object.
+  const pageDef = extension?.pages?.[pageId] ?? extension?.contributes?.pages?.[pageId];
 
   if (!pageDef) {
     return (
