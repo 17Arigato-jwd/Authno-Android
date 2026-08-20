@@ -9,12 +9,20 @@
 
 jest.mock('./platform', () => ({ isAndroid: () => false, isElectron: () => true }));
 
+// What happened, in the order it happened. An update has to stop the running
+// copy BEFORE its files are replaced, and order is the whole assertion.
+const mockOrder = [];
+jest.mock('./extensionRunnerV2', () => ({
+  stopExtensionV2: async (id) => { mockOrder.push(`stop:${id}`); return true; },
+}));
+
 const mockFiles = new Map();
 jest.mock('@capacitor/filesystem', () => ({
   Directory: { Data: 'DATA' },
   Filesystem: {
     mkdir: async () => {},
     writeFile: async ({ path, data, encoding }) => {
+      mockOrder.push(`write:${path}`);
       mockFiles.set(path, Buffer.from(data, encoding ? 'utf8' : 'base64'));
     },
     readFile: async ({ path, encoding }) => {
@@ -46,7 +54,7 @@ jest.mock('@capacitor/filesystem', () => ({
 
 const b64 = (bytes) => Buffer.from(bytes).toString('base64');
 
-beforeEach(() => { mockFiles.clear(); localStorage.clear(); });
+beforeEach(() => { mockFiles.clear(); localStorage.clear(); mockOrder.length = 0; });
 
 const V2 = {
   apiVersion: 2,
@@ -332,5 +340,47 @@ describe('permissions are asked at install, or recorded as unasked', () => {
 
     await installExtbkBytes(b64(await buildV2({ version: '2.1.0' })), { silent: true });
     expect(readGrants('com.example.v2').userHosts).toEqual(['https://nas.example.com']);
+  });
+});
+
+describe('updating an installed extension', () => {
+  test('stops the running copy before replacing its files', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+
+    // First install: nothing is running, so nothing is stopped.
+    await installExtbkBytes(b64(await buildV2()), { silent: true });
+    expect(mockOrder.filter((o) => o.startsWith('stop:'))).toEqual([]);
+    expect(mockOrder.some((o) => o.startsWith('write:'))).toBe(true);
+
+    // Second install of the same id is an update.
+    mockOrder.length = 0;
+    await installExtbkBytes(b64(await buildV2({ version: '2.1.0' })), { silent: true });
+
+    const firstStop  = mockOrder.findIndex((o) => o === 'stop:com.example.v2');
+    const firstWrite = mockOrder.findIndex((o) => o.startsWith('write:'));
+
+    // The bug this pins: the directory was overwritten while the old version's
+    // frame was still executing modules loaded from those files, and its hooks
+    // were still registered. refresh() converged afterwards, so the window was
+    // short rather than absent. Now it does not exist.
+    expect(firstStop).toBeGreaterThan(-1);
+    expect(firstStop).toBeLessThan(firstWrite);
+  });
+
+  test('a version that refuses to stop does not fail the update', async () => {
+    const { installExtbkBytes } = require('./extbkInstaller');
+    await installExtbkBytes(b64(await buildV2()), { silent: true });
+
+    const runner = require('./extensionRunnerV2');
+    const original = runner.stopExtensionV2;
+    runner.stopExtensionV2 = async () => { throw new Error('frame is wedged'); };
+    try {
+      // The files still land — a frame that will not go is not a reason to
+      // refuse the new version, and refresh() re-activates either way.
+      const out = await installExtbkBytes(b64(await buildV2({ version: '2.2.0' })), { silent: true });
+      expect(out.version).toBe('2.2.0');
+    } finally {
+      runner.stopExtensionV2 = original;
+    }
   });
 });
