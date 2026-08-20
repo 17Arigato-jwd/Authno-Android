@@ -192,3 +192,38 @@ describe('a readout', () => {
     expect(subscribeReadout).not.toHaveBeenCalled();
   });
 });
+
+describe('keys the schema accepts', () => {
+  it('shows a number field\'s unit', () => {
+    render(<ExtensionSettingsPage manifest={manifest([
+      { type: 'number', key: 'every', label: 'Check every', suffix: 'minutes', min: 5, max: 1440, default: 30 },
+    ])} />);
+    // Without this the row read "Check every [30]" — a number with no idea
+    // what it counts. The schema took the key and nothing drew it.
+    expect(screen.getByText('minutes')).toBeInTheDocument();
+    expect(screen.getByLabelText('Check every (minutes)')).toHaveValue(30);
+  });
+
+  it('starts a collapsed section closed, and opens it on request', () => {
+    render(<ExtensionSettingsPage manifest={manifest([
+      { type: 'section', label: 'Advanced', collapsed: true, children: [
+        { type: 'toggle', key: 'debug', label: 'Verbose log' },
+      ] },
+    ])} />);
+    expect(screen.getByText('Advanced')).toBeInTheDocument();
+    expect(screen.queryByText('Verbose log')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Advanced/ }));
+    expect(screen.getByText('Verbose log')).toBeInTheDocument();
+  });
+
+  it('leaves an ordinary section open and unclickable', () => {
+    render(<ExtensionSettingsPage manifest={manifest([
+      { type: 'section', label: 'Basics', children: [
+        { type: 'toggle', key: 'a', label: 'A thing' },
+      ] },
+    ])} />);
+    expect(screen.getByText('A thing')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Basics/ })).toBeNull();
+  });
+});

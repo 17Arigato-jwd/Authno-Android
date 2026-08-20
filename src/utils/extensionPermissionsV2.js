@@ -237,12 +237,31 @@ export function validatePermissions(permissions) {
  * the site's CORS allowlist uses, for the same reason: `https://*.pages.dev`
  * grants every project anybody has ever deployed there.
  */
+const WILDCARD_PLACEHOLDER = 'wildcard-placeholder';
+
+/**
+ * Characters a content security policy may contain.
+ *
+ * Defined here, next to host validation, and imported by `assertPolicySafe` —
+ * one list, so the question "may this host be granted" and the question "may
+ * this policy be assembled" cannot answer differently. They used to: a host
+ * containing a double quote parsed to an origin containing a double quote,
+ * passed every check here, and blew up at the far end where the policy was
+ * built. Two charsets that must agree and are written down twice is a bug
+ * waiting for the input that tells them apart.
+ *
+ * Square brackets are in the set because an IPv6 origin cannot be written
+ * without them, and a CSP source expression allows them.
+ */
+export const POLICY_UNSAFE = /[^A-Za-z0-9 :/.*'_;,=?&%+[\]-]/g;
+
 export function hostProblem(host) {
   if (typeof host !== 'string' || host === '') return 'must be a string';
   if (host === '*' || host === 'https://*') return 'a wildcard host is not a grant';
+  const probe = host.replace('://*.', `://${WILDCARD_PLACEHOLDER}.`);
   let url;
   try {
-    url = new URL(host.replace('://*.', '://wildcard-placeholder.'));
+    url = new URL(probe);
   } catch {
     return 'is not a URL';
   }
@@ -253,7 +272,56 @@ export function hostProblem(host) {
     const rest = host.slice('https://*.'.length);
     if (rest.split('.').length < 2) return 'a wildcard may not stand for a whole domain';
   }
+
+  // The string has to BE its own origin, not merely parse to one.
+  //
+  // Everything above tested the URL the parser produced, and every caller then
+  // kept the author's text. The WHATWG parser is lenient exactly where the CSP
+  // charset is not: it strips tabs, newlines and carriage returns anywhere in
+  // the input, so `https://a\nb` was validated as `https://ab` and then stored
+  // and written into the policy with the newline still in it. Building the
+  // frame then threw, `activateExtension` caught it, and the extension was
+  // silently dead with a manifest that passed every check.
+  //
+  // Comparing against `url.origin` closes the whole family at once — anything
+  // the parser had to alter to make sense of is refused here rather than
+  // discovered three layers down.
+  if (canonicalHost(host) !== host) return 'must be written exactly as its own origin';
+
+  // And the parser is lenient in one more direction: it will keep a character
+  // in the host that no policy may contain, `"` being the one that matters,
+  // and `origin` hands it straight back — so the comparison above passes and
+  // the policy still cannot be assembled. Checked against the SAME list
+  // `assertPolicySafe` uses, because the two agreeing is the whole point.
+  const bad = host.match(POLICY_UNSAFE);
+  if (bad) {
+    return `may not contain ${JSON.stringify([...new Set(bad)].join(''))}`;
+  }
+
   return null;
+}
+
+/**
+ * The origin form of a host, or null if it is not one.
+ *
+ * Exported because storing this rather than the author's text is what makes
+ * the grant and the policy the same string by construction. `hostProblem`
+ * compares against it; callers that persist a host should save it.
+ */
+export function canonicalHost(host) {
+  const raw = String(host ?? '');
+  const wild = raw.startsWith('https://*.');
+  const probe = wild ? raw.replace('://*.', `://${WILDCARD_PLACEHOLDER}.`) : raw;
+  let origin;
+  try {
+    origin = new URL(probe).origin;
+  } catch {
+    return null;
+  }
+  // `origin` is "null" for opaque schemes, which is a string and would other-
+  // wise compare as a perfectly good host.
+  if (origin === 'null') return null;
+  return wild ? origin.replace(`://${WILDCARD_PLACEHOLDER}.`, '://*.') : origin;
 }
 
 /** The hosts an extension declared under `network`, normalised to origins. */

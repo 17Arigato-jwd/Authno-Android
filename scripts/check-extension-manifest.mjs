@@ -67,7 +67,12 @@ console.log(`\nvalidateSchema → ok=${sc.ok} (${flattenControls(schema).length}
 for (const e of sc.errors) say('ERROR', `settings: ${e}`);
 
 // Keys the manifest sets that the renderer has no support for.
-const RENDERED = new Set(['type', 'key', 'label', 'hint', 'default', 'options', 'min', 'max', 'command', 'source', 'children', 'placeholder', 'intervalMs']);
+const RENDERED = new Set([
+  'type', 'key', 'label', 'hint', 'default', 'options', 'min', 'max',
+  'command', 'source', 'children', 'placeholder', 'intervalMs',
+  'suffix',     // the unit beside a number field
+  'collapsed',  // a section that starts closed
+]);
 for (const c of [...(schema ?? []), ...flattenControls(schema)]) {
   for (const k of Object.keys(c)) {
     if (!RENDERED.has(k)) say('warn', `settings control ${JSON.stringify(c.label ?? c.key)} sets "${k}", which nothing renders`);
@@ -109,15 +114,23 @@ for (const c of declared) if (!used.has(c)) say('warn', `command "${c}" is decla
 // ── 6. Contribution groups the app actually renders ──────────────────────────
 console.log('');
 const src = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+// Which slots the app reads, asked of the code rather than assumed.
+//
+// This used to look for `contributes?.<slot>` and nothing else, which stopped
+// being true the moment the hook destructured `contributes` into a local —
+// and a checker that reports a fixed bug as still broken is worse than no
+// checker. Matching the slot NAME anywhere in the file it would have to be
+// named in is coarser and does not go stale on a refactor; these names are
+// distinctive enough that a stray match is not a real risk.
 const ctxSrc = src('src/utils/ExtensionContext.js');
-const rendered = new Set();
-for (const m of ctxSrc.matchAll(/contributes\?\.\[?(\w+)/g)) rendered.add(m[1]);
-for (const m of ctxSrc.matchAll(/useExtensionContributions\('(\w+)'/g)) rendered.add(m[1]);
-// The generic hook takes the group as an argument; find its call sites.
-for (const f of fs.readdirSync(path.join(ROOT, 'src/components'))) {
-  if (!f.endsWith('.jsx')) continue;
-  for (const m of src(`src/components/${f}`).matchAll(/useExtensionContributions\('([\w]+)'/g)) rendered.add(m[1]);
-}
+const KNOWN_SLOTS = ['settings', 'homescreen', 'bookActions', 'chapterActions',
+  'editorToolbar', 'widgets', 'bookDashboard', 'pages'];
+const rendered = new Set(KNOWN_SLOTS.filter((slot) => {
+  if (new RegExp(`\\b${slot}\\b`).test(ctxSrc)) return true;
+  return fs.readdirSync(path.join(ROOT, 'src/components'))
+    .filter((f) => f.endsWith('.jsx'))
+    .some((f) => new RegExp(`useExtensionContributions\\('${slot}'`).test(src(`src/components/${f}`)));
+}));
 console.log(`app renders these contribution groups: ${[...rendered].sort().join(', ')}`);
 for (const group of Object.keys(manifest.contributes ?? {})) {
   if (!rendered.has(group) && group !== 'type') {

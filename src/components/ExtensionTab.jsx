@@ -118,7 +118,7 @@ const CHIPS_VISIBLE_DEFAULT = 3;
 
 
 function ExtensionCard({ ext, accentHex, session, onClose }) {
-  const { navigate, clearConfig, uninstall } = useExtensions();
+  const { runContribution, clearConfig, uninstall } = useExtensions();
   const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
@@ -158,9 +158,13 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
   const visibleContribs = expanded ? allContribs : allContribs.slice(0, CHIPS_VISIBLE_DEFAULT);
   const hiddenCount = allContribs.length - CHIPS_VISIBLE_DEFAULT;
 
-  const handleNav = (pageId) => {
-    navigate(ext, pageId, session);
-    onClose?.();
+  // Whatever the chip names — a page, a command, a panel. It used to take a
+  // page id and nothing else, so a chip for a command opened `undefined`.
+  const handleContrib = async (c) => {
+    const r = await runContribution(ext, c, session);
+    // A command runs in place; only a page is somewhere to go, so only a page
+    // should close the drawer out from under it.
+    if (r?.did === 'page') onClose?.();
   };
 
   const openMenuAt = (clientX, clientY) => {
@@ -347,7 +351,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                 <ContribChip
                   key={i}
                   contrib={c}
-                  onClick={() => handleNav(c.page)}
+                  onClick={() => handleContrib(c)}
                 />
               ))}
             </div>

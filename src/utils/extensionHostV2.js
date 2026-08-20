@@ -24,12 +24,13 @@
  */
 
 import {
-  permissionSetFor, validatePermissions, promptPlan, hostProblem,
+  permissionSetFor, validatePermissions, promptPlan, hostProblem, POLICY_UNSAFE,
 } from './extensionPermissionsV2.js';
 import { createDispatch, freeCapabilities, activityCapabilities } from './extensionDispatchV2.js';
 import { libraryCapabilities } from './extensionLibraryV2.js';
 import { parseWhen } from './whenClause.js';
 import { undeclaredCommands } from './extensionCommands.js';
+import { validateWidgets } from './widgetTemplates.js';
 
 export const API_VERSION = 2;
 
@@ -116,6 +117,16 @@ export function validateManifestV2(manifest) {
     }
   }
 
+  // Widgets have their own rules and their own validator, and it had no
+  // caller — so a widget declaring a one-minute refresh (there is a 30-minute
+  // floor), a typeface no RemoteViews can name, or an update over the ~1 MB
+  // Binder cap installed cleanly and failed silently on a device. Every one of
+  // those is invisible until an author has shipped, which is the whole reason
+  // widgetTemplates.js exists.
+  const widgets = validateWidgets(manifest);
+  errors.push(...widgets.errors);
+  warnings.push(...widgets.warnings);
+
   const contributes = manifest.contributes;
   if (contributes !== undefined) {
     if (!isPlain(contributes)) errors.push('contributes must be an object');
@@ -201,7 +212,10 @@ export function frameDocumentV2({ csp, bootstrap }) {
  */
 export function assertPolicySafe(csp) {
   const text = String(csp ?? '');
-  const bad = text.match(/[^A-Za-z0-9 :/.*'_;,=?&%+-]/g);
+  // The list lives with host validation so the two cannot drift. See
+  // POLICY_UNSAFE — square brackets are in it because an IPv6 origin cannot be
+  // written without them, and one is an ordinary thing to self-host on.
+  const bad = text.match(POLICY_UNSAFE);
   if (bad) {
     throw new Error(`content security policy contains ${JSON.stringify([...new Set(bad)].join(''))}`);
   }

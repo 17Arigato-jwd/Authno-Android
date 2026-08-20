@@ -359,7 +359,7 @@ export default function HomeScreen({
     } catch (err) { showError('importBook', err); }
   };
 
-  const { navigate } = useExtensions();
+  const { runContribution } = useExtensions();
   const extHomeTiles  = useExtensionContributions('homescreen');
 
   const actions = [
@@ -372,7 +372,7 @@ export default function HomeScreen({
         return tileIcon ?? <DSIcons.Extension size={28} color="currentColor" />;
       })(),
       label: tile.label,
-      onClick: () => navigate(tile._ext, tile.page),
+      onClick: () => runContribution(tile._ext, tile, null),
     })),
     // U2: the three placeholder "Coming Soon" tiles are now real actions.
     // Read Aloud only shows where speech synthesis actually exists (some

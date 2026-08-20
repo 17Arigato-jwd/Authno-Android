@@ -36,6 +36,9 @@ import {
   deactivateAll,
 } from './extensionRuntime';
 import { whenAllows, whenContext } from './whenClause';
+import { commandsV2 } from './extensionRuntime';
+import { surfaces } from './extensionSurfaces';
+import { toast } from '../DesignSystem';
 import { readGrants } from './extensionGrants';
 import { getPlatform } from './deviceId';
 import { APP_VERSION } from '../version';
@@ -57,6 +60,7 @@ const ExtensionContext = createContext({
   uninstall: async (_extId) => {},
   registerHook: (_hookName, _handler) => () => {},
   navigate: (_extension, _pageId, _session) => {},
+  runContribution: async (_extension, _item, _session) => ({ ok: false }),
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -233,6 +237,58 @@ export function ExtensionProvider({ children, onNavigate }) {
     onNavigate?.(ext, pageId, session);
   }, [onNavigate]);
 
+  /**
+   * Do what a contribution says.
+   *
+   * A contribution names one of three targets — `page`, `command` or `panel`
+   * — and the manifest validator has always accepted all three. Every screen
+   * that drew one called `navigate(ext, item.page)`, so a contribution
+   * declaring a command was navigated to `undefined`: a blank page, or
+   * nothing at all, from a button whose whole purpose was to do something.
+   * "Back up now" should back up.
+   *
+   * It lives here rather than in the screens for the same reason the `when`
+   * filter does. Four surfaces draw contributions; a rule each of them has to
+   * remember separately is a rule three of them will eventually forget, and
+   * this one had been forgotten by all four.
+   */
+  const runContribution = useCallback(async (ext, item, session = null) => {
+    if (!ext || !item) return { ok: false, reason: 'nothing-to-run' };
+
+    if (item.page) {
+      onNavigate?.(ext, item.page, session);
+      return { ok: true, did: 'page' };
+    }
+
+    if (item.command) {
+      const registry = commandsV2(String(ext.id));
+      // A stopped extension is the ordinary case here — a premium extension on
+      // a free tier, one that failed to start, one mid-restart after a host
+      // grant. Saying so beats a button that appears to do nothing.
+      if (!registry) {
+        toast(`${ext.name ?? ext.id} is not running.`, { variant: 'danger' });
+        return { ok: false, reason: 'not-running' };
+      }
+      try {
+        await registry.invoke(item.command, []);
+        return { ok: true, did: 'command' };
+      } catch (e) {
+        // The command's own words. An extension that can explain why it could
+        // not do something should reach the person who pressed the button.
+        toast(String(e?.message ?? e), { variant: 'danger' });
+        return { ok: false, reason: 'failed' };
+      }
+    }
+
+    if (item.panel) {
+      // Only a user action opens a panel, which is exactly what this is.
+      surfaces().togglePanel(String(ext.id), String(item.panel));
+      return { ok: true, did: 'panel' };
+    }
+
+    return { ok: false, reason: 'no-target' };
+  }, [onNavigate]);
+
   const value = useMemo(() => ({
     extensions,
     loading,
@@ -246,7 +302,8 @@ export function ExtensionProvider({ children, onNavigate }) {
     uninstall,
     registerHook,
     navigate,
-  }), [extensions, loading, discoveryError, refresh, getConfig, setConfig, clearConfig, installExtbk, uninstall, navigate]);
+    runContribution,
+  }), [extensions, loading, discoveryError, refresh, getConfig, setConfig, clearConfig, installExtbk, uninstall, navigate, runContribution]);
 
   return (
     <ExtensionContext.Provider value={value}>
@@ -369,6 +426,23 @@ export function useExtensionContributions(type, session = null) {
   }, [extensions, type, isOpen, isSaved, chapterCount]);
 }
 
+/**
+ * The book screen's tabs and actions.
+ *
+ * Reads BOTH names, and that is not indecision. Three places disagreed:
+ * the spec documents `bookActions` and `chapterActions`, the manifest
+ * validator accepts those two, and this hook read `bookDashboard` — a v1 name
+ * that is not in the validator's list at all. So a v2 manifest declaring the
+ * slot the spec documents validated cleanly and rendered nothing, while the
+ * one slot that worked drew an "unknown contribution slot" warning on its way
+ * to working.
+ *
+ * Cloud Backup declares `bookActions`. All three of its book actions — the
+ * whole point of the extension — never appeared.
+ *
+ * `bookDashboard` stays because v1 extensions are installed and use it, and
+ * breaking them to tidy a name is not a trade worth making.
+ */
 export function useBookDashboardExtensions(session = null) {
   const { extensions } = useExtensions();
   const { isOpen, isSaved, chapterCount } = bookFacts(session);
@@ -376,11 +450,22 @@ export function useBookDashboardExtensions(session = null) {
     const tabs    = [];
     const actions = [];
     for (const ext of extensions) {
-      const bd = ext.contributes?.bookDashboard;
-      if (!bd) continue;
       const meta = { _extId: ext.id, _extName: ext.name, _extIcon: ext.icon ?? null, _ext: ext };
-      (bd.tabs    ?? []).forEach(t => tabs.push({ ...t,    ...meta }));
-      (bd.actions ?? []).forEach(a => actions.push({ ...a, ...meta }));
+      const c = ext.contributes ?? {};
+
+      // v1: one object with two arrays inside it.
+      const bd = c.bookDashboard;
+      if (bd) {
+        (bd.tabs    ?? []).forEach(t => tabs.push({ ...t,    ...meta }));
+        (bd.actions ?? []).forEach(a => actions.push({ ...a, ...meta }));
+      }
+
+      // v2 (spec §4): flat slots, and the ones the validator knows about.
+      // `chapterActions` joins the same list — the book screen is where a
+      // chapter action is reachable from, and drawing it nowhere was the
+      // alternative on offer.
+      (Array.isArray(c.bookActions)    ? c.bookActions    : []).forEach(a => actions.push({ ...a, ...meta }));
+      (Array.isArray(c.chapterActions) ? c.chapterActions : []).forEach(a => actions.push({ ...a, ...meta, _chapter: true }));
     }
     const book = { isOpen, isSaved, chapterCount };
     return {

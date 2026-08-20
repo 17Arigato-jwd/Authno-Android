@@ -1,268 +1,245 @@
 # Known issues
 
-A maintainer's list, not a user's. Written after a sweep of all three repos on
-2026-08-20 — the app at `764ae34`, the website at `5ddc44b`
-(`claude/audit-followups`), the Cloud Backup extension at `cf7d748`
-(`cloud-backup-plus-revamp`).
+A maintainer's list, not a user's. Swept 2026-08-20 across all three repos —
+the app, the website (`claude/audit-followups`) and the Cloud Backup extension
+(`cloud-backup-plus-revamp`) — and worked through in the same session.
 
-Everything here was reproduced, not inferred. Each entry says how, so nobody
-has to take it on trust or re-derive it. There is a section at the bottom of
-things that **look** like bugs and are not, because that is the half of a list
-like this that stops getting re-investigated every few months.
+Everything here was reproduced, not inferred, and every fix is verified the same
+way it was found. Three entries are still open; all three are open because they
+need a decision rather than a change, and each says which decision.
 
-Ordered by what it costs somebody, not by how interesting it is.
+There is a section at the bottom of things that **look** like bugs and are not.
+That is the half of a list like this that stops getting re-investigated every
+few months.
 
----
-
-## App — `17Arigato-jwd/Authno-Android`
-
-### 1. A contribution that targets a `command` does nothing — it navigates to `undefined`
-
-**Severity: high.** This is the one that makes an extension look broken.
-
-A contribution may name one of three targets, and the manifest validator says
-so:
-
-```js
-// src/utils/extensionHostV2.js
-const TARGETS = ['page', 'command', 'panel'];
-```
-
-Every place that activates a contribution calls `navigate(ext, item.page)`:
-
-```
-src/components/HomeScreen.jsx:375     onClick: () => navigate(tile._ext, tile.page),
-src/components/BookDashboard.jsx:738  onClick={() => navigate(action._ext, action.page, session)}
-```
-
-So a contribution declaring `command` (and therefore no `page`) is navigated to
-`undefined`. `panel` is in the same state. Only `page` works.
-
-Cloud Backup's headline action is exactly this shape:
-
-```json
-{ "id": "backup-now", "label": "Back up now", "command": "sync.now", … }
-```
-
-The machinery to run it exists and is tested — `commandsV2(extId).invoke(name)`
-in `src/utils/extensionCommands.js`, which `ExtensionSettingsPage` already uses
-for `action` controls. Nothing joins it to a contribution.
-
-**Reproduce:** `grep -rn "navigate(.*\.page" src/components/*.jsx`
+| | issue | where | state |
+|---|---|---|---|
+| 1 | A `command` contribution navigated to `undefined` | app | **fixed** |
+| 2 | `bookActions` / `chapterActions` validated, never rendered | app | **fixed** |
+| 3 | `tier: "premium"` means Cloud Backup will not run on a free build | app | **open — your call** |
+| 4 | `suffix` and `collapsed` accepted and ignored | app | **fixed** |
+| 5 | No `## 1.1.20-beta.0` in CHANGELOG.md; a release cannot be cut | app | **open — needs your copy** |
+| 6 | `extensionInstall.js` is a second, unused installer | app | **open — your call** |
+| 7 | `validateWidgets` had no caller | app | **fixed** |
+| 8 | `check:csp` could not run at all | website | **fixed** |
+| 9 | A deploy without `VITE_GATE_API` silently narrowed the CSP | website | **fixed** |
+| 10 | 624 kB single client chunk | website | **fixed** |
+| 11 | (extension — no fix on that side; see 1–4) | extension | — |
+| 12 | A host could pass validation and make the extension unstartable | app | **fixed** |
+| 13 | No IPv6 origin could ever be granted | app | **fixed** |
+| 14 | Worker flow tokens were not actually single-use | website | **fixed** |
+| 15 | Two auth routes had no rate limit | website | **fixed** |
 
 ---
 
-### 2. `contributes.bookActions` and `contributes.chapterActions` are validated and never rendered
-
-**Severity: high**, and it compounds #1 — Cloud Backup's book actions are
-unreachable twice over.
-
-Three names disagree:
-
-| | slots |
-|---|---|
-| spec (`docs/extension-system-v2-spec.md` §4) | `bookActions`, `chapterActions` |
-| validator (`CONTRIBUTION_SLOTS`) | `settings`, `homescreen`, `bookActions`, `chapterActions`, `editorToolbar`, `widgets` |
-| what the app reads | `settings`, `homescreen`, `editorToolbar`, **`bookDashboard`** |
-
-`bookDashboard` is a v1 name. It is the only slot the book screen renders, and
-it is **not** in the validator's list — so a v2 manifest that declares the slot
-that actually works gets `unknown contribution slot "bookDashboard" — ignored`
-as a warning, and then works. And a manifest that declares the slot the spec
-documents validates cleanly and shows nothing.
-
-Cloud Backup declares `bookActions`. All three of its book actions — "Back up
-now", "Cloud files", "Resolve conflict" — never appear.
-
-**Reproduce:** `node scripts/check-extension-manifest.mjs /path/to/manifest.json`
-(added in this sweep; it runs the app's real validators against a real manifest
-and fails on exactly this).
-
----
+## Still open
 
 ### 3. `tier: "premium"` means Cloud Backup does not activate on a free build
 
-**Severity: high for testing**, by design in production — but it will look like
-a bug on a test device.
+Cloud Backup's manifest sets `"tier": "premium"`, and the loader honours it:
 
 ```js
-// src/utils/ExtensionContext.js
 _locked: m.tier === 'premium' && !pro,
 …
 if (manifest._locked) continue;   // never activated
 ```
 
-Cloud Backup's manifest sets `"tier": "premium"`. On a build without a Pro
-entitlement it installs, appears greyed in the list, and never runs — no
-commands, no sync, no readouts. That is the intended behaviour of the tier
-lock. It is on this list so that "I installed it and nothing happened" is not
-mistaken for a fault.
+On a build with no Pro entitlement it installs, appears greyed in the list, and
+never runs — no commands, no sync, no readouts. That is the tier lock working.
 
----
+It stays on this list for two reasons. On a test device it will read as a
+fault — "I installed it and nothing happened" — so it is worth knowing before
+you look. And whether Cloud Backup should be premium at all is a commercial
+decision, which is yours to make and not a thing to change in a sweep.
 
-### 4. `settings.schema` accepts `suffix` and `collapsed`, and the renderer ignores both
+### 5. `CHANGELOG.md` has no section for the current version
 
-**Severity: low**, but one of them loses a unit.
-
-Cloud Backup declares:
-
-```json
-{ "key": "interval", "type": "number", "label": "Check every",
-  "suffix": "minutes", "min": 5, "max": 1440, "default": 30 }
-```
-
-`validateSchema` does not reject unknown keys, and `ExtensionSettingsPage`
-renders neither. The row reads **"Check every  [30]"** with no unit anywhere.
-A section's `"collapsed": true` is likewise ignored — Cloud Backup's "Advanced"
-section is always open.
-
-Either honour them or reject them at validation. Silently dropping them is the
-worst of the three.
-
----
-
-### 5. `CHANGELOG.md` has no section for the current version, so a release cannot be cut
-
-**Severity: blocks release.**
-
-`package.json` is at `1.1.20-beta.0`; the newest changelog heading is
-`## 1.1.19-beta.5`. The release job builds its body from the matching section
-and hard-fails without one:
+`package.json` is at `1.1.20-beta.0`; the newest heading is `## 1.1.19-beta.5`.
+The release job builds its body from the matching section and hard-fails
+without one:
 
 ```yaml
-# .github/workflows/build.yml
 if [ ! -s release-notes.md ]; then
   echo "::error title=Empty release notes::No '## $VER' section in CHANGELOG.md."
   exit 1
 fi
 ```
 
-Normal CI is unaffected — the heading check is gated on a tag or a
-`release_version` dispatch — so this stays invisible until the moment somebody
-tries to publish.
+Ordinary CI is unaffected — the heading check is gated on a tag or a
+`release_version` dispatch — so this stays invisible until somebody publishes.
 
-Changelog copy needs the owner's approval before it is written (`CLAUDE.md`),
-which is why this is a listed issue rather than a fixed one.
+Changelog copy needs your approval before it is written. Say the word and the
+section gets drafted from the commits for you to edit.
 
----
+### 6. `src/utils/extensionInstall.js` is a second, unused implementation
 
-### 6. `src/utils/extensionInstall.js` is a second, unused implementation of the installer
+No consumer. `extbkInstaller.js` does the job and is what every install path
+calls.
 
-**Severity: medium (duplication, and the live copy was the wrong one).**
+I went looking for what the live path was missing, using the unused module's
+27 tests as a specification. Most of it holds:
 
-It has no consumer. `extbkInstaller.js` does the same job and is what every
-install path calls. The two are not equivalent: `extensionInstall.js`'s header
-names three ordering rules, and the live path violated the third until this
-sweep —
+- **Verify before writing** — the EPK path reads at line 215, validates at 225,
+  writes at 239. Correct order.
+- **Grants destroyed on uninstall** — was genuinely missing, and is fixed.
+- **Onboarding before permissions** — the live path has no onboarding step, and
+  that is not a gap: the spec marks `onboarding` **[later]** (§7).
 
-> **Grants are destroyed on uninstall.** Otherwise reinstalling the same id
-> silently inherits every permission the user granted a previous version.
+What is left is one real difference and one decision.
 
-That specific hole is now fixed in `extbkInstaller.uninstallExtension`. The
-duplication remains, and with it the chance of the same divergence again. Either
-delete the unused module or migrate the live path onto it — but not casually:
-`extbkInstaller` is on every install surface.
+The difference: an update writes the new files while the old version is still
+running. `ExtensionContext.installExtbk` calls `refresh()` immediately after,
+which deactivates everything and re-activates, so it converges — but between
+the write and the refresh the old frame is live against replaced files. The
+dead module stopped the old version first.
 
-**Reproduce:** `grep -rl "extensionInstall" src scripts electron | grep -v test`
-→ nothing.
-
----
-
-### 7. `src/utils/widgetTemplates.js` has no consumer
-
-**Severity: none today — informational.**
-
-`validateWidgets(manifest)` is never called, so an extension declaring a widget
-with a one-minute refresh (there is a 30-minute floor), an unavailable typeface,
-or an oversized `RemoteViews` payload installs cleanly and fails silently on a
-device — which is precisely what the module was written to prevent.
-
-It is not yet a live bug: the spec marks the `widgets` contribution **[later]**,
-and nothing renders it. It becomes one the day widgets ship, so it is here to be
-picked up then rather than rediscovered.
+The decision is what to do with the module. Deleting it removes 27 tests that
+encode real requirements. Migrating the live path onto it touches every install
+surface, including the cold-start intent path. Neither is a change to make
+unilaterally at the end of a fix batch, which is why it is here rather than in
+the diff.
 
 ---
 
-## Website — `17Arigato-jwd/Authno-Website`
+## Fixed
 
-### 8. `npm run check:csp` cannot run in CI or in a container — it dies before its first assertion
+### 1. A contribution that targeted a `command` navigated to `undefined`
 
-**Severity: high.** A security check that does not run looks exactly like a
-security check that passes.
+The validator has always accepted three targets:
 
 ```js
-// scripts/csp-check.mjs:99
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
+const TARGETS = ['page', 'command', 'panel'];
 ```
 
-`undefined` sends playwright-core to its own download directory. Images that set
-`PLAYWRIGHT_BROWSERS_PATH` — including this one — have a chromium that
-playwright-core did not install, so the lookup resolves to a path that does not
-exist:
+and every screen that drew a contribution called `navigate(ext, item.page)`. A
+contribution declaring a command has no page, so it was navigated to
+`undefined` — a blank page from a button whose whole purpose was to do
+something. Cloud Backup's headline action, "Back up now", is exactly that
+shape, and so is the example in the spec's own §4.
 
+**Fixed** with one `runContribution(ext, item, session)` in `ExtensionContext`,
+used by every surface. It runs a page, a command or a panel, tells the person
+when the extension is not running instead of appearing to do nothing, and
+passes the command's own error text through when one fails. It lives in the
+context for the same reason the `when` filter does: four surfaces draw
+contributions, and a rule each has to remember separately had been forgotten by
+all four.
+
+### 2. `contributes.bookActions` and `chapterActions` were validated and never rendered
+
+Three names disagreed — the spec documents `bookActions` and `chapterActions`,
+the validator accepts both, and the app read `bookDashboard`, a v1 name not in
+the validator's list at all. So the slot that worked drew an "unknown
+contribution slot" warning on its way to working, and the slot the spec
+documents validated cleanly and rendered nothing.
+
+**Fixed**: `useBookDashboardExtensions` reads all three. `bookDashboard` stays
+because v1 extensions are installed and use it, and breaking them to tidy a
+name is not a trade worth making.
+
+### 4. `suffix` and `collapsed` were accepted by the schema and drawn by nothing
+
+`"suffix": "minutes"` on a number control was dropped, so Cloud Backup's row
+read "Check every [30]" — a number with no idea what it counts. A section's
+`"collapsed": true` was ignored, so "Advanced" was always open.
+
+**Fixed**: both render. A collapsed section is a real disclosure with
+`aria-expanded`; an ordinary one stays open and is not a button.
+
+### 7. `validateWidgets` had no caller
+
+A widget declaring a one-minute refresh (there is a 30-minute floor), a typeface
+no `RemoteViews` can name, or an update over the ~1 MB Binder cap installed
+cleanly and failed silently on a device — which is the exact class of thing
+`widgetTemplates.js` was written to catch at build time.
+
+**Fixed**: `validateManifestV2` calls it. Still no live consequence, because the
+`widgets` contribution is **[later]** and nothing renders one yet — but the day
+they ship, this is already on.
+
+### 8. `npm run check:csp` could not run
+
+```js
+executablePath: process.env.CHROMIUM_PATH || undefined
 ```
-browserType.launch: Executable doesn't exist at …/chromium_headless_shell-…/…
-Please run the following command to download new browsers
-```
 
-The app repo hit this and fixed it in `scripts/chromium.mjs`, whose own header
-says why it matters: *"That is not a check failing. It is a check not running,
-and it exits with the same code either way if nobody is reading."* The website
-still has the original. Port `chromium.mjs` across.
+`undefined` sends playwright-core to its own download directory, which an image
+setting `PLAYWRIGHT_BROWSERS_PATH` does not have. The app repo fixed this in
+`scripts/chromium.mjs`, whose header says the part that matters: *that is not a
+check failing, it is a check not running, and it exits the same way either way
+if nobody is reading.*
 
-**Reproduce:** `cd /workspace/aw && node scripts/csp-check.mjs`
+**Fixed**: `chromium.mjs` ported across. The check runs — nine routes under the
+shipped policy, no violations.
 
----
+### 9. A deploy with `VITE_GATE_API` unset silently narrowed the CSP
 
-### 9. A production build with `VITE_GATE_API` unset silently narrows the CSP
+Unset, the build writes `connect-src 'self'`, logs one line and exits 0. Right
+for a local build; wrong for a deployed one, where the site comes up looking
+perfect and every call to its own gate is blocked by its own policy.
 
-**Severity: medium — a deploy-time footgun.**
+**Fixed**: `npm run deploy` refuses without it, and refuses a wildcard or a
+non-https value. `npm run build` still works with nothing set, because that is
+how everyone builds. `ALLOW_NO_GATE=1` deploys a gateless site on purpose.
 
-```
-_headers written — VITE_GATE_API was unset, so connect-src is 'self' alone
-```
+### 10. The client bundle was 624 kB in one chunk
 
-That is correct for a local build and wrong for a deployed one: `connect-src
-'self'` blocks every call to the gate API, so sign-in fails at runtime with a
-CSP violation rather than at build time with an error. It is a log line, not a
-warning, and the build exits 0.
+**Fixed**: the docs are lazy-loaded behind their own route. 624 → 477 kB
+(182 → 139 kB gzipped), with 148 kB of docs fetched only on `/docs`.
 
-A deploy build should refuse to write `_headers` without the variable, or at
-minimum fail loudly.
+### 12. A host could pass validation and then make the extension unstartable
 
----
+`hostProblem` validated a **parsed** URL and every caller kept the **raw**
+string. The WHATWG parser is lenient exactly where the CSP charset is not:
 
-### 10. The client bundle is 624 kB (182 kB gzipped) in one chunk
+| host | old `hostProblem` | `new URL(h).origin` | building the policy |
+|---|---|---|---|
+| `https://a\nb` | accepted | `https://ab` | **threw** |
+| `https://a"` | accepted | `https://a"` | **threw** |
+| `https://[::1]` | accepted | `https://[::1]` | **threw** |
 
-**Severity: low.**
+The newline case is the clearest: the parser *strips* it, so the string was
+validated as `https://ab` and then stored and written into the policy with the
+newline still in it. The throw happened inside frame construction, so
+`activateExtension` caught it and logged "did not activate" — a silently dead
+extension with a manifest that passed every check.
 
-```
-dist/assets/index-BlNsIdAi.js   623.88 kB │ gzip: 181.99 kB
-(!) Some chunks are larger than 500 kB after minification.
-```
+**Fixed** in two parts. A host must now equal its own origin, which closes the
+whole family of inputs the parser silently repairs. And `hostProblem` and
+`assertPolicySafe` share one character list (`POLICY_UNSAFE`) rather than
+keeping two that have to agree — two charsets written down twice is a bug
+waiting for the input that tells them apart, and `"` was that input.
 
-For a marketing and docs site where the first paint is text, that is a lot to
-parse before anything is interactive. The docs pages are the obvious split
-(`src/docs/**`), since most visitors never open them.
+### 13. No IPv6 origin could ever be granted
 
----
+`assertPolicySafe`'s allowlist had no brackets, and an IPv6 origin cannot be
+written without them. Somebody serving WebDAV at `https://[::1]` could type it
+into the host-grant prompt, be told yes, see it listed as approved, and watch
+the extension stop starting.
 
-## Extension — `17Arigato-jwd/Authno-Cloud-Backup-Extension`
+**Fixed**: `[` and `]` are in the shared list. A CSP source expression allows
+them; only this did not.
 
-### 11. Everything it declares is correct; what it declares is not all reachable
+### 14. The worker's single-use flow tokens were not single-use
 
-The manifest validates cleanly against the app's real validators — permissions,
-pages, commands, `when` clauses and settings schema all pass. Its API calls all
-resolve to methods that exist. Its three page files exist.
+`takeFlow` did SELECT then DELETE in two statements, so concurrent requests
+with the same token could both read the row before either removed it — against
+the comment directly above it.
 
-Its problems are the app's: issues **#1**, **#2**, **#3** and **#4** above are
-all reasons that a correct Cloud Backup manifest produces a worse experience
-than it should. There is no fix to make on this side, which is why there is no
-separate entry — but it should not be read as "the extension is fine and the
-app is broken" either. The two were built against each other without either
-side checking the other, and `scripts/check-extension-manifest.mjs` now exists
-so that stops being possible.
+**Fixed**: one `DELETE … WHERE id = ?1 AND kind = ?2 RETURNING payload,
+expires_at`. The row is its own lock. Same shape `throttle.js` already used.
+
+### 15. Two auth routes had no rate limit
+
+`GET /v1/auth/google/callback` and `POST /v1/auth/google/finish` were the only
+routes both unauthenticated and unthrottled, and `finish` exchanges a handoff
+for a session token. Not exploitable — 32 random bytes, hashed at rest, single
+use, dead in 60 seconds — but every other auth route is throttled and
+`throttle.js` opens by saying a limiter only some handlers call is not a
+limiter.
+
+**Fixed**: both throttled, generously, since the callback is a browser landing
+from Google and a shared address is normal.
 
 ---
 
@@ -273,181 +250,54 @@ Recording these because each cost real time to rule out.
 - **`entry` is absent from the extension manifest.** It defaults to `index.js`
   (`extensionRunnerV2.js:52`), which the extension has.
 - **`authno.library.exportAs` is not in the app's method table.** The frame API
-  maps it to the `library.export` wire method
-  (`sandboxProtocol.js:326`). Correct as written.
+  maps it to the `library.export` wire method (`sandboxProtocol.js:326`).
 - **`chapter.titles` / `chapter.preview` / `chapter.synopsis` have no frame API
   method.** They are not methods — they are permission names for opt-in extras
   on `library.list` (`LIST_EXTRAS` in `extensionLibraryV2.js`).
 - **`auth.disconnect` is declared and never invoked from the manifest.** It is
   registered at runtime (`index.js:398`) and reached from the extension's own
   settings page.
-- **`ExtensionPanel`, `ExtensionDots`, `ExtensionPromptDialog` and
-  `PermissionRequestSheet` look unmounted** to a naive grep for
-  `from './Component'`. All four are imported and rendered by `src/App.js`
-  (lines 539, 2285, 2303, 2307).
-- **An uncaught `SecurityError` reading `localStorage` inside the extension's
-  sandboxed frame.** That is Playwright — `addInitScript` runs in *every* frame,
-  including the sandboxed one. Not the app.
+- **Four components look unmounted** to a naive grep for `from './Component'`.
+  `ExtensionPanel`, `ExtensionDots`, `ExtensionPromptDialog` and
+  `PermissionRequestSheet` are all rendered by `src/App.js`.
+- **An uncaught `SecurityError` reading `localStorage` inside the sandboxed
+  frame.** That is Playwright — `addInitScript` runs in *every* frame.
 - **`TODO` appears eleven times in `src/`.** All of them are the app's own TODO
-  *feature* (thread TODOs), not code markers.
-- **`bookImport`, `bookScan`, `materialYou`, `themePicker`, `pkce`, `epkCorpus`
-  look orphaned.** They are reached through dynamic `import()` or from scripts,
-  which a `from|require` grep misses.
-
----
-
-## Second sweep — 2026-08-20, dynamic
-
-The first pass was static: reading, cross-referencing, and running the app's
-validators against real manifests. This one fuzzed the parsers and read the
-worker. `scripts/fuzz-parsers.mjs` is what found #12 and #13; it is committed
-and runnable as `npm run fuzz:parsers`. It is deliberately **not** in
-`check:all` yet, because it currently exits non-zero on #12 — putting it in the
-suite before the fix would just paint CI red.
-
-### 12. A host can pass validation and then make the extension unstartable
-
-**Severity: high.** The extension installs, the manifest is valid, the grant is
-saved and shown as approved — and the frame can never be built.
-
-`hostProblem` validates a **parsed** URL and every caller keeps the **raw**
-string:
-
-```js
-// src/utils/extensionPermissionsV2.js
-url = new URL(host.replace('://*.', '://wildcard-placeholder.'));
-…
-return null;                    // accepted — but `host` is never normalised
-```
-
-```js
-export function declaredHosts(permissions) {
-  return raw.filter((h) => !hostProblem(h));   // the RAW strings survive
-}
-```
-
-The WHATWG URL parser is lenient in ways the CSP charset is not. Measured:
-
-| host | `hostProblem` | `new URL(h).origin` | building the frame policy |
-|---|---|---|---|
-| `https://a\nb` | accepted | `https://ab` | **throws** — `contains "\n"` |
-| `https://a"` | accepted | `https://a"` | **throws** — `contains "\""` |
-| `https://[::1]` | accepted | `https://[::1]` | **throws** — `contains "[]"` |
-| `https://ok.example.com` | accepted | same | OK |
-
-The newline case is the clearest: the parser *strips* it, so the string is
-validated as `https://ab` and then stored and used as `https://a\nb`.
-
-End to end, all three: `validateManifestV2` → `ok: true`; `declaredHosts` keeps
-the raw string; `assertPolicySafe(buildCsp(...))` throws. The throw happens
-inside frame construction, so `activateExtension` catches it and logs *"did not
-activate"* — a silently dead extension with a manifest that passes every check.
-
-`assertPolicySafe`'s own comment predicted this: *"a policy containing markup
-at all means something upstream is already wrong — a host that slipped past
-`hostProblem`."* Hosts do slip past it.
-
-**Fix shape:** normalise. Have `hostProblem` reject any host whose raw text is
-not identical to its parsed origin, or have callers store `new URL(h).origin`
-instead of the author's text. The second is better — it makes the stored grant
-and the policy the same string by construction.
-
-**Reproduce:** `node scripts/fuzz-parsers.mjs`
-
----
-
-### 13. No IPv6 address can ever be granted the network permission
-
-**Severity: medium.** A real self-hosting case that cannot work.
-
-Distinct from #12 even though the fuzzer found both together: normalising
-hosts fixes the newline and the quote, and leaves this one exactly where it is.
-`assertPolicySafe`'s allowlist has no brackets —
-
-```js
-const bad = text.match(/[^A-Za-z0-9 :/.*'_;,=?&%+-]/g);
-```
-
-— and an IPv6 origin cannot be written without them. So somebody running WebDAV
-at `https://[::1]` or on any IPv6 literal can type it into the host-grant
-prompt, be told yes, see it listed as an approved host, and watch the extension
-stop starting. `[` and `]` are legal in a CSP source expression; the allowlist
-simply omits them.
-
----
-
-### 14. The worker's single-use flow tokens are not actually single-use
-
-**Severity: low** — both tokens are 256-bit secrets, so this is a race only
-their holder can run. Listed because the code states the guarantee as a
-security property and does not enforce it.
-
-```js
-// worker/src/lib/oauth.js — takeFlow
-const row = await env.DB.prepare(`SELECT … WHERE id = ?1 AND kind = ?2`)…first();
-if (!row) return null;
-await env.DB.prepare(`DELETE FROM oauth_flows WHERE id = ?1`)…run();
-```
-
-Two statements, no transaction. Concurrent requests carrying the same token can
-both `SELECT` before either `DELETE`s, and both proceed — against the comment
-directly above it:
-
-> Read a flow row and delete it in the same breath. Single-use is the whole
-> point: a state that survives its first use is a replayable CSRF token, and a
-> handoff that survives is a second chance at somebody's session.
-
-The repo already knows the atomic forms: `throttle.js` uses upsert with
-`RETURNING`, and `burnInviteIntoAccount` uses `env.DB.batch`. `DELETE … WHERE
-id = ?1 RETURNING payload, expires_at` is the one-line version here.
-
----
-
-### 15. Two auth routes are the only ones with no rate limit
-
-**Severity: low — defence in depth**, and only that because the tokens are
-strong.
-
-`GET /v1/auth/google/callback` and `POST /v1/auth/google/finish` are the only
-routes that are both unauthenticated and unthrottled. `finish` exchanges a
-`handoff` value for a session token.
-
-It is not exploitable as written: `putFlow` mints 32 random bytes, stores only
-the SHA-256, expires the handoff after 60 seconds and deletes it on use. There
-is nothing to guess.
-
-It is on the list because every other auth route is throttled — `signin`,
-`pwsignin`, `redeem`, `recover`, `recover2` — and `throttle.js` opens by saying
-*"a limiter that only some handlers remember to call is not a limiter."* These
-are the two handlers that did not remember.
-
----
-
-## Also checked in the second sweep, and NOT bugs
-
+  *feature*, not code markers.
+- **`bookImport`, `bookScan`, `materialYou`, `themePicker`, `pkce`,
+  `epkCorpus` look orphaned.** They are reached through dynamic `import()` or
+  from scripts, which a `from|require` grep misses.
 - **The rescue path.** `rescue.js` detects the quota-degraded
-  `{id,title,filePath}` mirror and refuses to hand over a blank export, exactly
-  as CLAUDE.md requires. `AccessGate` renders the "Export my books" button with
-  no `disabled`, and the cooldown branch renders a status line rather than
-  returning early — so the hatch is open precisely when it is needed.
-- **Every `PendingIntent` in the Android code sets `FLAG_IMMUTABLE`.** The
-  request-code scheme (`widgetId * 10 + n`) is documented and bounded, and the
-  reminder codes (`ALARM_REQUEST_CODE + index`, cap 101) do not overlap.
+  `{id,title,filePath}` mirror and refuses to hand over a blank export.
+  `AccessGate` renders "Export my books" with no `disabled`, and the cooldown
+  branch renders a status line rather than returning early — the hatch is open
+  precisely when it is needed.
+- **Every `PendingIntent` sets `FLAG_IMMUTABLE`**, and the request-code scheme
+  is bounded and does not overlap.
 - **All four widgets declare `updatePeriodMillis="1800000"`** — exactly the
-  30-minute floor, not below it.
-- **The extension's OAuth uses PKCE (S256) and generates and checks `state`.**
-  A custom-scheme redirect is interceptable, and PKCE is what makes an
-  intercepted code useless; it is there.
-- **`verifyPassword`** compares with an XOR loop rather than `===`, stores a
-  per-user iteration count, and throws on a corrupt record instead of reporting
-  it as a wrong password.
+  30-minute floor.
+- **The extension's OAuth uses PKCE (S256) and checks `state`.**
+- **`verifyPassword`** compares with an XOR loop, stores a per-user iteration
+  count, and throws on a corrupt record rather than reporting it as a wrong
+  password.
 - **The sign-in throttle limits per address AND per account**, counts only
   failures, and keys on the attempted username whether or not it exists — so it
   is not an enumeration oracle.
-- **The extension's upload queue honours its own backoff.** `nextRetry` is set
-  on failure and checked in the drain loop; a conflict ends the entry rather
-  than retrying it.
-- **20,000 fuzzed inputs against `parseWhen`, `whenAllows`, `coerceValue` and
-  `validateSchema`** produced no wrong-typed throw, no non-boolean, no bad
-  return shape and nothing slower than a millisecond — including 10,000-deep
-  paren nesting, a self-referential schema, and a 5,000-control schema.
+- **The extension's upload queue honours its own backoff.**
+- **20,000 fuzzed inputs** against `parseWhen`, `whenAllows`, `coerceValue` and
+  `validateSchema` produced no wrong-typed throw, no non-boolean, no bad return
+  shape and nothing slower than a millisecond — including 10,000-deep paren
+  nesting, a self-referential schema, and a 5,000-control schema.
+
+---
+
+## The tools this produced
+
+- `npm run fuzz:parsers` — the contract fuzzer. Found #12 and #13. Now green,
+  so it can go into `check:all` whenever you like.
+- `node scripts/check-extension-manifest.mjs <manifest.json>` — runs the app's
+  real validators against a real extension manifest. Found #1, #2 and #4. Both
+  repos were checked in isolation before this existed, so "the manifest is
+  valid" and "the app renders it" had never been the same statement.
+- `npm run check:boot` — boots the built app in a browser and fails on anything
+  uncaught. Already in `check:all`.

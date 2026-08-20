@@ -132,27 +132,17 @@ function Control({ control, values, onChange, extId, accentHex, running, depth }
 
   if (type === 'section') {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
-        {/* The heading is the separation. A Divider here carried its own
-            24px margins on top of the flex gap, which left the label
-            marooned above a rule above a gap above its own controls. */}
-        <div style={{
-          fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.bold,
-          letterSpacing: TYPOGRAPHY.tracking.wide, textTransform: 'uppercase',
-          color: COLORS.textSubtle, marginTop: SPACING.sm,
-        }}>{label}</div>
-        <div style={{ paddingLeft: depth === 0 ? 0 : SPACING.md }}>
-          <Controls
-            schema={control.children}
-            values={values}
-            onChange={onChange}
-            extId={extId}
-            accentHex={accentHex}
-            running={running}
-            depth={depth + 1}
-          />
-        </div>
-      </div>
+      <Section control={control} depth={depth}>
+        <Controls
+          schema={control.children}
+          values={values}
+          onChange={onChange}
+          extId={extId}
+          accentHex={accentHex}
+          running={running}
+          depth={depth + 1}
+        />
+      </Section>
     );
   }
 
@@ -263,19 +253,29 @@ function NumberRow({ control, value, onChange, accentHex }) {
     if (!onChange(control, n)) setDraft(String(value ?? ''));
   };
 
+  // `suffix` is the unit. Without it "Check every [30]" is a number with no
+  // idea what it counts — the schema accepted the key and nothing drew it, so
+  // every author who supplied one lost it silently.
   return (
     <Stack label={control.label} hint={control.hint}>
-      <input
-        type="number"
-        value={draft}
-        min={control.min}
-        max={control.max}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
-        aria-label={control.label}
-        style={{ ...fieldStyle, accentColor: accentHex }}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+        <input
+          type="number"
+          value={draft}
+          min={control.min}
+          max={control.max}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+          aria-label={control.suffix ? `${control.label} (${control.suffix})` : control.label}
+          style={{ ...fieldStyle, accentColor: accentHex }}
+        />
+        {control.suffix && (
+          <span style={{
+            fontSize: TYPOGRAPHY.size.sm, color: COLORS.textMuted, whiteSpace: 'nowrap',
+          }}>{control.suffix}</span>
+        )}
+      </div>
     </Stack>
   );
 }
@@ -367,6 +367,52 @@ const fieldStyle = {
   fontFamily: TYPOGRAPHY.sans, fontSize: TYPOGRAPHY.size.base,
   outline: 'none', boxSizing: 'border-box',
 };
+
+/**
+ * A titled group, open or closed.
+ *
+ * `collapsed: true` is a key the schema accepts and this drew anyway — an
+ * "Advanced" section that says it starts closed and is always open is a small
+ * lie, and the author put it there to keep the first screen short.
+ *
+ * The heading is the separation. A Divider here carried its own 24px margins
+ * on top of the flex gap, which left the label marooned above a rule above a
+ * gap above the thing it named.
+ */
+function Section({ control, depth, children }) {
+  const [open, setOpen] = useState(!control.collapsed);
+  const headingStyle = {
+    fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.bold,
+    letterSpacing: TYPOGRAPHY.tracking.wide, textTransform: 'uppercase',
+    color: COLORS.textSubtle, marginTop: SPACING.sm,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
+      {control.collapsed ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          style={{
+            ...headingStyle,
+            display: 'flex', alignItems: 'center', gap: SPACING.xs,
+            background: 'none', border: 'none', padding: 0,
+            cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 9 }}>{open ? '\u25be' : '\u25b8'}</span>
+          {control.label}
+        </button>
+      ) : (
+        <div style={headingStyle}>{control.label}</div>
+      )}
+      {open && (
+        <div style={{ paddingLeft: depth === 0 ? 0 : SPACING.md }}>{children}</div>
+      )}
+    </div>
+  );
+}
 
 /** Label on the left, control on the right. */
 function Row({ label, hint, children }) {

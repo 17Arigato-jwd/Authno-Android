@@ -209,7 +209,7 @@ const SCENES = {
             { type: 'toggle', key: 'auto', label: 'Back up automatically', default: true,
               hint: 'After every chapter you finish.' },
             { type: 'text', key: 'folder', label: 'Folder on the server', default: '/AuthNo' },
-            { type: 'number', key: 'every', label: 'Minutes between backups', min: 5, max: 240, default: 30 },
+            { type: 'number', key: 'every', label: 'Check every', suffix: 'minutes', min: 5, max: 240, default: 30 },
             { type: 'select', key: 'keep', label: 'Versions to keep', options: ['3', '10', 'all'], default: '10' },
             { type: 'multiselect', key: 'kinds', label: 'Include', options: ['Books', 'Notes', 'Themes'], default: ['Books'] },
             { type: 'readout', label: 'Status', source: 'backup.status' },
@@ -217,6 +217,7 @@ const SCENES = {
             {
               type: 'section',
               label: 'Advanced',
+              collapsed: true,
               children: [
                 { type: 'toggle', key: 'debug', label: 'Verbose log', default: false },
                 { type: 'text', key: 'agent', label: 'User agent', default: '' },
