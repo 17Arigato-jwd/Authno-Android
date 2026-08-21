@@ -40,7 +40,7 @@ few months.
 | 20 | Overlay panels never followed the theme | app | **fixed** |
 | 21 | `${COLORS.warning}1e` is not a colour; 11 sites painted nothing | app | **fixed** |
 | 22 | The install panel covered the question it was waiting on | app | **fixed** |
-| 23 | Seven taps on the version could not be performed on a phone | app | **fixed** |
+| 23 | The version in About was not tappable, so the seven taps did nothing | app | **fixed** |
 | 24 | A tapped `.extbk` did nothing | app | **fixed** |
 
 ---
@@ -351,18 +351,28 @@ question.
 kept and the panel returns with the next stage — and the contradiction goes
 with it.
 
-### 23. The seven taps could not be performed on a phone
+### 23. The seven taps could not be performed at all
 
 `devMode.js` is correct: a counter, a three-second window, a countdown that
 stays quiet for the first four taps. It had never run.
 
-The version line that receives the taps was rendered inside the desktop sidebar
-branch of `Settings`, and the portrait branch has no sidebar. On a phone — every
-Android install — there was no version to tap, and developer options were
-unreachable by the only route to them.
+The version in **Settings › About** — the one somebody actually taps, because
+it is the About screen and because Android taught everybody to tap the build
+number — is a `<span>` inside a decorative pill. No handler, no focus, not
+announced as anything, in either layout.
 
-**Fixed**: the line is built once and rendered in both layouts, so the two
-cannot drift again. The new tests fail against the old layout, 4 of 5.
+The first pass at this found a second gap and fixed that instead: a version
+line existed in the desktop sidebar footer with a handler on it, and the
+portrait branch has no sidebar, so on a phone there was nothing to tap
+anywhere. True, but not what anybody was pressing. Corrected after the owner
+said which one they meant.
+
+**Fixed**: the About pill is the target. It is a `<button>` when it is given
+something to do and a plain `<div>` when it is not, rather than a div that
+lies about being pressable, and the countdown replaces the build date beside
+the version instead of appearing somewhere else. The added portrait footer is
+reverted — one version to tap, where people look for it. Seven tests, all
+seven failing against the inert pill.
 
 ### 24. A tapped `.extbk` did nothing at all
 

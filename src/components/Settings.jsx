@@ -1412,7 +1412,7 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour, onVersionTap, versionHint }) {
   const { isPro } = useEntitlement();
   return (
     <div>
@@ -1450,7 +1450,13 @@ function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
         </button>
       </div>
 
-      <AboutSection accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />
+      <AboutSection
+        accentHex={accentHex}
+        onSeeChanges={onSeeChanges}
+        onStartTour={onStartTour}
+        onVersionTap={onVersionTap}
+        tapHint={versionHint}
+      />
     </div>
   );
 }
@@ -1722,12 +1728,16 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   };
 
   /**
-   * The version line, and the only way in to developer options.
+   * The version in the desktop sidebar footer.
    *
-   * It used to be rendered inside the desktop sidebar branch, which portrait
-   * does not have — so on a phone, which is every Android install, there was
-   * no version to tap and the gesture could not be performed at all. Rendered
-   * from one place now, in both layouts, so the two cannot drift again.
+   * The seven taps belong on the version in About — that is where somebody
+   * looks for a version number, and it is the gesture Android already taught
+   * everybody. That one was a <span> with no handler, in any layout, which is
+   * why the taps did nothing. It is a button now; see AboutSection.
+   *
+   * This line keeps its handler because it has always had one and it is a
+   * version number sitting in the corner of a desktop sidebar. Portrait does
+   * not render it, and does not need to.
    */
   const versionLine = (style = {}) => (
     <button
@@ -1802,7 +1812,8 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
       {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
       {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour}
+                                                    onVersionTap={onVersionTap} versionHint={devUnlocked ? undefined : tapHint(tapState)} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
@@ -1955,12 +1966,6 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                 </div>
               </>
             )}
-            {versionLine({
-              flexShrink: 0,
-              borderTop: '1px solid var(--border-sm)',
-              background: 'var(--nav-bg)',
-              padding: '8px 14px calc(8px + env(safe-area-inset-bottom, 0px))',
-            })}
           </>
         ) : (
           <>
