@@ -3,6 +3,21 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.20-beta.2
+
+_Two doors: one that would not open, and one that was not there._
+
+### Extensions
+
+- **An extension built from more than one file starts.** Cloud Backup installed
+  cleanly, showed up where it should, and then said it was not running on every
+  page it drew — and so did anything else that ships as more than a single
+  file. They run.
+- **Extensions have a place in Settings.** What is installed, what each one is
+  allowed to do, and the button that installs one from a file used to be
+  reachable only from the library drawer — which desktop does not draw at all,
+  and which is not where anybody looks. It is a tab in Settings now, on both.
+
 ## 1.1.20-beta.1
 
 _Things that were unreadable on a light theme, a question that arrived

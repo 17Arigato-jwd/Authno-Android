@@ -56,6 +56,7 @@
     "check:widget-ids": "node scripts/check-widget-ids.mjs",
     "shots": "node scripts/shot-components.mjs",
     "check:cloud-backup": "node scripts/check-cloud-backup-v2.mjs",
+    "check:runner-v2": "node scripts/check-runner-v2.mjs",
     "eject": "react-scripts eject",
     "electron": "cross-env NODE_ENV=development electron .",
     "electron-build": "cross-env NODE_ENV=production electron .",
@@ -103,6 +104,7 @@
     "cross-env": "^7.0.3",
     "electron": "^39.1.1",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
     "playwright-core": "^1.62.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18"

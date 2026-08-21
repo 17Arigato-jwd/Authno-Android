@@ -26,6 +26,7 @@
 import { createExtensionHost, ManifestError, API_VERSION } from './extensionHostV2.js';
 import { createCommandRegistry } from './extensionCommands.js';
 import { FRAME_SANDBOX, BOOTSTRAP_V2, createHostRouter, toSendable } from './sandboxProtocol.js';
+import { planModuleGraph, rewriteSpecifiers } from './moduleGraph.js';
 
 const ACTIVATE_TIMEOUT_MS = 15000;
 
@@ -110,6 +111,19 @@ export async function runExtensionV2({
   }
 
   const extId = manifest.id;
+
+  // Planned before the frame exists, because a graph that cannot be linked is
+  // a refusal with a sentence in it rather than an activation that times out
+  // fifteen seconds later saying nothing.
+  const plan = planModules(files, entry);
+  if (plan.error) return { ok: false, error: plan.error };
+  if (plan.missing.length) {
+    // Not fatal on its own: an extension may import something only a newer app
+    // ships. Naming it beats a browser error that names a blob URL.
+    console.warn(`[extensionRunnerV2] ${extId}: missing`,
+      plan.missing.map((m) => `${m.from} \u2192 ${m.spec}`).join(', '));
+  }
+
   if (_running.has(extId)) await stopExtensionV2(extId);
 
   const frame = doc.createElement('iframe');
@@ -143,7 +157,7 @@ export async function runExtensionV2({
 
   router = createHostRouter({
     post,
-    payload: () => ({ modules: buildModules(files, entry), entry, manifest }),
+    payload: () => ({ modules: plan.modules, entry, manifest }),
     dispatch: (method, args) => host.dispatch(method, args),
     onReady: (outcome) => settle(outcome),
     registerHook,
@@ -192,18 +206,55 @@ export async function runExtensionV2({
 }
 
 /**
- * The module list handed to the frame.
+ * The module list handed to the frame, linked.
+ *
+ * This is the step the first version of this file left out, and leaving it out
+ * broke every extension made of more than one file. The frame is an
+ * opaque-origin srcdoc document: its base URL is `about:srcdoc`, so `./queue.js`
+ * has nothing hierarchical to resolve against and the import throws
+ * "Invalid relative url or base scheme isn't hierarchical" before `activate()`
+ * is ever reached. Shipping raw sources worked only for single-file extensions,
+ * which is exactly what the tests and the checks happened to use.
+ *
+ * So each relative specifier is rewritten to `__authno_mod_N__`, where N is the
+ * module's index in this leaves-first list, and BOOTSTRAP_V2 swaps those for
+ * the blob URLs it mints as it walks the same list. The placeholder's trailing
+ * `__` is load-bearing: without it, replacing `_mod_1__` would corrupt
+ * `_mod_11__`.
  *
  * Placeholders, not blob URLs: a blob minted out here would belong to the
  * app's origin, which is both useless to an opaque-origin frame and a small
  * hole in the wall it is standing behind. The frame mints its own.
+ *
+ * @returns {{ modules: Array<{path:string,source:string}>, missing: Array<{from:string,spec:string}>, error: string|null }}
  */
-function buildModules(files, entry) {
-  const paths = Object.keys(files);
-  // Entry last — the order is leaves-first, because a module cannot be
-  // referenced before the blob that defines it exists.
-  const ordered = [...paths.filter((p) => p !== entry), ...paths.filter((p) => p === entry)];
-  return ordered.map((path) => ({ path, source: files[path] }));
+export function planModules(files, entry = 'index.js') {
+  const { order, missing, cycle } = planModuleGraph(files ?? {}, entry);
+
+  // A cycle is a real limitation of blob linking, not a bug to work around:
+  // the first module would need the second's URL before the second exists.
+  // Spell the loop out rather than hanging or half-loading.
+  if (cycle) {
+    return { modules: [], missing, error: `circular import: ${cycle.join(' \u2192 ')}` };
+  }
+  if (!order.length) {
+    const why = missing.length
+      ? (missing[0].from ? `cannot find ${missing[0].spec}` : `no ${entry} in this extension`)
+      : 'no modules found';
+    return { modules: [], missing, error: why };
+  }
+
+  const placeholders = {};
+  order.forEach((p, i) => { placeholders[p] = `__authno_mod_${i}__`; });
+
+  return {
+    modules: order.map((path) => ({
+      path,
+      source: rewriteSpecifiers(path, files[path], files, (t) => placeholders[t]),
+    })),
+    missing,
+    error: null,
+  };
 }
 
 /**
