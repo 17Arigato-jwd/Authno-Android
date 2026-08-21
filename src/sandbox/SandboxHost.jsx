@@ -15,7 +15,7 @@
  *   Book       bookActions and chapterActions, on a saved book and a draft
  *   Editor     editorToolbar, the writing meter, ExtensionPanel, ExtensionDots
  *   Settings   settings rows → ExtensionPage, and the permissions ledger
- *   Extensions install, remove, grants — ExtensionTab, as Settings renders it
+ *   Extensions install, remove, grants — ExtensionsPanel, as Settings renders it
  *   Slots      every declared contribution, whether it is showing, and why not
  *
  * The last one has no equivalent in the app and is the reason a sandbox is
@@ -44,7 +44,7 @@ import { getExtensionConfig } from '../utils/extensionLoader';
 import ExtensionPage from '../components/ExtensionPage';
 import ExtensionPanel from '../components/ExtensionPanel';
 import ExtensionDots from '../components/ExtensionDots';
-import ExtensionTab from '../components/ExtensionTab';
+import ExtensionsPanel from '../components/ExtensionsPanel';
 import ExtensionPermissions from '../components/ExtensionPermissions';
 import ExtensionPromptDialog from '../components/ExtensionPromptDialog';
 import PermissionRequestSheet from '../components/PermissionRequestSheet';
@@ -259,15 +259,21 @@ function DevBar({ theme, switchTheme, extensions, loading, refresh, openId, setO
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-4)' }}>
         Theme
+        {/* `meta`, not the top level: a theme's name and id live under
+            `theme.meta`, so reading them off the object gave every option an
+            empty label and an empty value — a picker with five blank rows that
+            could not switch anything. */}
         <select
-          value={theme?.id ?? ''}
+          value={theme?.meta?.id ?? ''}
           onChange={(e) => {
-            const next = themes.find((t) => t.id === e.target.value);
+            const next = themes.find((t) => t.meta?.id === e.target.value);
             if (next) switchTheme(next);
           }}
           style={selectStyle}
         >
-          {themes.map((t) => <option key={t.id} value={t.id}>{t.name ?? t.id}</option>)}
+          {themes.map((t) => (
+            <option key={t.meta?.id} value={t.meta?.id}>{t.meta?.name ?? t.meta?.id}</option>
+          ))}
         </select>
       </label>
 
@@ -501,7 +507,7 @@ function SettingsPane({ onOpenPage }) {
 function ExtensionsPane() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 380 }}>
-      <ExtensionTab accentHex={ACCENT} session={null} />
+      <ExtensionsPanel accentHex={ACCENT} session={null} />
     </div>
   );
 }

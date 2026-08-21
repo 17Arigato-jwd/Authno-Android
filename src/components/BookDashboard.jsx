@@ -21,6 +21,7 @@
  *   streakEnabled    — bool
  */
 
+import { ContributionIcon } from './contributionIcon';
 import { useState, useRef, useCallback, useMemo } from 'react';
 
 import { FlameButton } from './Streak';
@@ -748,12 +749,19 @@ export default function BookDashboard({
                     onMouseEnter={e => { e.currentTarget.style.background = `${accentHex}30`; e.currentTarget.style.borderColor = accentHex; }}
                     onMouseLeave={e => { e.currentTarget.style.background = `${accentHex}18`; e.currentTarget.style.borderColor = `${accentHex}55`; }}
                   >
-                    <span style={{ fontSize: '16px', lineHeight: 1 }}>{action.icon ?? action._extIcon}</span>
+                    {/* An element, never the string. `action.icon` is a name
+                        like "Cloud" in a v2 manifest, and rendering it drew
+                        "Cloud  Cloud files" with the lookup key as a word. */}
+                    <ContributionIcon item={action} size={16} color={accentHex}
+                      slot={action._chapter ? 'chapterActions' : 'bookActions'} />
                     {action.label}
                     <span style={{
-                      marginLeft: 'auto', fontSize: '10px', opacity: 0.45,
-                      background: 'rgba(255,255,255,0.07)', padding: '2px 6px',
-                      borderRadius: '6px',
+                      marginLeft: 'auto', fontSize: '10px',
+                      // A white overlay is invisible on Sepia and Paper, which
+                      // is where this tag went missing entirely. The token
+                      // follows the theme.
+                      color: 'var(--text-4)', background: 'var(--surface-md)',
+                      padding: '2px 6px', borderRadius: '6px',
                     }}>
                       {action._extName}
                     </span>

@@ -300,6 +300,10 @@ export function createExtensionHost({
 
     /** What the Extensions tab should warn about (§2.3). */
     missingPermissions: () => permissions.missing(),
+    // The other half of the same ledger. A screen that can say why an
+    // extension looks broken should also be able to say what a permission you
+    // did grant has actually been used for.
+    usedPermissions: () => permissions.used(),
 
     /** Stop answering, and let go of anything that outlives the frame. */
     dispose() {

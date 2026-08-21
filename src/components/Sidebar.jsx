@@ -1,5 +1,5 @@
 /**
- * Sidebar.jsx — Book/session list + extension panel
+ * Sidebar.jsx — the list of books
  *
  * Desktop  → resizable static left panel, drag-sort, right-click context menu.
  * Android  → fixed overlay drawer, slide-in from left, swipe-to-close.
@@ -13,7 +13,6 @@ import { motion } from "framer-motion";
 import Logo from "../logo.svg";
 import { openBook } from "../utils/storage";
 import { isAndroid } from "../utils/platform";
-import ExtensionTab from "./ExtensionTab";
 import { hapticDelete } from "../utils/haptics";
 import { DeleteBookDialog } from "./ConfirmDialog";
 
@@ -22,7 +21,6 @@ import {
   TextInput,
   MinimalButton,
   GradientButton,
-  Tabs,
   TYPOGRAPHY,
   DSIcons,
   toast,
@@ -41,7 +39,7 @@ export default function Sidebar({
   onDelete,
   accentHex,
   setView,
-  session,         // current book session (forwarded to ExtensionTab)
+  session,         // current book session (the delete dialog names it)
   // desktop full-nav (v1.1.17-beta.3 PC layout)
   onOpenSettings,
   onOpenChapter,   // (bookId, chapIdx) → open that chapter in the editor
@@ -52,7 +50,6 @@ export default function Sidebar({
   const [contextMenu,  setContextMenu]  = useState(null);
   const [editMode,     setEditMode]     = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [activeTab,    setActiveTab]    = useState("sessions");
   const [expanded,     setExpanded]     = useState(() => new Set()); // desktop: books with chapters shown
   const sidebarRef       = useRef(null);
   const listRef          = useRef(null);   // the actual scrolling sessions list
@@ -268,20 +265,6 @@ export default function Sidebar({
     }
   };
 
-  // ── Tab items for DesignSystem <Tabs> ────────────────────────────────────
-  const TAB_ITEMS = [
-    {
-      key: "sessions",
-      label: "Sessions",
-      icon: <DSIcons.BookOpen size={14} />,
-    },
-    {
-      key: "extensions",
-      label: "Extensions",
-      icon: <DSIcons.Extension size={14} />,
-    },
-  ];
-
   // ── Sidebar positioning ───────────────────────────────────────────────────
   const asideStyle = android
     ? {
@@ -463,8 +446,7 @@ export default function Sidebar({
       )}
 
       {/* ── SESSIONS LIST ────────────────────────────────────────────────── */}
-      {activeTab === "sessions" && (
-        <div ref={listRef} style={{ padding: 12, flex: 1, overflowY: "auto" }}>
+      <div ref={listRef} style={{ padding: 12, flex: 1, overflowY: "auto" }}>
           <div style={{
             borderRadius: 10, padding: 8,
             background: "var(--surface)",
@@ -582,34 +564,11 @@ export default function Sidebar({
             </div>
           </div>
         </div>
-      )}
 
-      {/* ── EXTENSIONS PANEL ─────────────────────────────────────────────── */}
-      {activeTab === "extensions" && android && (
-        <ExtensionTab
-          accentHex={accentHex}
-          session={session}
-          onClose={android ? onDrawerClose : undefined}
-        />
-      )}
-
-      {/* ── BOTTOM TAB BAR — DesignSystem <Tabs> ───────────────────────────
-          Android-only: extensions are not available on desktop yet (A4), and
-          the tab now shows even with zero extensions so the empty state and
-          "Install from file" button are reachable. */}
-      {android && (
-        <div style={{ borderTop: "1px solid var(--border-sm)", flexShrink: 0, background: "var(--sidebar-bg)" }}>
-          <Tabs
-            items={TAB_ITEMS}
-            active={activeTab}
-            onChange={setActiveTab}
-            variant="underline"
-            accentHex={accentHex}
-            size="sm"
-            fullWidth
-          />
-        </div>
-      )}
+      {/* Extensions used to be a second tab down here, behind a bottom bar
+          that only Android drew. It is a Settings tab now — one place, on every
+          platform, next to everything else that is configured. The drawer is
+          the list of books again, which is the only thing it was ever for. */}
 
       {/* ── CONTEXT MENU ────────────────────────────────────────────────── */}
       {contextMenu && createPortal(

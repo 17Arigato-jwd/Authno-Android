@@ -18,13 +18,14 @@ import {
   buildPalette,
   CloseButton,
   APP_META,
+  TYPOGRAPHY,
 } from '../DesignSystem';
 
 import { useTheme, ALL_THEMES, getAllThemes, subscribeThemes, injectThemeFonts } from '../theme';
 import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
-import ExtensionTab from './ExtensionTab';
+import ExtensionsPanel from './ExtensionsPanel';
 import { isAndroid } from '../utils/platform';
 import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
@@ -74,13 +75,6 @@ const NAV_ITEMS = [
   { id: 'writing',    label: 'Writing Goal',     icon: (p) => <DSIcons.Target {...p} />,    group: 'User' },
   { id: 'shortcuts',  label: 'Shortcuts',        icon: (p) => <DSIcons.Lightning {...p} />, group: 'App'  },
   { id: 'data',       label: 'Data & Storage',   icon: (p) => <DSIcons.Package {...p} />,   group: 'App'  },
-  // Extensions used to be reachable from exactly one place: the bottom tab bar
-  // in the library drawer, which only Android renders. So on desktop there was
-  // no way to see what was installed at all, and on a phone it was two screens
-  // away from where anybody looks for it. An extension's own contributed pages
-  // already appear below in the Extensions group; this is the tab that manages
-  // the extensions themselves — installing, removing, and what they may do.
-  { id: 'extensions', label: 'Extensions',       icon: (p) => <DSIcons.Extension {...p} />, group: 'App'  },
   { id: 'developer',  label: 'Developer',        icon: (p) => <DSIcons.Terminal {...p} />,  group: 'App'  },
   { id: 'about',      label: 'About',            icon: (p) => <DSIcons.Info {...p} />,      group: 'App'  },
 ];
@@ -1723,6 +1717,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
   const isPortrait = useIsPortrait();
 
   const extSettingsItems = useExtensionContributions('settings');
+  const { extensions: installedExtensions } = useExtensions();
 
   // Developer options are diagnostics — a book scanner, an error log — and a
   // "Developer" tab in a writing app invites poking that support then has to
@@ -1789,6 +1784,19 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
 
   const allNavItems = [
     ...NAV_ITEMS.filter((i) => i.id !== 'developer' || devUnlocked),
+    // The tab does not exist until something is installed, and it goes away
+    // again when the last extension does. A settings tab for a feature you are
+    // not using is worse than no tab: it is a permanent empty room.
+    //
+    // It carries a count rather than a dot, because "2" and "9" are different
+    // amounts of thing to look through and a dot says neither.
+    ...(installedExtensions.length ? [{
+      id: 'extensions',
+      label: 'Extensions',
+      count: installedExtensions.length,
+      icon: (p) => <DSIcons.Extension {...p} />,
+      group: 'App',
+    }] : []),
     ...extSettingsItems.map(item => ({
       id:    `ext::${item._extId}::${item.id}`,
       label: item.label,
@@ -1807,13 +1815,25 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     })),
   ];
 
+  // The Extensions tab disappears with the last extension. Standing on it when
+  // that happens would leave a blank panel and a nav strip with nothing
+  // selected, so the section falls back the way closing a tab does.
+  useEffect(() => {
+    if (activeSection === 'extensions' && installedExtensions.length === 0) {
+      setActiveSection('general');
+    }
+  }, [activeSection, installedExtensions.length]);
+
   const panelProps = { settings, onChange: handleChange, accentHex, sessions, onSessionChange };
 
   // ── Sidebar search (Raycast-style): match tabs and individual settings ────
   const q = query.trim().toLowerCase();
   const tabMatches = q ? allNavItems.filter((i) => i.label.toLowerCase().includes(q)) : [];
   const settingMatches = q
-    ? SETTINGS_INDEX.filter(([, label]) => label.toLowerCase().includes(q)).slice(0, 10)
+    ? SETTINGS_INDEX
+      // A row whose tab is not currently there would jump to a blank panel.
+      .filter(([tab]) => allNavItems.some((i) => i.id === tab))
+      .filter(([, label]) => label.toLowerCase().includes(q)).slice(0, 10)
     : [];
   const jumpTo = (tab) => { setActiveSection(tab); setQuery(''); };
 
@@ -1832,7 +1852,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       {/* onClose is the Settings dialog's own: a contribution chip that opens a
           page needs this out of the way to show it, exactly as it needs the
           drawer out of the way when the same tab is rendered there. */}
-      {activeSection === 'extensions' && <ExtensionTab accentHex={accentHex} session={null} onClose={onClose} />}
+      {activeSection === 'extensions' && <ExtensionsPanel accentHex={accentHex} session={null} onClose={onClose} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
       ))}
@@ -1868,6 +1888,15 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
         }}>
         {iconTile(item, active)}
         {item.label}
+        {/* A count, not a dot: "2" and "9" are different amounts of thing to
+            look through, and a dot says neither. */}
+        {item.count > 0 && (
+          <span style={{
+            marginLeft: compact ? 4 : 'auto',
+            fontFamily: TYPOGRAPHY.mono, fontSize: 10, fontWeight: 700,
+            color: active ? accentHex : 'var(--text-5)',
+          }}>{item.count}</span>
+        )}
       </button>
     );
   };

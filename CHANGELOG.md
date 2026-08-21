@@ -3,6 +3,34 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.20-beta.3
+
+_Extensions get a screen of their own._
+
+### Extensions
+
+- **A proper Extensions screen.** Settings has a tab for them, and tapping one
+  opens a page about that extension alone: what it adds and where each thing
+  appears, its own settings, what it is allowed to do, the only servers it can
+  reach, and how to remove it. It replaces a single scrolling list where every
+  extension's permissions ran together and its contributions were unlabelled
+  chips — two of Cloud Backup's read "Cloud Backup", because two different
+  places happened to share a name.
+- **You can see what a permission has actually been used for.** Next to each
+  one: how often, or that it has never been used at all. Worth knowing before
+  you decide whether to keep allowing it.
+- **The tab is only there when you have extensions.** It appears when you
+  install the first and goes away with the last.
+- **Extensions left the book list.** They were a second tab at the bottom of
+  the drawer, which is not where anybody looks for them, and which only phones
+  drew at all.
+- **Extension pages follow your theme.** They had no way to know which theme
+  you were using, so one written for a dark theme was unreadable on Sepia and
+  Paper. They now match the rest of the app, accent colour included.
+- **Buttons an extension adds to a book show an icon.** They were printing the
+  icon's name as a word — "Cloud Cloud files" — and the extension's name beside
+  them was invisible on a light theme.
+
 ## 1.1.20-beta.2
 
 _Two doors: one that would not open, and one that was not there._
