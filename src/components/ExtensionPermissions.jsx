@@ -124,6 +124,7 @@ export default function ExtensionPermissions({ accentHex = COLORS.violetDark }) 
       extensions,
       grantsFor: (id) => readGrants(id).granted,
       userHostsFor: (id) => readGrants(id).userHosts,
+      askedFor: (id) => readGrants(id).asked,
       hostFor: (id) => hostV2(id),
     }),
     // `extensions` changes identity on every refresh, which is the signal that

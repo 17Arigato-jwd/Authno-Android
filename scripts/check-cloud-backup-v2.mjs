@@ -36,24 +36,66 @@ const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4403;
 
-const SRC = process.env.CLOUD_BACKUP_SRC ?? '/workspace/authno-cloud-backup-extension';
-if (!fs.existsSync(path.join(SRC, 'manifest.json'))) {
-  console.log(`· Cloud Backup source not present at ${SRC} — skipping.`);
-  console.log('  (set CLOUD_BACKUP_SRC to point at a checkout)');
+/**
+ * Where the extension comes from: a built package, or a source checkout.
+ *
+ * The package is the better subject and was not accepted until now. A source
+ * tree is what the author has; a .extbk is what everybody else has, and the
+ * two are only the same if the packer is perfect — which is exactly the thing
+ * a check should not assume. Reading the shipped bytes back through readEpk
+ * also exercises the reader, the module graph as packed, and the manifest as
+ * serialised, none of which a directory can.
+ *
+ *   CLOUD_BACKUP_EXTBK=<file.extbk>   the shipped artefact
+ *   CLOUD_BACKUP_SRC=<dir>            a checkout (the default)
+ */
+const FIXTURE = path.join(ROOT, 'src/utils/__fixtures__/cloud-backup-2.0.0.extbk');
+const SRC = process.env.CLOUD_BACKUP_SRC ?? '';
+const PKG = process.env.CLOUD_BACKUP_EXTBK
+  ?? (SRC ? '' : (fs.existsSync(FIXTURE) ? FIXTURE : ''));
+
+if (PKG && !fs.existsSync(PKG)) {
+  console.error(`✖ CLOUD_BACKUP_EXTBK points at nothing: ${PKG}`);
+  process.exit(1);
+}
+if (!PKG && !fs.existsSync(path.join(SRC || '.', 'manifest.json'))) {
+  // Only reachable if the fixture has been deleted and no source was named.
+  console.log('· No Cloud Backup package or checkout to run — skipping.');
+  console.log('  (set CLOUD_BACKUP_SRC to a checkout, or CLOUD_BACKUP_EXTBK to a package)');
   process.exit(0);
 }
 
 // ── 1. The package the CLI builds, read back by the reader the app uses ──────
 
-const manifest = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
+const files = {};
+let manifest;
+
+if (PKG) {
+  const { readEpk, isEpk } = await import('../extensions/extbk-cli/src/epkFormat.js');
+  const bytes = fs.readFileSync(PKG);
+  if (!isEpk(bytes)) {
+    console.error(`✖ ${path.basename(PKG)} is not a VCHS-EPK package (v2 is required here)`);
+    process.exit(1);
+  }
+  const pkg = await readEpk(bytes);
+  manifest = pkg.manifest;
+  for (const [name, source] of Object.entries(pkg.modules)) files[name] = source;
+  // A package the reader had to repair still runs; it is worth saying so,
+  // because the copy on somebody's phone is the one that got damaged.
+  for (const r of pkg.repairs) console.log(`· repaired rung ${r.rung}: ${r.what}`);
+  for (const w of pkg.warnings) console.log(`· dropped ${w.path}: ${w.why}`);
+  console.log(`· from ${path.basename(PKG)} — ${Object.keys(files).length} modules, ${pkg.entryCount} directory entries`);
+} else {
+  manifest = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
+  for (const name of fs.readdirSync(SRC)) {
+    if (name.endsWith('.js')) files[name] = fs.readFileSync(path.join(SRC, name), 'utf8');
+  }
+  console.log(`· from ${SRC} — ${Object.keys(files).length} modules`);
+}
+
 if (manifest.apiVersion !== 2) {
   console.error(`✖ manifest apiVersion is ${manifest.apiVersion}, not 2`);
   process.exit(1);
-}
-
-const files = {};
-for (const name of fs.readdirSync(SRC)) {
-  if (name.endsWith('.js')) files[name] = fs.readFileSync(path.join(SRC, name), 'utf8');
 }
 
 // ── 2. The module graph, planned the way the app plans it ────────────────────

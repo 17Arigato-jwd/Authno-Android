@@ -5,7 +5,7 @@ the app, the website (`claude/audit-followups`) and the Cloud Backup extension
 (`cloud-backup-plus-revamp`) — and worked through in the same session.
 
 Everything here was reproduced, not inferred, and every fix is verified the same
-way it was found. All twenty-four are closed. Four of them — #16 to #19 — were
+way it was found. All twenty-seven are closed. Four of them — #16 to #19 — were
 found while closing the others, which is the usual way.
 
 #20 to #24 came in later, from one screenshot and the two lines sent with it.
@@ -42,6 +42,9 @@ few months.
 | 22 | The install panel covered the question it was waiting on | app | **fixed** |
 | 23 | The version in About was not tappable, so the seven taps did nothing | app | **fixed** |
 | 24 | A tapped `.extbk` did nothing | app | **fixed** |
+| 25 | `extbk unpack` could not read what `extbk build` writes | cli | **fixed** |
+| 26 | `extbk info` hid every non-code file in a v2 package | cli | **fixed** |
+| 27 | "Nobody asked you about permissions" could never be shown | app | **fixed** |
 
 ---
 
@@ -406,6 +409,78 @@ syntax pass and the fourteen-case `OpenedFile` check, and nothing more.
 ---
 
 
+### 25. `extbk unpack` could not read what `extbk build` writes
+
+#19 was `check` and `info` reading every package as VCHS-ECS. Both were fixed.
+`unpack` is the third command that takes a package and it was not:
+
+```
+$ extbk unpack cloud-backup-2.0.0.extbk ./out
+  x Failed to decode: Invalid magic bytes — not an .extbk file
+```
+
+Found by trying to open the released Cloud Backup 2.0.0 — the first thing
+anybody does with somebody else's extension is look inside it.
+
+**Fixed**: an EPK branch that writes every module at its own path and every
+directory record beside it, so a multi-file extension comes back as it went in.
+A record the reader could not verify is reported and skipped rather than
+invented.
+
+### 26. `extbk info` hid every non-code file in a v2 package
+
+The ECS branch prints a full section table. The EPK branch printed the module
+list and stopped, so the two assets in Cloud Backup — a CHANGELOG and a
+package.json — were invisible, and an author who packed a font or an icon had
+no way to confirm from the CLI that it made it in.
+
+**Fixed**: a Files block with each entry's size, codec and kind, plus any
+repairs the reader had to make on the way. A package that needed repairing is
+still valid; saying so is the difference between "it works" and "it worked
+this time".
+
+**The real fix is neither of those.** `check-cli-build.mjs` built a package and
+read it back with the *app's* reader — it never ran a single CLI subcommand,
+which is how the same bug shipped twice. It now runs every reading subcommand
+against both formats and round-trips the unpacked bytes, asserted as a class so
+a third format or a fourth command cannot quietly leave one behind. Verified
+against the pre-fix source: it reports `extbk unpack` and nothing else.
+
+### 27. "Nobody asked you about permissions" could never be shown
+
+`permissionRequests.js` explains why the state matters: *"'you said no' and
+'nobody asked you' look identical from inside an extension and are completely
+different to a person."* `extensionSettingsModel.js` has the warning built,
+with its own comment: *"An extension installed without its questions ever being
+put runs perfectly, does nothing, and explains nothing."*
+
+It could not fire. `installExtbkBytes` computed `_permissionsPending`, put it
+on its **return value**, and wrote it nowhere. The tab's manifests come from
+`discoverExtensions()`, which reads `manifest.json` off disk — a file that has
+never carried the flag. Even immediately after installing, `ExtensionContext`
+calls `refresh()`, which replaces the list with disk-read manifests. The flag
+was discarded within milliseconds of being computed, every time.
+
+Traced end to end against the released package:
+
+```
+1. install result _permissionsPending : true
+2. persisted to manifest.json         : false
+3. survives discovery                 : undefined
+4. warnings the tab shows             : []
+```
+
+So an extension installed from a cold-start intent, a share-sheet handoff or a
+seeded pre-install sat there holding nothing, able to do nothing, and the one
+screen built to explain that said nothing.
+
+**Fixed**: the answer lives with the grants, which are written at install and
+destroyed on uninstall — exactly the lifetime of "was the question put". A
+record written before the flag existed reads as asked, because those installs
+did ask and nagging somebody about a decision they already made is worse than
+the warning is worth.
+
+
 ## Checked, and NOT bugs
 
 Recording these because each cost real time to rule out.
@@ -476,3 +551,10 @@ Recording these because each cost real time to rule out.
   fourteen cases through it. It is the one piece of the Android source that can
   be exercised in an environment with no SDK, which is why the decision was
   moved there. In `check:all`.
+- `src/utils/shippedExtension.test.js` — the released Cloud Backup 2.0.0, as a
+  committed fixture checksummed against the release, driven through the real
+  install, discovery, contribution, grant and uninstall paths. Found #27. Every
+  other extension test in the repo uses a fixture manifest built for its own
+  assertion; the interesting failures are the ones a tidy fixture cannot have.
+- `npm run check:cloud-backup` now defaults to that fixture instead of a
+  `/workspace` checkout, so it runs rather than skipping.
