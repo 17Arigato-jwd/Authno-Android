@@ -35,6 +35,8 @@ const CHECKS = [
   ['widget fit', 'npm', ['run', 'check:widget-fit'], false],
   ['widget ids + java', 'npm', ['run', 'check:widget-ids'], false],
   ['timezones', 'npm', ['run', 'check:timezones'], false],
+  ['theme tokens', 'npm', ['run', 'check:theme-tokens'], false],
+  ['opened file kinds', 'npm', ['run', 'check:opened-file'], false],
   ['extension sandbox', 'npm', ['run', 'check:sandbox'], true],
   ['extension protocol', 'npm', ['run', 'check:extensions'], true],
   ['extensions under load', 'npm', ['run', 'stress:extensions'], true],

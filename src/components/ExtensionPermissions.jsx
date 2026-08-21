@@ -73,7 +73,7 @@ function WarningRow({ warning, onFix, accentHex }) {
           onClick={onFix}
           style={{
             flexShrink: 0, padding: `6px ${SPACING.md}px`, borderRadius: RADIUS.sm,
-            border: 'none', background: accentHex, color: '#fff',
+            border: 'none', background: accentHex, color: 'var(--on-accent, #fff)',
             fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.bold,
             cursor: 'pointer',
           }}
@@ -124,6 +124,7 @@ export default function ExtensionPermissions({ accentHex = COLORS.violetDark }) 
       extensions,
       grantsFor: (id) => readGrants(id).granted,
       userHostsFor: (id) => readGrants(id).userHosts,
+      askedFor: (id) => readGrants(id).asked,
       hostFor: (id) => hostV2(id),
     }),
     // `extensions` changes identity on every refresh, which is the signal that
@@ -192,7 +193,7 @@ export default function ExtensionPermissions({ accentHex = COLORS.violetDark }) 
         {tab.needsAttention > 0 && (
           <span style={{
             padding: '1px 6px', borderRadius: RADIUS.full,
-            background: `${COLORS.warning}22`, color: COLORS.warning,
+            background: COLORS.warningSoft, color: COLORS.warning,
             fontSize: TYPOGRAPHY.size.xs,
           }}>{tab.needsAttention}</span>
         )}

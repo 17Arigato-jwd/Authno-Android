@@ -51,6 +51,13 @@ export function buildExtensionsTab({
   hostFor = () => null,
   valuesFor = () => ({}),
   userHostsFor = () => [],
+  /**
+   * (extId) => boolean — was the permission question ever put to this person?
+   *
+   * Defaults to true so a caller that does not know about it gets today's
+   * behaviour rather than a warning on every row.
+   */
+  askedFor = () => true,
 } = {}) {
   const installed = Array.isArray(extensions) ? extensions.filter(Boolean) : [];
 
@@ -59,7 +66,7 @@ export function buildExtensionsTab({
   if (installed.length === 0) return { exists: false, rows: [] };
 
   const rows = installed
-    .map((manifest) => buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor }))
+    .map((manifest) => buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor, askedFor }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
@@ -70,7 +77,7 @@ export function buildExtensionsTab({
   };
 }
 
-function buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor }) {
+function buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor, askedFor = () => true }) {
   const extId = String(manifest.id);
   const granted = new Set(grantsFor(extId) ?? []);
   const host = hostFor(extId);
@@ -86,7 +93,7 @@ function buildRow({ manifest, grantsFor, hostFor, valuesFor, userHostsFor }) {
   const dimmed = blocked !== null;
 
   const permissions = permissionRows(manifest, granted, userHostsFor(extId) ?? []);
-  const warnings = warningRows({ manifest, host, permissions, blocked });
+  const warnings = warningRows({ manifest, host, permissions, blocked, asked: askedFor(extId) !== false });
 
   const schema = manifest.settings?.schema;
   const schemaCheck = validateSchema(schema);
@@ -158,14 +165,17 @@ function permissionRows(manifest, granted, userHosts) {
  * extension that keeps being refused looks broken, and the app knows exactly
  * why, so it should say so rather than leaving somebody to guess.
  */
-function warningRows({ manifest, host, permissions, blocked }) {
+function warningRows({ manifest, host, permissions, blocked, asked = true }) {
   const out = [];
 
   // "Nobody asked you" is a different state from "you said no", and it needs a
   // different sentence and a different button. An extension installed without
   // its questions ever being put runs perfectly, does nothing, and explains
   // nothing — which from the outside is indistinguishable from broken.
-  if (manifest._permissionsPending) {
+  // `asked` comes from the grant record, which survives a restart; the
+  // manifest flag is the install's own answer and only exists for the moment
+  // between installing and the next discovery, which reads from disk.
+  if (manifest._permissionsPending || !asked) {
     const unanswered = permissions.filter((p) => !p.granted && !p.inert);
     if (unanswered.length) {
       out.push({

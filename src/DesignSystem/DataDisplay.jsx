@@ -145,9 +145,27 @@ export function EmptyState({ icon, iconBg, accentHex, title, description, action
  *   meta          APP_META-shaped object
  *   attribution   ATTRIBUTION-shaped array
  *   accentHex     string
+ *   onVersionTap  fn      makes the version pill the seven-tap target
+ *   tapHint       string  '3 more taps', shown once the taps look deliberate
  */
-export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accentHex, onSeeChanges, onStartTour, style = {} }) {
+export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accentHex, onSeeChanges, onStartTour, onVersionTap, tapHint, style = {} }) {
   const accent = accentHex ?? COLORS.violet;
+
+  // The version pill is where somebody looks for a version number, so it is
+  // where the seven taps have to land — it is the About screen, and it is the
+  // gesture every Android user already knows from Settings › About phone ›
+  // Build number. It was a <span>: not clickable, not focusable, not
+  // announced as anything, in any layout. A button when it does something and
+  // a plain div when it does not, rather than a div that lies about it.
+  const Pill = onVersionTap ? 'button' : 'div';
+  const pillProps = onVersionTap
+    ? {
+      type: 'button',
+      onClick: onVersionTap,
+      'aria-label': `AuthNo version ${meta.version}`,
+      style: { font: 'inherit', cursor: 'default' },
+    }
+    : {};
 
   return (
     <div style={style}>
@@ -165,19 +183,23 @@ export function AboutSection({ meta = APP_META, attribution = ATTRIBUTION, accen
         }}>
           {meta.name}
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px',
-            background: `${accent}14`, border: `1px solid ${accent}33`, borderRadius: RADIUS.full,
-          }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <Pill
+            {...pillProps}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px',
+              background: `${accent}14`, border: `1px solid ${accent}33`, borderRadius: RADIUS.full,
+              ...(pillProps.style ?? {}),
+            }}
+          >
             <span style={{ fontFamily: TYPOGRAPHY.pixel, fontSize: TYPOGRAPHY.pixelSize.xs, color: accent, letterSpacing: TYPOGRAPHY.tracking.pixel, lineHeight: 1.8 }}>
               v{meta.version}
             </span>
             <div style={{ width: 1, height: 10, background: `${accent}44` }} />
             <span style={{ fontFamily: TYPOGRAPHY.mono, fontSize: TYPOGRAPHY.size.sm, color: COLORS.textSubtle }}>
-              {meta.buildDate}
+              {tapHint ?? meta.buildDate}
             </span>
-          </div>
+          </Pill>
           {onSeeChanges && (
             <button
               type="button"

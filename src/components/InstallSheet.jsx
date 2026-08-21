@@ -18,6 +18,7 @@ const STAGE_LABEL = {
   validating: 'Checking file…',
   decoding:   'Reading contents…',
   writing:    'Installing files…',
+  permissions: 'Waiting for your answer',
   activating: 'Activating…',
   done:       'Done',
   error:      'Failed',
@@ -25,7 +26,11 @@ const STAGE_LABEL = {
 
 // Coarse progress per stage so the bar always moves even before file-count
 // granular progress is available.
-const STAGE_BASE = { validating: 0.08, decoding: 0.22, writing: 0.4, activating: 0.92, done: 1, error: 1 };
+// The permissions stage sits where writing left off — the install has not
+// progressed, it has stopped to ask. Without an entry it fell to the 0.1
+// default and the bar ran backwards from 90% to 10% while somebody read the
+// question.
+const STAGE_BASE = { validating: 0.08, decoding: 0.22, writing: 0.4, permissions: 0.9, activating: 0.92, done: 1, error: 1 };
 
 function CheckIcon({ color }) {
   return (
@@ -84,6 +89,15 @@ export default function InstallSheet({ accentHex = '#5a00d9' }) {
   }, []);
 
   if (!open || !evt) return null;
+
+  // Step aside while the question is up.
+  //
+  // The permission sheet is bottom-anchored and so is this one, and this one
+  // is drawn on top — so an install that stopped to ask covered the thing it
+  // was asking with a progress bar reading "Installing…", which is both in
+  // the way and no longer true. Nothing is lost by hiding: `evt` is kept, and
+  // the sheet returns with the next stage.
+  if (evt.stage === 'permissions') return null;
 
   const isError   = evt.stage === 'error';
   const isDone    = evt.stage === 'done';

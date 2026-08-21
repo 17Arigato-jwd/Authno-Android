@@ -5,8 +5,12 @@ the app, the website (`claude/audit-followups`) and the Cloud Backup extension
 (`cloud-backup-plus-revamp`) — and worked through in the same session.
 
 Everything here was reproduced, not inferred, and every fix is verified the same
-way it was found. All nineteen are closed. Four of them — #16 to #19 — were
+way it was found. All twenty-seven are closed. Four of them — #16 to #19 — were
 found while closing the others, which is the usual way.
+
+#20 to #24 came in later, from one screenshot and the two lines sent with it.
+Three of the five were invisible in the dark default, which is where everything
+gets looked at, and two of the five could not happen on a desktop at all.
 
 There is a section at the bottom of things that **look** like bugs and are not.
 That is the half of a list like this that stops getting re-investigated every
@@ -33,6 +37,14 @@ few months.
 | 17 | Backgrounding the app could cost the last word typed | app | **fixed** |
 | 18 | `save-book-bytes` wrote to any path over Electron IPC | app | **fixed** |
 | 19 | `extbk check` could not read what `extbk build` writes | cli | **fixed** |
+| 20 | Overlay panels never followed the theme | app | **fixed** |
+| 21 | `${COLORS.warning}1e` is not a colour; 11 sites painted nothing | app | **fixed** |
+| 22 | The install panel covered the question it was waiting on | app | **fixed** |
+| 23 | The version in About was not tappable, so the seven taps did nothing | app | **fixed** |
+| 24 | A tapped `.extbk` did nothing | app | **fixed** |
+| 25 | `extbk unpack` could not read what `extbk build` writes | cli | **fixed** |
+| 26 | `extbk info` hid every non-code file in a v2 package | cli | **fixed** |
+| 27 | "Nobody asked you about permissions" could never be shown | app | **fixed** |
 
 ---
 
@@ -257,10 +269,6 @@ The rest of the Electron main process holds up: `nodeIntegration` off, context
 isolation on, navigation guarded, and `openExternal` refusing anything that is
 not https on both the IPC handler and the window-open path.
 
----
-
----
-
 ### 19. The CLI could not validate its own output
 
 `extbk build` writes VCHS-EPK for an `apiVersion: 2` extension and VCHS-ECS
@@ -286,6 +294,191 @@ package.
 Found while packaging Cloud Backup 2.0.0 for release — which is the only way
 it could have been found, because nothing else in the toolchain runs `check`
 on a v2 build.
+
+
+### 20. Frosted panels were the last thing in the app not following the theme
+
+v1.1.16 repointed the DesignSystem's text, surface and border tokens at the
+`--ds-*` variables `applyTheme` writes, so the whole system would follow the
+active theme. The grounds those tokens are read *on* were left as literals:
+
+```
+FrostedModal   background: 'rgba(20,20,26,0.82)'
+BottomSheet    background: 'rgba(22,22,28,0.96)'
+Toast          background: 'rgba(26,27,30,0.92)'
+```
+
+On Sepia or Paper that is `--ds-text-primary` — near-black — on a near-black
+sheet. `tokens.js` still carries the comment *"Text — follow the active theme
+(THIS is the white-on-light fix)"* directly above the line that fixed the text
+half. The panels were simply not part of that pass.
+
+Invisible in the dark default, which is where everything gets looked at.
+
+**Fixed**: `ThemeBase` derives `--ds-panel`, `--ds-sheet` and `--ds-toast` from
+the theme's own modal ground, and the white-alpha tints painted on them
+(`--ds-tint*`) flip to black on a light theme — "lighter than what is
+underneath" is the intent, and white-over-cream is not lighter, it is gone.
+
+### 21. Appending a hex alpha to a token stopped working in the same release
+
+`${COLORS.danger}1a` is fine while `COLORS.danger` is `'#ed4245'`. Once it is
+`'var(--ds-danger, #ed4245)'` the result is `var(--ds-danger, #ed4245)1a`,
+which is not a colour, so the declaration is dropped and the element paints
+nothing.
+
+Eleven sites: every `Badge` and `Pill` variant, the danger and success
+`Button` fills, and the "worth a look" chip on the permission sheet — which is
+why that chip read as stray orange text beside the title rather than as a
+badge. It had been transparent since v1.1.16 and nothing errored.
+
+**Fixed**: the alpha is applied in `ThemeBase`, where the value is still a hex,
+and arrives as a finished token (`dangerSoft` / `dangerLine` / `dangerFill`).
+`COLORS.indigo` and `COLORS.sky` are still literals and their concatenations
+are still valid, so those are left alone.
+
+### 22. The install panel sat on top of the question it was waiting for
+
+The installer stops mid-install to ask about permissions and awaits the answer.
+The sheet that asks is bottom-anchored; so is `InstallSheet`, at z-index 3000
+against the sheet's 300. So the question arrived underneath a progress panel.
+
+The panel also had no entry for the `permissions` stage in either of its
+tables — the stage is emitted by the installer and is not in `installEvents`'
+documented list either — so its title stayed "Installing…" while the sheet
+underneath said the extension was already installed, and its progress bar fell
+to the 0.1 default and ran backwards from 90% to 10% while somebody read the
+question.
+
+**Fixed**: the panel steps aside for that stage. Nothing is lost — the event is
+kept and the panel returns with the next stage — and the contradiction goes
+with it.
+
+### 23. The seven taps could not be performed at all
+
+`devMode.js` is correct: a counter, a three-second window, a countdown that
+stays quiet for the first four taps. It had never run.
+
+The version in **Settings › About** — the one somebody actually taps, because
+it is the About screen and because Android taught everybody to tap the build
+number — is a `<span>` inside a decorative pill. No handler, no focus, not
+announced as anything, in either layout.
+
+The first pass at this found a second gap and fixed that instead: a version
+line existed in the desktop sidebar footer with a handler on it, and the
+portrait branch has no sidebar, so on a phone there was nothing to tap
+anywhere. True, but not what anybody was pressing. Corrected after the owner
+said which one they meant.
+
+**Fixed**: the About pill is the target. It is a `<button>` when it is given
+something to do and a plain `<div>` when it is not, rather than a div that
+lies about being pressable, and the countdown replaces the build date beside
+the version instead of appearing somewhere else. The added portrait footer is
+reverted — one version to tap, where people look for it. Seven tests, all
+seven failing against the inert pill.
+
+### 24. A tapped `.extbk` did nothing at all
+
+Two halves, and either alone is fatal.
+
+The manifest matched on names: a `mimeType` only we would have registered, or a
+`pathPattern` ending in `.extbk`. A file handed over by Downloads, Files or
+Drive has neither — the URI is an opaque row id and the type is
+`application/octet-stream`, because Android has no mapping for our extensions.
+So AuthNo was never offered in the chooser.
+
+And `MainActivity` asked the same question three times, once per handler:
+`uriStr.endsWith(".extbk")`. A content URI does not end in anything. Every
+test failed, every handler returned early, and the app opened on the home
+screen as if nothing had been tapped. No error, nowhere to look.
+
+**Fixed**: the name is in the provider under `OpenableColumns.DISPLAY_NAME`,
+and failing that the bytes say it themselves — both containers open with a
+magic number. That decision is now one pure function, `OpenedFile.kindOf`,
+with no Android imports, so it can be compiled and exercised without the SDK.
+
+The manifest accepts `application/octet-stream`. One filter, not three: that is
+every unnamed binary on the device, and appearing three times in that chooser
+would be three times the noise for the same file. Routing happens where the
+name and the bytes are both available, and anything that is not ours is
+recognised as not ours before it reaches the WebView.
+
+Not verified on a device — Gradle needs `dl.google.com`. It has the javac
+syntax pass and the fourteen-case `OpenedFile` check, and nothing more.
+
+---
+
+
+### 25. `extbk unpack` could not read what `extbk build` writes
+
+#19 was `check` and `info` reading every package as VCHS-ECS. Both were fixed.
+`unpack` is the third command that takes a package and it was not:
+
+```
+$ extbk unpack cloud-backup-2.0.0.extbk ./out
+  x Failed to decode: Invalid magic bytes — not an .extbk file
+```
+
+Found by trying to open the released Cloud Backup 2.0.0 — the first thing
+anybody does with somebody else's extension is look inside it.
+
+**Fixed**: an EPK branch that writes every module at its own path and every
+directory record beside it, so a multi-file extension comes back as it went in.
+A record the reader could not verify is reported and skipped rather than
+invented.
+
+### 26. `extbk info` hid every non-code file in a v2 package
+
+The ECS branch prints a full section table. The EPK branch printed the module
+list and stopped, so the two assets in Cloud Backup — a CHANGELOG and a
+package.json — were invisible, and an author who packed a font or an icon had
+no way to confirm from the CLI that it made it in.
+
+**Fixed**: a Files block with each entry's size, codec and kind, plus any
+repairs the reader had to make on the way. A package that needed repairing is
+still valid; saying so is the difference between "it works" and "it worked
+this time".
+
+**The real fix is neither of those.** `check-cli-build.mjs` built a package and
+read it back with the *app's* reader — it never ran a single CLI subcommand,
+which is how the same bug shipped twice. It now runs every reading subcommand
+against both formats and round-trips the unpacked bytes, asserted as a class so
+a third format or a fourth command cannot quietly leave one behind. Verified
+against the pre-fix source: it reports `extbk unpack` and nothing else.
+
+### 27. "Nobody asked you about permissions" could never be shown
+
+`permissionRequests.js` explains why the state matters: *"'you said no' and
+'nobody asked you' look identical from inside an extension and are completely
+different to a person."* `extensionSettingsModel.js` has the warning built,
+with its own comment: *"An extension installed without its questions ever being
+put runs perfectly, does nothing, and explains nothing."*
+
+It could not fire. `installExtbkBytes` computed `_permissionsPending`, put it
+on its **return value**, and wrote it nowhere. The tab's manifests come from
+`discoverExtensions()`, which reads `manifest.json` off disk — a file that has
+never carried the flag. Even immediately after installing, `ExtensionContext`
+calls `refresh()`, which replaces the list with disk-read manifests. The flag
+was discarded within milliseconds of being computed, every time.
+
+Traced end to end against the released package:
+
+```
+1. install result _permissionsPending : true
+2. persisted to manifest.json         : false
+3. survives discovery                 : undefined
+4. warnings the tab shows             : []
+```
+
+So an extension installed from a cold-start intent, a share-sheet handoff or a
+seeded pre-install sat there holding nothing, able to do nothing, and the one
+screen built to explain that said nothing.
+
+**Fixed**: the answer lives with the grants, which are written at install and
+destroyed on uninstall — exactly the lifetime of "was the question put". A
+record written before the flag existed reads as asked, because those installs
+did ask and nagging somebody about a decision they already made is worse than
+the warning is worth.
 
 
 ## Checked, and NOT bugs
@@ -346,3 +539,22 @@ Recording these because each cost real time to rule out.
   valid" and "the app renders it" had never been the same statement.
 - `npm run check:boot` — boots the built app in a browser and fails on anything
   uncaught. Already in `check:all`.
+- `node scripts/shot-components.mjs <dir>` — draws the real components in a real
+  browser, in the dark default and again under the shipped Sepia theme. The
+  light pass is built from the theme through the same `themeVars()` the app
+  calls, not a transcribed palette. Found #20 and #21, which no dark-only
+  screenshot can show.
+- `npm run check:theme-tokens` — both shapes of the token bug: alpha appended to
+  a `var()`, and a hardcoded neutral panel ground under themed text. Checked
+  against the pre-fix source, where it reports all three sites. In `check:all`.
+- `npm run check:opened-file` — compiles `OpenedFile.java` on its own and runs
+  fourteen cases through it. It is the one piece of the Android source that can
+  be exercised in an environment with no SDK, which is why the decision was
+  moved there. In `check:all`.
+- `src/utils/shippedExtension.test.js` — the released Cloud Backup 2.0.0, as a
+  committed fixture checksummed against the release, driven through the real
+  install, discovery, contribution, grant and uninstall paths. Found #27. Every
+  other extension test in the repo uses a fixture manifest built for its own
+  assertion; the interesting failures are the ones a tidy fixture cannot have.
+- `npm run check:cloud-backup` now defaults to that fixture instead of a
+  `/workspace` checkout, so it runs rather than skipping.

@@ -139,6 +139,8 @@ const PermissionRequestSheet = require(path.join(ROOT, 'src/components/Permissio
 const ExtensionSettingsPage = require(path.join(ROOT, 'src/components/ExtensionSettingsPage.jsx')).default;
 const { surfaces, __resetSurfaces } = require(path.join(ROOT, 'src/utils/extensionSurfaces.js'));
 const { permissionRequests, __resetPermissionRequests } = require(path.join(ROOT, 'src/utils/permissionRequests.js'));
+const { PixelButton, GradientButton, MinimalButton } = require(path.join(ROOT, 'src/DesignSystem/Buttons.jsx'));
+const { Badge, Chip } = require(path.join(ROOT, 'src/DesignSystem/Controls.jsx'));
 
 const plan = (items, carried = []) => ({
   ok: true, errors: [], carried, dropped: [],
@@ -147,6 +149,55 @@ const plan = (items, carried = []) => ({
 
 /** name → () => react element, with whatever state it needs already set up. */
 const SCENES = {
+  /**
+   * The button primitives, on the accents that break them.
+   *
+   * Every variant here said `color: '#fff'`, including the ones whose fill is
+   * a status colour the theme sets and the one whose fill is whatever the
+   * writer picked off a full HSV wheel. Gold and Sage are in the row because
+   * onAccent()'s own comment names them as the two shipped presets a white
+   * label already loses — so if this shot ever shows a white word on a gold
+   * button again, the regression is right there.
+   *
+   * The badges and pills are here for the other half: they were built by
+   * appending a hex alpha to a var(), which is not a colour, so they painted
+   * no ground at all.
+   */
+  'buttons'() {
+    const row = (label, kids) => React.createElement(
+      'div',
+      { style: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 } },
+      React.createElement('div', {
+        style: { fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase',
+                 color: 'var(--ds-text-subtle, #72767d)' },
+      }, label),
+      React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' } }, kids),
+    );
+    const ACCENTS = [['Gold', '#f59e0b'], ['Sage', '#22c55e'], ['Ocean', '#3b82f6'], ['Violet', '#a855f7']];
+    return React.createElement(
+      'div',
+      { style: { padding: 20 } },
+      row('PixelButton, on the writer\u2019s accent',
+        ACCENTS.map(([n, hex]) => React.createElement(PixelButton,
+          { key: n, size: 'sm', accentHex: hex }, n))),
+      row('PixelButton, on a status fill',
+        ['danger', 'success', 'info'].map((v) => React.createElement(PixelButton,
+          { key: v, size: 'sm', variant: v }, v))),
+      row('GradientButton',
+        [...['primary', 'sage', 'danger'].map((v) => React.createElement(GradientButton,
+          { key: v, size: 'sm', variant: v }, v)),
+         ...ACCENTS.slice(0, 2).map(([n, hex]) => React.createElement(GradientButton,
+           { key: 'a' + n, size: 'sm', accentHex: hex }, n))]),
+      row('MinimalButton, which has no fill at all',
+        [React.createElement(MinimalButton, { key: 'd', size: 'sm' }, 'Default'),
+         React.createElement(MinimalButton, { key: 'a', size: 'sm', color: '#a855f7' }, 'Accent')]),
+      row('Badge and Chip \u2014 the ones that painted nothing',
+        [...['success', 'warning', 'danger', 'new', 'beta'].map((v) => React.createElement(Badge,
+          { key: v, variant: v }, v)),
+         ...['default', 'success', 'warning', 'danger'].map((v) => React.createElement(Chip,
+           { key: 'c' + v, variant: v }, v))]),
+    );
+  },
   'dots-one'() {
     __resetSurfaces();
     surfaces().setOverlay('word-sprint', 'Sprint: 4:12 left');
@@ -277,22 +328,45 @@ if (failures.length) {
   process.exit(1);
 }
 
-const page = (body) => `<!DOCTYPE html><html><head><meta charset="utf-8">
+/**
+ * The CSS variables a light theme actually sets.
+ *
+ * Taken from the shipped Sepia theme through the same themeVars() the app
+ * calls, not transcribed — a hand-copied palette is exactly the kind of thing
+ * that stays right while the real one moves.
+ *
+ * A component that themes its TEXT and hardcodes its PANEL looks correct in
+ * the dark default and unreadable here: dark text on a dark panel, which no
+ * dark-only screenshot can show.
+ */
+const { SEPIA } = require(path.join(ROOT, 'src/theme/ThemeSepia.js'));
+const { themeVars } = require(path.join(ROOT, 'src/theme/ThemeBase.js'));
+const LIGHT_THEME = `<style>:root{${themeVars(SEPIA)}}
+  html,body{background:${SEPIA.backgrounds.app};} .page{color:${SEPIA.text.t3};}</style>`;
+
+const page = (body, light = false) => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   html,body{margin:0;padding:0;height:100%;background:#0b0b0c;
     font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;}
   /* Stand-in for the manuscript underneath, so chrome can be judged over it. */
   .page{padding:28px 22px;color:#8b8b96;font-size:15px;line-height:1.75;max-width:60ch;}
-</style></head><body>
+</style>
+${light ? LIGHT_THEME : ''}
+</head><body>
 <div class="page">The gate had been shut for a hundred years, and the hinge
 remembered none of it. She set her palm flat against the wood and felt the cold
 come up through it, the way water finds a crack.</div>
 ${body}</body></html>`;
 
 const server = http.createServer((req, res) => {
-  const name = decodeURIComponent((req.url ?? '/').replace(/^\//, '')) || 'dots-one';
+  const [pathname] = (req.url ?? '/').split('?');
+  const name = decodeURIComponent(pathname.replace(/^\//, '')) || 'dots-one';
   res.writeHead(200, { 'content-type': 'text/html' });
-  res.end(page(rendered[name] ?? '<p style="color:red">no such scene</p>'));
+  // `?light` renders the scene with the --ds-* variables a light theme sets,
+  // which is the only way to see a component that hardcodes a dark panel and
+  // themes its text: the two stop agreeing, and the text disappears.
+  const light = /[?&]light\b/.test(req.url ?? '');
+  res.end(page(rendered[name] ?? '<p style="color:red">no such scene</p>', light));
 });
 await new Promise((r) => server.listen(PORT, r));
 
@@ -300,10 +374,14 @@ fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch(launchOptions());
 const errors = [];
 
-for (const name of Object.keys(SCENES)) {
+// Every scene in the dark default, plus the ones whose panels sit under
+// themed text in a light theme — that pairing is where a hardcoded panel
+// shows up as unreadable text.
+const LIGHT_TOO = ['permission-many', 'prompt-host', 'ext-settings', 'buttons'];
+for (const name of [...Object.keys(SCENES), ...LIGHT_TOO.map((n) => `${n}@light`)]) {
   const p = await browser.newPage({ viewport: { width: 412, height: 860 }, deviceScaleFactor: 2 });
   p.on('pageerror', (e) => errors.push(`${name}: ${e}`));
-  await p.goto(`http://127.0.0.1:${PORT}/${name}`, { waitUntil: 'domcontentloaded' });
+  await p.goto(`http://127.0.0.1:${PORT}/${name.replace(/@light$/, '')}${name.endsWith('@light') ? '?light' : ''}`, { waitUntil: 'domcontentloaded' });
   // Let entrance animations finish. FrostedModal fades and scales in over
   // 200ms, and shooting through that produced two photographs of the same
   // dialog at different opacities — which reads as a contrast bug in the

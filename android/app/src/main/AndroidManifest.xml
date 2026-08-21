@@ -157,6 +157,30 @@
                       android:pathPattern=".*\\..*\\..*\\..*\\..*\\.thmbk" />
             </intent-filter>
 
+            <!-- ── The filter that makes the three above actually fire ──
+                 Every filter above matches on a name: either a mimeType only
+                 we would have registered, or a pathPattern ending in our
+                 extension. A file handed over by Downloads, Files or Drive
+                 has neither. Its URI is an opaque row id
+                 (content://…/document/msf%3A42) with no extension anywhere in
+                 it, and the type reported alongside is octet-stream, because
+                 Android has no mapping for .extbk. So none of them matched,
+                 AuthNo was never offered in the chooser, and a downloaded
+                 extension could not be opened at all.
+
+                 One filter, not three: octet-stream is every unnamed binary
+                 on the device, and appearing three times in that chooser
+                 would be three times the noise for the same file. Which of
+                 the three it is gets decided in MainActivity, where the name
+                 the provider knows and the bytes themselves are both
+                 available — see OpenedFile. Anything that is not ours is
+                 recognised as not ours there, before it reaches the WebView. -->
+            <intent-filter android:label="Open with AuthNo">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" />
+            </intent-filter>
+
         </activity>
 
         <!-- ── Launcher icon aliases ──

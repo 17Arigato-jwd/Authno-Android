@@ -325,7 +325,8 @@ function ConfirmModal({ title, message, type, onConfirm, onCancel }) {
         <p style={{ fontSize: '14px', color: 'var(--text-4)', lineHeight: 1.5, marginBottom: '24px' }}>{message}</p>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-2)', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>Cancel</button>
-          <button onClick={onConfirm} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)', color: '#fff', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>Confirm</button>
+          <button onClick={onConfirm} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)',
+            color: type === 'danger' ? 'var(--on-danger, #fff)' : 'var(--on-warning, #111113)', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>Confirm</button>
         </div>
       </div>
     </div>
@@ -1411,7 +1412,7 @@ function StreakControls({ settings, onChange, accentHex, selectedBook, onSession
 }
 
 
-function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
+function AboutPanel({ accentHex, onSeeChanges, onStartTour, onVersionTap, versionHint }) {
   const { isPro } = useEntitlement();
   return (
     <div>
@@ -1449,7 +1450,13 @@ function AboutPanel({ accentHex, onSeeChanges, onStartTour }) {
         </button>
       </div>
 
-      <AboutSection accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />
+      <AboutSection
+        accentHex={accentHex}
+        onSeeChanges={onSeeChanges}
+        onStartTour={onStartTour}
+        onVersionTap={onVersionTap}
+        tapHint={versionHint}
+      />
     </div>
   );
 }
@@ -1720,6 +1727,39 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     if (next.unlocked) { setDevModeUnlocked(true); setDevUnlocked(true); }
   };
 
+  /**
+   * The version in the desktop sidebar footer.
+   *
+   * The seven taps belong on the version in About — that is where somebody
+   * looks for a version number, and it is the gesture Android already taught
+   * everybody. That one was a <span> with no handler, in any layout, which is
+   * why the taps did nothing. It is a button now; see AboutSection.
+   *
+   * This line keeps its handler because it has always had one and it is a
+   * version number sitting in the corner of a desktop sidebar. Portrait does
+   * not render it, and does not need to.
+   */
+  const versionLine = (style = {}) => (
+    <button
+      type="button"
+      onClick={onVersionTap}
+      title={devUnlocked ? 'Developer options are on' : undefined}
+      style={{
+        padding: '8px 8px 2px', fontSize: 10.5,
+        color: 'var(--text-5)', background: 'none', border: 'none',
+        textAlign: 'left', cursor: 'default', fontFamily: 'inherit',
+        ...style,
+      }}
+    >
+      AuthNo v{APP_META.version}
+      {/* Silent for the first four taps, so a stray double-tap never produces
+          a mysterious countdown. */}
+      {!devUnlocked && tapHint(tapState) && (
+        <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>· {tapHint(tapState)}</span>
+      )}
+    </button>
+  );
+
   const isExtSection = extSettingsItems.some(item => activeSection === `ext::${item._extId}::${item.id}`);
 
   useEffect(() => {
@@ -1772,7 +1812,8 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       {activeSection === 'editor'     && <EditorPanel     {...panelProps} />}
       {activeSection === 'shortcuts'  && <ShortcutsPanel accentHex={accentHex} />}
       {activeSection === 'developer'  && <DeveloperPanel settings={settings} accentHex={accentHex} sessions={sessions} onSeeChanges={onSeeChanges} onStartTour={onStartTour} onReplayWelcome={onReplayWelcome} />}
-      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour} />}
+      {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour}
+                                                    onVersionTap={onVersionTap} versionHint={devUnlocked ? undefined : tapHint(tapState)} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
@@ -1955,23 +1996,7 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
                       {items.map((item) => navButton(item))}
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    onClick={onVersionTap}
-                    title={devUnlocked ? 'Developer options are on' : undefined}
-                    style={{
-                      marginTop: 'auto', padding: '8px 8px 2px', fontSize: 10.5,
-                      color: 'var(--text-5)', background: 'none', border: 'none',
-                      textAlign: 'left', cursor: 'default', fontFamily: 'inherit',
-                    }}
-                  >
-                    AuthNo v{APP_META.version}
-                    {/* Silent for the first four taps, so a stray double-tap
-                        never produces a mysterious countdown. */}
-                    {!devUnlocked && tapHint(tapState) && (
-                      <span style={{ marginLeft: 6, color: 'var(--text-4)' }}>· {tapHint(tapState)}</span>
-                    )}
-                  </button>
+                  {versionLine({ marginTop: 'auto' })}
                 </>
               )}
             </div>

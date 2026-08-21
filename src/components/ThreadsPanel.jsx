@@ -75,10 +75,11 @@ function EntryRow({ entry, color, anchored, onToggleTodo, onToggleDone, onJump, 
           width: 16, height: 16, borderRadius: '50%', marginTop: 2, flexShrink: 0, cursor: 'pointer',
           border: `1.5px solid ${entry.todo && !entry.done ? 'var(--color-danger)' : entry.done ? 'var(--color-success)' : 'var(--text-5)'}`,
           background: entry.done ? 'var(--color-success)' : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--on-success, #111113)',
         }}
       >
-        {entry.done && <DSIcons.Check size={9} color="#fff" />}
+        {entry.done && <DSIcons.Check size={9} color="var(--on-success, #111113)" />}
       </button>
 
       {/* Text */}

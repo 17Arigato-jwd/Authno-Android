@@ -778,11 +778,11 @@ function AuthFormPage({ extension, accentHex, onBack }) {
             style={{
               width: '100%', boxSizing: 'border-box',
               padding: '10px 12px',
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+              background: 'var(--input-bg)', border: '1px solid var(--input-border)',
               borderRadius: '8px', color: 'var(--text-1)', fontSize: '14px', outline: 'none',
             }}
             onFocus={e => e.target.style.borderColor = accentHex}
-            onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
+            onBlur={e  => e.target.style.borderColor = 'var(--input-border)'}
           />
         </div>
       ))}
@@ -792,8 +792,8 @@ function AuthFormPage({ extension, accentHex, onBack }) {
           onClick={handleSave}
           style={{
             flex: 1, padding: '11px', borderRadius: '8px',
-            background: saved ? '#22c55e' : accentHex,
-            color: 'var(--on-accent, #fff)', fontWeight: 700, fontSize: '14px',
+            background: saved ? 'var(--color-success, #22c55e)' : accentHex,
+            color: saved ? 'var(--on-success, #111113)' : 'var(--on-accent, #fff)', fontWeight: 700, fontSize: '14px',
             border: 'none', cursor: 'pointer', transition: 'background 0.2s',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
           }}
@@ -804,7 +804,7 @@ function AuthFormPage({ extension, accentHex, onBack }) {
           onClick={handleClear}
           style={{
             padding: '11px 16px', borderRadius: '8px',
-            background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
+            background: 'transparent', border: '1px solid var(--border)',
             color: 'var(--text-3)', fontSize: '13px', cursor: 'pointer',
           }}
         >
@@ -875,6 +875,9 @@ function WebviewPage({ url, accentHex }) {
             title="Extension page"
             onLoad={() => setLoading(false)}
             onError={() => { setLoading(false); setFailed(true); }}
+            // White on purpose, and the one literal in this file that should
+            // stay: behind it is a page the extension author wrote, not ours,
+            // and a themed ground would show through their transparent margins.
             style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           />
@@ -936,7 +939,7 @@ function ApiDataPage({ extension, page, session, accentHex }) {
       {entries.length === 0
         ? <StatusBox icon="📭" title="No data returned" subtitle="The API returned an empty response." />
         : entries.map(([key, val]) => (
-          <div key={key} style={{ padding: '14px 16px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div key={key} style={{ padding: '14px 16px', borderRadius: '12px', background: 'var(--surface)', border: '1px solid var(--border-sm)' }}>
             <div style={{ color: 'var(--text-3)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '4px' }}>
               {key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}
             </div>
@@ -996,17 +999,17 @@ function ApiActionPage({ extension, page, session, accentHex, onBack }) {
             rows={key.toLowerCase().includes('content') ? 8 : 2}
             style={{
               width: '100%', boxSizing: 'border-box', padding: '10px 12px', resize: 'vertical',
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+              background: 'var(--input-bg)', border: '1px solid var(--input-border)',
               borderRadius: '8px', color: 'var(--text-1)', fontSize: '13px',
               outline: 'none', fontFamily: 'inherit',
             }}
             onFocus={e => e.target.style.borderColor = accentHex}
-            onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.15)'}
+            onBlur={e  => e.target.style.borderColor = 'var(--input-border)'}
           />
         </div>
       ))}
       {status === 'error' && (
-        <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#dc262622', border: '1px solid #dc262644', color: '#fca5a5', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <DSIcons.Warning size={14} /> {message}
         </div>
       )}

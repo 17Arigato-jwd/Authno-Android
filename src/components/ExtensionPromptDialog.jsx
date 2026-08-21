@@ -180,7 +180,7 @@ export default function ExtensionPromptDialog({ accentHex = COLORS.violetDark })
             onClick={answer}
             style={{
               padding: `10px ${SPACING.lg}px`, borderRadius: RADIUS.md,
-              border: 'none', background: accent, color: '#fff',
+              border: 'none', background: accent, color: 'var(--on-accent, #fff)',
               fontSize: TYPOGRAPHY.size.base, fontWeight: TYPOGRAPHY.weight.bold,
               cursor: 'pointer',
             }}

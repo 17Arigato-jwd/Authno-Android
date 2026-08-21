@@ -68,7 +68,10 @@ function DialogButtons({ onCancel, onConfirm, confirmLabel, danger, accentHex, c
       <button onClick={onConfirm} autoFocus={confirmAutoFocus}
         style={{
           padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer",
-          fontSize: 13, fontWeight: 700, color: "#fff",
+          fontSize: 13, fontWeight: 700,
+          // The fill is either danger or the writer's accent, and the accent is a
+          // full colour wheel — so the label has to be asked for, not assumed.
+          color: danger ? "var(--on-danger, #fff)" : "var(--on-accent, #fff)",
           background: danger ? "var(--color-danger, #e5484d)" : (accentHex || "var(--accent)"),
         }}>
         {confirmLabel}

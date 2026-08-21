@@ -110,7 +110,7 @@ function EntryRow({ entry, session, isCurrent, expanded, accentHex, onToggle, on
         transition: "background 0.15s, border-color 0.15s",
         marginBottom: 2,
       }}
-      onMouseEnter={(e) => { if (!isCurrent && !expanded) e.currentTarget.style.background = "var(--surface-2, rgba(127,127,127,0.08))"; }}
+      onMouseEnter={(e) => { if (!isCurrent && !expanded) e.currentTarget.style.background = "var(--surface)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = isCurrent ? "var(--accent-a08, rgba(127,127,127,0.08))" : expanded ? "var(--surface, rgba(127,127,127,0.06))" : "transparent"; }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px" }}>

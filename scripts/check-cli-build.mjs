@@ -16,7 +16,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -116,6 +116,50 @@ check('the desktop reader agrees on the entry list',
 check('the desktop reader agrees on the manifest', h.manifest.id === r.manifest.id);
 await h.close();
 
+// ── Every subcommand that reads, against what build just wrote ──────────────
+//
+// This is the gap that let two identical bugs through. `check` and `info`
+// could not read VCHS-EPK at all — an author's own package came back "Invalid
+// magic bytes" — and after those were fixed, `unpack` still could not, because
+// nothing here had ever run a subcommand. The check above proves the *app* can
+// read what the CLI writes; it never asked whether the CLI can.
+//
+// Asserted as a class: every command that takes a package must handle both
+// formats, so adding a third format or a fourth command cannot quietly leave
+// one behind.
+const READERS = ['check', 'info', 'unpack'];
+
+function runCli(args) {
+  try {
+    return { ok: true, out: execFileSync('node', [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' }) };
+  } catch (e) {
+    return { ok: false, out: `${e.stdout ?? ''}${e.stderr ?? ''}` };
+  }
+}
+
+for (const cmd of READERS) {
+  const dest = cmd === 'unpack' ? [mkdtempSync(join(tmpdir(), 'extbk-un-')), '--overwrite'] : [];
+  const r = runCli([cmd, file, ...dest]);
+  check(`extbk ${cmd} reads the EPK it just built`, r.ok, r.out.trim().split('\n').slice(-2).join(' | '));
+  if (cmd === 'unpack' && r.ok) {
+    const back = readdirSync(dest[0]);
+    // Round trip: every source file comes back, at its own path, and the
+    // module graph is not flattened into one entry file.
+    check('unpack returns the manifest and the entry', back.includes('manifest.json') && back.includes('index.js'), back.join(','));
+    check('unpack returns the nested module', existsSync(join(dest[0], 'lib', 'queue.js')), back.join(','));
+    check('unpack returns the assets', back.includes('icon.png') && back.includes('data.json'), back.join(','));
+    check('unpacked bytes match what went in',
+      readFileSync(join(dest[0], 'icon.png')).equals(readFileSync(join(src, 'icon.png'))));
+    rmSync(dest[0], { recursive: true, force: true });
+  }
+  if (cmd === 'info' && r.ok) {
+    // Assets were invisible here: the ECS branch printed a section table and
+    // the EPK branch printed modules and stopped.
+    check('info names the non-code files too', /icon\.png/.test(r.out) && /data\.json/.test(r.out),
+      r.out.replace(/\n/g, ' ').slice(0, 200));
+  }
+}
+
 // A v1 manifest must still produce an ECS file — the CLI serves both during
 // the port, and silently changing an existing author's output would be worse
 // than refusing.
@@ -124,6 +168,13 @@ const v1 = build(v1src);
 check('a v1 manifest still builds as ECS', v1.stdout.includes('VCHS-ECS'));
 const v1bytes = new Uint8Array(readFileSync(v1.file));
 check('the app does not mistake an ECS file for EPK', !epk.isEpk(v1bytes));
+
+for (const cmd of READERS) {
+  const dest = cmd === 'unpack' ? [mkdtempSync(join(tmpdir(), 'extbk-un1-')), '--overwrite'] : [];
+  const r = runCli([cmd, v1.file, ...dest]);
+  check(`extbk ${cmd} still reads a v1 ECS package`, r.ok, r.out.trim().split('\n').slice(-2).join(' | '));
+  if (dest[0]) rmSync(dest[0], { recursive: true, force: true });
+}
 
 for (const d of [src, v1src]) rmSync(d, { recursive: true, force: true });
 

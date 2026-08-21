@@ -129,6 +129,30 @@ async function infoEpk(file, buf) {
   log('');
   log(chalk.bold('Modules'));
   for (const name of Object.keys(pkg.modules ?? {}).sort()) log(`  · ${name}`);
+
+  // Everything that is not code. The ECS branch above prints a full section
+  // table; this one printed modules and stopped, so a package's fonts, icons
+  // and widget layouts were invisible here — an author who packed an asset
+  // had no way to confirm from the CLI that it made it in.
+  const files = [...(pkg.entries?.keys?.() ?? [])].sort();
+  if (files.length) {
+    log('');
+    log(chalk.bold('Files'));
+    for (const p of files) {
+      const r = pkg.entries.get(p);
+      const size = r.originalSize >= 1024 ? `${(r.originalSize / 1024).toFixed(1)} KB` : `${r.originalSize} B`;
+      log(`  · ${p}${chalk.dim(`  ${size}${r.codec === 1 ? ', deflate' : ''}${KIND[r.kind] ? `, ${KIND[r.kind]}` : ''}`)}`);
+    }
+  }
+
+  // A package the reader had to repair is still a valid package; saying so is
+  // the difference between "it works" and "it worked this time".
+  for (const r of pkg.repairs ?? []) log(chalk.dim(`  repaired rung ${r.rung}: ${r.what}`));
+  for (const w of pkg.warnings ?? []) log(chalk.yellow(`  ! ${w.path}: ${w.why}`));
+
   log('');
   return true;
 }
+
+/** Record kinds, as epkFormat numbers them. */
+const KIND = { 1: 'svg raster', 2: 'font', 3: 'widget', 4: 'code' };

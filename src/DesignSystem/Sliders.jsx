@@ -48,8 +48,8 @@ export function PillSlider({
       <div style={{
         position: 'relative', height,
         borderRadius: height / 2,
-        background: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.1)',
+        background: COLORS.tint,
+        border: `1px solid ${COLORS.tintStrong}`,
         boxShadow: `inset 0 2px 6px rgba(0,0,0,0.4), ${SHADOWS.glow(accent)}`,
       }}>
         {/* Clipped fill + sheen */}
@@ -59,7 +59,7 @@ export function PillSlider({
             width: `${pct}%`, background: fillGradient,
             borderRadius: height / 2, transition: 'width 0.05s', minWidth: height,
           }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, transparent 55%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(to bottom, ${COLORS.sheen} 0%, transparent 55%)` }} />
         </div>
         <input
           type="range"
@@ -105,8 +105,8 @@ export function DualPillSlider({
       <div style={{
         position: 'relative', height,
         borderRadius: height / 2,
-        background: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.1)',
+        background: COLORS.tint,
+        border: `1px solid ${COLORS.tintStrong}`,
         boxShadow: `inset 0 2px 6px rgba(0,0,0,0.4), ${SHADOWS.glow(accent)}`,
       }}>
         {/* Clipped range fill + sheen */}
@@ -117,7 +117,7 @@ export function DualPillSlider({
             background: fillGradient, borderRadius: height / 2,
             transition: 'left 0.04s, width 0.04s',
           }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, transparent 55%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(to bottom, ${COLORS.sheen} 0%, transparent 55%)` }} />
         </div>
         <input
           type="range" className="ds-dual-slider"

@@ -40,6 +40,58 @@ export const COLORS = {
   // Borders — follow the active theme
   border:       'var(--ds-border, rgba(255,255,255,0.08))',
   borderStrong: 'var(--ds-border-strong, rgba(255,255,255,0.16))',
+
+  // Frosted panels — the translucent grounds that overlays float on.
+  //
+  // These were literal dark rgba() inside FrostedModal, BottomSheet and Toast,
+  // which is how the text half of the v1.1.16 fix ended up painting themed —
+  // and on light themes, dark — text on a panel that was still near-black. The
+  // panel has to follow the theme for the same reason the text does.
+  panel: 'var(--ds-panel, rgba(20,20,26,0.82))',
+  sheet: 'var(--ds-sheet, rgba(22,22,28,0.96))',
+  toast: 'var(--ds-toast, rgba(26,27,30,0.92))',
+
+  // Tints — "a little lighter than the surface underneath". White on a dark
+  // theme, black on a light one; the intent is contrast with the ground, and
+  // white-over-cream has none.
+  tintSubtle: 'var(--ds-tint-subtle, rgba(255,255,255,0.02))',
+  tint:       'var(--ds-tint, rgba(255,255,255,0.06))',
+  tintStrong: 'var(--ds-tint-strong, rgba(255,255,255,0.10))',
+  tintHover:  'var(--ds-tint-hover, rgba(255,255,255,0.14))',
+  hairline:   'var(--ds-hairline, rgba(255,255,255,0.05))',
+  // A specular highlight stays white on both — it is a reflection, not a fill.
+  sheen:      'var(--ds-sheen, rgba(255,255,255,0.10))',
+
+  // Status tints, ready to use.
+  //
+  // `${COLORS.danger}1a` is not a colour once COLORS.danger is a var(), so the
+  // badges and pills built that way painted nothing at all. Alpha is applied
+  // in ThemeBase, where the value is still a hex, and arrives here finished.
+  //   soft — a badge or pill ground   line — a border   fill — a solid button
+  dangerSoft:  'var(--ds-danger-soft, rgba(237,66,69,0.15))',
+  warningSoft: 'var(--ds-warning-soft, rgba(250,166,26,0.15))',
+  successSoft: 'var(--ds-success-soft, rgba(34,197,94,0.15))',
+  infoSoft:    'var(--ds-info-soft, rgba(56,189,248,0.15))',
+  dangerLine:  'var(--ds-danger-line, rgba(237,66,69,0.33))',
+  warningLine: 'var(--ds-warning-line, rgba(250,166,26,0.33))',
+  successLine: 'var(--ds-success-line, rgba(34,197,94,0.33))',
+  infoLine:    'var(--ds-info-line, rgba(56,189,248,0.33))',
+  dangerFill:  'var(--ds-danger-fill, rgba(237,66,69,0.8))',
+  successFill: 'var(--ds-success-fill, rgba(34,197,94,0.8))',
+
+  // What can be read ON those fills.
+  //
+  // `onAccent()` has existed since v1.1.16 and its own comment names the two
+  // presets a hardcoded white label fails on — Gold and Sage, both near 2:1.
+  // Nothing but the CSS variable ever called it, so every button primitive in
+  // here went on painting '#fff' regardless. These are that answer, per fill.
+  // For a hex you hold at render time, call onAccent(hex) from ./_utils
+  // instead — a variable cannot be computed from a prop.
+  onAccent:  'var(--ds-on-accent, #ffffff)',
+  onDanger:  'var(--ds-on-danger, #ffffff)',
+  onWarning: 'var(--ds-on-warning, #111113)',
+  onSuccess: 'var(--ds-on-success, #111113)',
+  onInfo:    'var(--ds-on-info, #111113)',
 };
 
 export const GRADIENTS = {

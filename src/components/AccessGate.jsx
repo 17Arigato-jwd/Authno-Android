@@ -654,7 +654,7 @@ const S = {
     // whenever there IS room, which is the behaviour centring was here for.
     display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
     padding: 'max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom))',
-    background: 'var(--onb-bg, #0b0710)', overflowY: 'auto',
+    background: 'var(--onb-bg)', overflowY: 'auto',
   },
   // The vertical rhythm below is deliberately tight. Redeem asks for four
   // fields — more than any other mode — and under them sit the three routes in,
@@ -663,8 +663,8 @@ const S = {
   // rounded corner out of sight and read as broken however far you scrolled.
   card: {
     position: 'relative', zIndex: 1, width: '100%', maxWidth: 460, margin: 'auto',
-    background: 'var(--onb-card, rgba(20,14,28,0.86))',
-    border: '1px solid var(--onb-border, rgba(255,255,255,0.09))',
+    background: 'var(--onb-card)',
+    border: '1px solid var(--onb-border)',
     borderRadius: 22, padding: 'clamp(20px, 5vw, 30px)',
     backdropFilter: 'blur(22px)', boxShadow: '0 28px 70px rgba(0,0,0,0.5)',
   },
@@ -672,23 +672,23 @@ const S = {
   badge: {
     width: 42, height: 42, borderRadius: 13, marginBottom: 12,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'var(--onb-accent-soft, rgba(168,85,247,0.16))',
-    color: 'var(--onb-accent, #c084fc)',
+    background: 'var(--onb-accent-soft)',
+    color: 'var(--onb-accent)',
   },
-  title: { fontFamily: 'Sora, sans-serif', fontSize: 25, fontWeight: 800, letterSpacing: '-0.5px', margin: '0 0 8px', color: 'var(--onb-text1, #fff)' },
-  sub: { fontSize: 14, lineHeight: 1.5, color: 'var(--onb-text3, rgba(255,255,255,0.62))', margin: '0 0 18px' },
-  label: { display: 'block', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.01em', color: 'var(--onb-text2, rgba(255,255,255,0.8))', marginBottom: 5 },
+  title: { fontFamily: 'Sora, sans-serif', fontSize: 25, fontWeight: 800, letterSpacing: '-0.5px', margin: '0 0 8px', color: 'var(--onb-text1)' },
+  sub: { fontSize: 14, lineHeight: 1.5, color: 'var(--onb-text3)', margin: '0 0 18px' },
+  label: { display: 'block', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.01em', color: 'var(--onb-text2)', marginBottom: 5 },
   input: {
     width: '100%', boxSizing: 'border-box', padding: '11px 14px', marginBottom: 11,
-    background: 'var(--onb-input, rgba(255,255,255,0.05))',
-    border: '1px solid var(--onb-border, rgba(255,255,255,0.11))',
-    borderRadius: 11, color: 'var(--onb-text1, #fff)', fontSize: 15,
+    background: 'var(--onb-field)',
+    border: '1px solid var(--onb-field-border)',
+    borderRadius: 11, color: 'var(--onb-text1)', fontSize: 15,
     fontFamily: 'inherit', outline: 'none',
   },
   mono: { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12.5, lineHeight: 1.55 },
   filePick: {
     textAlign: 'left', cursor: 'pointer',
-    color: 'var(--onb-text2, rgba(255,255,255,0.8))',
+    color: 'var(--onb-text2)',
     borderWidth: 1.5,
   },
   altModes: {
@@ -698,24 +698,24 @@ const S = {
   switchMode: {
     display: 'block', width: '100%', padding: '5px 0',
     background: 'none', border: 'none', cursor: 'pointer',
-    color: 'var(--onb-text4, rgba(255,255,255,0.5))',
+    color: 'var(--onb-text4)',
     fontSize: 12.5, textDecoration: 'underline', fontFamily: 'inherit',
   },
   rescueWrap: {
     marginTop: 12, paddingTop: 12,
-    borderTop: '1px solid var(--onb-border, rgba(255,255,255,0.08))',
+    borderTop: '1px solid var(--onb-border)',
   },
   rescue: {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
     width: '100%', padding: '11px 16px', borderRadius: 12, cursor: 'pointer',
-    background: 'var(--onb-input, rgba(255,255,255,0.05))',
-    border: '1px solid var(--onb-border, rgba(255,255,255,0.11))',
-    color: 'var(--onb-text2, rgba(255,255,255,0.8))',
+    background: 'var(--onb-field)',
+    border: '1px solid var(--onb-field-border)',
+    color: 'var(--onb-text2)',
     fontFamily: 'Sora, sans-serif', fontWeight: 600, fontSize: 13.5,
   },
   rescueNote: {
     fontSize: 11.5, lineHeight: 1.55, textAlign: 'center',
-    color: 'var(--onb-text4, rgba(255,255,255,0.42))', margin: '7px 0 0',
+    color: 'var(--onb-text4)', margin: '7px 0 0',
   },
   error: {
     display: 'flex', gap: 9, alignItems: 'flex-start',
@@ -728,10 +728,10 @@ const S = {
     borderRadius: 11, padding: '11px 13px', marginBottom: 14,
     fontSize: 13, lineHeight: 1.6, color: '#fcd34d',
   },
-  remaining: { fontSize: 12.5, color: 'var(--onb-text4, rgba(255,255,255,0.45))', marginBottom: 14 },
+  remaining: { fontSize: 12.5, color: 'var(--onb-text4)', marginBottom: 14 },
   cta: {
     width: '100%', padding: '14px 20px', borderRadius: 13, border: 'none',
-    background: 'var(--onb-accent, linear-gradient(135deg,#c084fc,#a855f7))',
+    background: 'var(--onb-accent-fill)',
     color: '#fff', fontFamily: 'Sora, sans-serif', fontWeight: 700, fontSize: 15.5,
     transition: 'opacity .2s',
   },
@@ -740,24 +740,24 @@ const S = {
   // reach for it unless the app has just told them to.
   pasteBack: {
     marginTop: 14, padding: 14, borderRadius: 13,
-    border: '1px solid var(--onb-border, rgba(255,255,255,0.16))',
-    background: 'var(--onb-surface, rgba(255,255,255,0.04))',
+    border: '1px solid var(--onb-outline)',
+    background: 'var(--onb-surface)',
   },
   pasteBackText: {
     margin: '0 0 10px', fontSize: 13, lineHeight: 1.5,
-    color: 'var(--onb-text2, rgba(255,255,255,0.72))',
+    color: 'var(--onb-text2)',
     fontFamily: 'Sora, sans-serif',
   },
   googleBtn: {
     width: '100%', padding: '12px 20px', borderRadius: 13, marginTop: 10,
-    border: '1px solid var(--onb-border, rgba(255,255,255,0.16))',
-    background: 'var(--onb-surface, rgba(255,255,255,0.06))',
-    color: 'var(--onb-text1, #fff)', fontFamily: 'Sora, sans-serif',
+    border: '1px solid var(--onb-outline)',
+    background: 'var(--onb-surface-on)',
+    color: 'var(--onb-text1)', fontFamily: 'Sora, sans-serif',
     fontWeight: 700, fontSize: 14.5,
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
     transition: 'opacity .2s',
   },
-  foot: { fontSize: 12, lineHeight: 1.6, color: 'var(--onb-text4, rgba(255,255,255,0.42))', margin: '18px 0 0' },
+  foot: { fontSize: 12, lineHeight: 1.6, color: 'var(--onb-text4)', margin: '18px 0 0' },
 };
 
 /** Google's mark, inline. A remote image would be one more thing to fail on a

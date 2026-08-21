@@ -331,7 +331,11 @@ async function installEpkBytes(bytes, { id, emit, askPermissions = null }) {
       permissionsPending = true;
     }
   }
-  writeGrants(manifest.id, granted, heldBefore.userHosts);
+  // `permissionsPending` was returned to the caller and written nowhere, so it
+  // was gone by the time anything could render it — the next `discoverExtensions`
+  // reads manifest.json off disk, which has never carried it. Recorded with the
+  // grants, which is the state that survives a restart.
+  writeGrants(manifest.id, granted, heldBefore.userHosts, { asked: !permissionsPending });
 
   console.log(`[extbkInstaller] ${fromVersion ? 'Updated' : 'Installed'} (EPK): ${manifest.id} v${manifest.version}`);
   emit({ stage: 'activating', name: manifest.name, version: manifest.version, fromVersion });

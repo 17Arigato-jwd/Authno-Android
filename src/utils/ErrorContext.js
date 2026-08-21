@@ -60,7 +60,11 @@ function ErrorLogModal({ onClose, accentHex }) {
       <div style={{
         width: "100%", borderRadius: "16px 16px 0 0",
         borderTop: `1px solid ${COLORS.border}`,
-        background: "#0f0f1a",
+        // Was "#0f0f1a". Every label on this sheet is a COLORS.* token, so on
+        // Sepia or Paper this painted the theme's near-black text on a
+        // near-black panel — the error log, unreadable, which is a poor place
+        // for it to happen. Same class of bug as the DesignSystem overlays.
+        background: COLORS.sheet,
         maxHeight: "82vh", display: "flex", flexDirection: "column",
         paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)",
       }}>
@@ -71,7 +75,7 @@ function ErrorLogModal({ onClose, accentHex }) {
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <DSIcons.List size={16} color={COLORS.textSubtle} />
-            <span style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>Error Log</span>
+            <span style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 14 }}>Error Log</span>
             {history.length > 0 && (
               <span style={{
                 fontSize: 12, padding: "2px 8px", borderRadius: 999, fontFamily: "monospace",
@@ -99,10 +103,10 @@ function ErrorLogModal({ onClose, accentHex }) {
             history.map((entry) => (
               <div key={entry.id} style={{
                 borderRadius: 12, border: `1px solid ${COLORS.border}`,
-                padding: 12, background: "rgba(255,255,255,0.03)",
+                padding: 12, background: COLORS.tintSubtle,
               }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>
+                  <span style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: 600 }}>
                     {entry.icon} {entry.category}
                   </span>
                   <span style={{ color: COLORS.textDisabled, fontSize: 12, fontFamily: "monospace" }}>
@@ -133,7 +137,7 @@ function ErrorLogModal({ onClose, accentHex }) {
                 border: `1px solid ${COLORS.border}`, background: "transparent",
                 color: COLORS.textSubtle, cursor: "pointer", transition: "color 0.15s, border-color 0.15s",
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.borderColor = COLORS.borderStrong; }}
+              onMouseEnter={e => { e.currentTarget.style.color = COLORS.textPrimary; e.currentTarget.style.borderColor = COLORS.borderStrong; }}
               onMouseLeave={e => { e.currentTarget.style.color = COLORS.textSubtle; e.currentTarget.style.borderColor = COLORS.border; }}
             >
               Clear Log
@@ -153,7 +157,7 @@ function ErrorLogModal({ onClose, accentHex }) {
               style={{
                 flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 12, fontWeight: 600,
                 background: accentHex + "40", border: `1px solid ${accentHex}80`,
-                color: "#fff", cursor: "pointer",
+                color: COLORS.textPrimary, cursor: "pointer",
               }}
             >
               Copy Full Report
@@ -200,14 +204,14 @@ function ErrorPopup({ entry, onClose, onShowLog, accentHex }) {
         width: "100%", borderRadius: "16px 16px 0 0",
         padding: "20px 20px calc(env(safe-area-inset-bottom, 0px) + 20px)",
         borderTop: `1px solid ${COLORS.border}`,
-        background: "#1a1a2e",
+        background: COLORS.sheet,
         maxHeight: "80vh", overflowY: "auto",
       }}>
         {/* Title row */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <DSIcons.Warning size={20} color={COLORS.danger} style={{ flexShrink: 0 }} />
-            <span style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>
+            <span style={{ color: COLORS.textPrimary, fontWeight: 600, fontSize: 14 }}>
               {entry.icon} {entry.category} failed
             </span>
           </div>
@@ -220,8 +224,8 @@ function ErrorPopup({ entry, onClose, onShowLog, accentHex }) {
         </div>
 
         {/* Error message */}
-        <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+        <div style={{ background: COLORS.tint, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+          <p style={{ color: COLORS.textSecondary, fontSize: 14, lineHeight: 1.6, margin: 0 }}>
             {entry.message}
           </p>
         </div>
@@ -272,7 +276,7 @@ function ErrorPopup({ entry, onClose, onShowLog, accentHex }) {
             onClick={onClose}
             style={{
               flex: 1, padding: "10px 0", borderRadius: 12,
-              fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer",
+              fontSize: 12, fontWeight: 600, color: COLORS.textPrimary, cursor: "pointer",
               background: accentHex + "33", border: `1px solid ${accentHex}66`,
             }}
           >

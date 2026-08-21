@@ -20,6 +20,7 @@
 
 import { createContext, useContext, useState, useCallback } from 'react';
 import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces, webFontsEnabled } from '../utils/fontManager';
+import { onAccent, relativeLuminance } from '../DesignSystem/_utils';
 import { isAndroid } from '../utils/platform';
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -76,37 +77,35 @@ export function flattenOver(color, backgroundHex) {
 }
 
 /**
- * onAccent(hex) → the text colour that can be read on an accent fill.
+ * withAlpha(color, a) → the same colour at the given opacity.
  *
- * The accent is the writer's own choice and the picker is a full HSV wheel, so
- * every hue and every lightness is reachable. A label hardcoded to white was
- * already failing on two of the six shipped presets — Gold #f59e0b and Sage
- * #22c55e sit near 2:1 against white — and disappears outright on anything
- * paler.
- *
- * Keeps white until it drops below 3:1, then switches. That is deliberately
- * not the threshold that maximises contrast: maximising would also flip Ember
- * and Ocean, which clear 3:1 and have read as white buttons since the app
- * shipped. Restyling half the buttons is a redesign; this is a bug fix, so it
- * only moves the ones that are actually unreadable. Past that point black is
- * the better choice by a wide margin anyway — 9:1 or more — so there is no
- * case where the rule picks the worse of the two.
- *
- * Mirrored natively in WidgetTheme.readableOn so the widgets and the app agree.
+ * Takes hex or rgb()/rgba(); an existing alpha is replaced, not multiplied.
+ * Anything unrecognised is returned unchanged, so a theme that hands us a
+ * gradient or a var() gets an opaque panel rather than a broken declaration.
  */
-export function onAccent(hex) {
-  return relativeLuminance(hex) > 0.30 ? '#111113' : '#ffffff';
+export function withAlpha(color, a) {
+  if (typeof color !== 'string') return color;
+  const s = color.trim();
+  if (/^#([a-f\d]{6})$/i.test(s)) {
+    const { r, g, b } = hexToRgb(s);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(s);
+  if (m) return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
+  return s;
 }
 
-/** WCAG 2.x relative luminance, 0 (black) to 1 (white). */
-function relativeLuminance(hex) {
-  const { r, g, b } = hexToRgb(hex || '#000000');
-  const lin = (v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
+/**
+ * onAccent / relativeLuminance now live in DesignSystem/_utils.js.
+ *
+ * They were here, and only the CSS variable below could reach them — so every
+ * button primitive in the DesignSystem went on painting `color: '#fff'` on an
+ * accent it had not looked at. Moved down a layer, where both the theme engine
+ * and the components that need the answer can ask. Re-exported so
+ * `import { onAccent } from '../theme'` keeps working, which is how
+ * widgetTheme.test.js checks it against WidgetTheme.readableOn.
+ */
+export { onAccent, relativeLuminance };
 
 /**
  * buildAccentPalette(primaryHex)
@@ -192,9 +191,42 @@ function injectPerfLite() {
   document.head.appendChild(el);
 }
 
-export function applyTheme(theme, selector = ':root') {
-  injectPerfLite();
+/**
+ * themeVars(theme) → the CSS custom-property block, as text.
+ *
+ * Split out of applyTheme so it can be produced without a document — the
+ * component screenshots render against the vars a real theme writes rather
+ * than a hand-copied approximation of them, which is the only way that check
+ * can catch a panel drifting away from the theme again.
+ */
+export function themeVars(theme) {
   const acc = buildAccentPalette(theme.accent.primary);
+
+  // Overlay panels and the tints painted on them.
+  //
+  // v1.1.16 pointed the DesignSystem's text, surface and border tokens at the
+  // theme; the frosted panels those tokens are read on top of were left
+  // hardcoded dark. On Sepia or Paper that put the theme's near-black body
+  // text on a near-black sheet — the panel was the only thing in the app that
+  // had not heard about the theme, and it was the one behind everything.
+  //
+  // A tint is white on a dark ground and black on a light one for the same
+  // reason: "slightly lighter than what is underneath" is the intent, and
+  // white-on-cream is not lighter, it is gone.
+  const glass = theme.glass?.background ?? theme.backgrounds.modal;
+  const tintRgb = theme.meta.isDark ? '255,255,255' : '0,0,0';
+  const tint = (a) => `rgba(${tintRgb},${a})`;
+
+  // Status tints, as finished colours rather than ingredients.
+  //
+  // The DesignSystem used to build these by concatenating a hex alpha onto the
+  // token — `${COLORS.danger}1a`. That worked while the token was a literal
+  // and became `var(--ds-danger, #ed4245)1a` when v1.1.16 made it a variable:
+  // not a colour, so the declaration is dropped and the element paints
+  // nothing. Every badge, pill and danger button in the app has been
+  // transparent since. Alpha has to be applied to the colour, which can only
+  // happen here, where the colour is still a hex.
+  const st = theme.statusColors;
 
   const vars = `
     --app-bg:               ${theme.backgrounds.app};
@@ -222,6 +254,12 @@ export function applyTheme(theme, selector = ':root') {
 
     --accent:               ${acc.primary};
     --on-accent:            ${onAccent(acc.primary)};
+    /* The same question for the status fills. A confirm button on
+       --color-warning was white-on-amber, about 2:1, on the default theme. */
+    --on-danger:            ${onAccent(theme.statusColors.danger)};
+    --on-warning:           ${onAccent(theme.statusColors.warning)};
+    --on-success:           ${onAccent(theme.statusColors.success)};
+    --on-info:              ${onAccent(theme.statusColors.info)};
     --accent-light:         ${acc.light};
     --accent-dark:          ${acc.dark};
     --accent-base:          ${acc.base};
@@ -294,12 +332,45 @@ export function applyTheme(theme, selector = ':root') {
     --ds-warning:           ${theme.statusColors.warning};
     --ds-info:              ${theme.statusColors.info};
 
+    --ds-panel:             ${withAlpha(glass, 0.82)};
+    --ds-sheet:             ${withAlpha(glass, 0.96)};
+    --ds-toast:             ${withAlpha(glass, 0.92)};
+    --ds-tint-subtle:       ${tint(0.02)};
+    --ds-tint:              ${tint(0.06)};
+    --ds-tint-strong:       ${tint(0.10)};
+    --ds-tint-hover:        ${tint(0.14)};
+    --ds-hairline:          ${tint(0.05)};
+    --ds-sheen:             ${theme.meta.isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.55)'};
+    --ds-danger-soft:       ${st.dangerBg};
+    --ds-warning-soft:      ${st.warningBg};
+    --ds-success-soft:      ${st.successBg};
+    --ds-info-soft:         ${st.infoBg};
+    --ds-danger-line:       ${withAlpha(st.danger, 0.33)};
+    --ds-warning-line:      ${withAlpha(st.warning, 0.33)};
+    --ds-success-line:      ${withAlpha(st.success, 0.33)};
+    --ds-info-line:         ${withAlpha(st.info, 0.33)};
+    --ds-danger-fill:       ${withAlpha(st.danger, 0.80)};
+    --ds-success-fill:      ${withAlpha(st.success, 0.80)};
+
+    --ds-on-accent:         ${onAccent(acc.primary)};
+    --ds-on-danger:         ${onAccent(st.danger)};
+    --ds-on-warning:        ${onAccent(st.warning)};
+    --ds-on-success:        ${onAccent(st.success)};
+    --ds-on-info:           ${onAccent(st.info)};
+
     --glass-bg:             ${theme.glass?.background ?? theme.backgrounds.modal};
     --glass-border:         ${theme.glass?.border ?? `1px solid ${theme.borders.standard}`};
     --glass-blur:           ${theme.glass?.backdropFilter ?? 'blur(18px)'};
     --scrim:                ${theme.meta.isDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.60)'};
     --scrim-strong:         ${theme.meta.isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.85)'};
   `.trim();
+
+  return vars;
+}
+
+export function applyTheme(theme, selector = ':root') {
+  injectPerfLite();
+  const vars = themeVars(theme);
 
   let el = document.getElementById(STYLE_ID);
   if (!el) { el = document.createElement('style'); el.id = STYLE_ID; document.head.appendChild(el); }

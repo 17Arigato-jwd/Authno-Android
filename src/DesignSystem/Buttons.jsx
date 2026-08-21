@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { COLORS, GRADIENTS, TYPOGRAPHY, SHADOWS } from './tokens';
-import { pixelClip } from './_utils';
+import { pixelClip, onAccent } from './_utils';
 import { DSIcons } from './Icons';
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -20,14 +20,22 @@ const PIXEL_SIZES = {
   lg: { fontSize: 16, padding: '18px 32px', gap: 10, corner: 14, iconSize: 18 },
 };
 
+// Label colours are asked for, not assumed.
+//
+// Every one of these said `color: '#fff'`. On `primary` the fill is the
+// writer's own accent off a full HSV wheel, and on danger/success/info it is
+// a status colour the active theme sets — so white was a guess in all four,
+// and onAccent()'s own comment names Gold and Sage as the presets it already
+// loses. A real hex can be measured here; a var() has to be measured in
+// ThemeBase, which is what COLORS.on* are.
 const PIXEL_VARIANTS = {
-  primary:   (accent) => ({ border: accent ?? COLORS.violet, fill: `${accent ?? COLORS.violet}cc`, color: '#fff', shadow: SHADOWS.glow(accent ?? COLORS.violet) }),
+  primary:   (accent) => ({ border: accent ?? COLORS.violet, fill: `${accent ?? COLORS.violet}cc`, color: accent ? onAccent(accent) : COLORS.onAccent, shadow: SHADOWS.glow(accent ?? COLORS.violet) }),
   gradient:  ()       => ({ border: 'transparent', fill: null, gradient: GRADIENTS.violet, color: '#fff', shadow: SHADOWS.violet }),
   secondary: ()       => ({ border: COLORS.indigo, fill: `${COLORS.indigo}22`, color: COLORS.indigo, shadow: 'none' }),
   ghost:     (accent) => ({ border: `${accent ?? COLORS.rose}66`, fill: 'transparent', color: accent ?? COLORS.rose, shadow: 'none' }),
-  danger:    ()       => ({ border: COLORS.danger, fill: `${COLORS.danger}cc`, color: '#fff', shadow: SHADOWS.danger }),
-  success:   ()       => ({ border: COLORS.success, fill: `${COLORS.success}cc`, color: '#fff', shadow: SHADOWS.success }),
-  info:      ()       => ({ border: COLORS.sky, fill: `${COLORS.sky}cc`, color: '#fff', shadow: SHADOWS.sky }),
+  danger:    ()       => ({ border: COLORS.danger, fill: COLORS.dangerFill, color: COLORS.onDanger, shadow: SHADOWS.danger }),
+  success:   ()       => ({ border: COLORS.success, fill: COLORS.successFill, color: COLORS.onSuccess, shadow: SHADOWS.success }),
+  info:      ()       => ({ border: COLORS.sky, fill: `${COLORS.sky}cc`, color: onAccent(COLORS.sky), shadow: SHADOWS.sky }),
 };
 
 /**
@@ -100,11 +108,13 @@ const GRADIENT_BTN_VARIANTS = {
   ocean:     { bg: GRADIENTS.ocean,   shadow: SHADOWS.indiglo, color: '#fff' },
   rose:      { bg: GRADIENTS.rose,    shadow: '0 0 20px rgba(236,72,153,0.4)', color: '#fff' },
   ember:     { bg: GRADIENTS.ember,   shadow: SHADOWS.danger,  color: '#fff' },
-  sage:      { bg: GRADIENTS.sage,    shadow: SHADOWS.success, color: '#fff' },
+  // Sage is #22c55e→#16a34a. White on it is about 2:1 — the case onAccent()
+  // was written for, and the one gradient variant that is not dark enough.
+  sage:      { bg: GRADIENTS.sage,    shadow: SHADOWS.success, color: onAccent('#22c55e') },
   aurora:    { bg: GRADIENTS.aurora,  shadow: SHADOWS.violet,  color: '#fff' },
   secondary: { bg: 'rgba(139,92,246,0.14)', shadow: 'none', color: COLORS.violet, border: `1px solid rgba(139,92,246,0.3)` },
   ghost:     { bg: 'transparent', shadow: 'none', color: COLORS.textMuted, border: `1px solid ${COLORS.border}` },
-  danger:    { bg: COLORS.danger, shadow: SHADOWS.danger, color: '#fff' },
+  danger:    { bg: COLORS.danger, shadow: SHADOWS.danger, color: COLORS.onDanger },
 };
 
 const GRADIENT_BTN_SIZES = {
@@ -119,11 +129,20 @@ const GRADIENT_BTN_SIZES = {
  * Props:
  *   variant   'primary' | 'ocean' | 'rose' | 'ember' | 'sage' | 'aurora' | 'secondary' | 'ghost' | 'danger'
  *   size      'sm' | 'md' | 'lg'
+ *   accentHex string     fill it with the writer's accent, label included
  *   icon      ReactNode
  *   disabled  bool
+ *
+ * `accentHex` exists because callers were reaching for `style` instead:
+ * ProGate's "Upgrade to Pro" passed `style={{ background: accentHex }}` and
+ * got the variant's label colour, which is white — so the one button in the
+ * app with something to sell was white-on-gold for anybody using the Gold
+ * preset. A prop that sets the fill sets the label with it; `style` can only
+ * ever change one of the two.
  */
-export function GradientButton({ variant = 'primary', size = 'md', icon, disabled = false, onClick, style = {}, children }) {
-  const v  = GRADIENT_BTN_VARIANTS[variant] ?? GRADIENT_BTN_VARIANTS.primary;
+export function GradientButton({ variant = 'primary', size = 'md', accentHex, icon, disabled = false, onClick, style = {}, children }) {
+  const base = GRADIENT_BTN_VARIANTS[variant] ?? GRADIENT_BTN_VARIANTS.primary;
+  const v  = accentHex ? { ...base, bg: accentHex, color: onAccent(accentHex), shadow: SHADOWS.glow(accentHex) } : base;
   const sz = GRADIENT_BTN_SIZES[size] ?? GRADIENT_BTN_SIZES.md;
 
   return (
@@ -166,7 +185,7 @@ export const DangerButton = (props) => <GradientButton variant="danger" {...prop
  * Props:
  *   variant   'pixel' | 'smooth'
  *   size      'xs' | 'sm' | 'md' | 'lg'
- *   color     CSS color for border + text + icon  (default '#fff')
+ *   color     CSS color for border + text + icon  (default: the theme's text)
  *   icon      ReactNode
  *   disabled  bool
  */
@@ -180,7 +199,10 @@ export const DangerButton = (props) => <GradientButton variant="danger" {...prop
  * unreachable have to be the same state, or the only people who can tell a
  * disabled button from a broken one are the people who can see it.
  */
-export function MinimalButton({ variant = 'smooth', size = 'md', color = '#ffffff', icon, disabled = false, onClick, style = {}, children }) {
+// The default was '#ffffff'. This button has no fill — it is a border and a
+// label over whatever is behind it — so white was not a colour choice, it was
+// an assumption that the page is dark. On Paper or Sepia it is cream on cream.
+export function MinimalButton({ variant = 'smooth', size = 'md', color = COLORS.textPrimary, icon, disabled = false, onClick, style = {}, children }) {
   const [hovered, setHovered] = useState(false);
 
   if (variant === 'smooth') {

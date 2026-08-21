@@ -11,15 +11,22 @@
  *   {
  *     id:      string          // one install session
  *     kind:    'extension' | 'theme'
- *     stage:   'validating' | 'decoding' | 'writing' | 'activating' | 'done' | 'error'
+ *     stage:   'validating' | 'decoding' | 'writing' | 'permissions'
+ *                       | 'activating' | 'done' | 'error'
  *     name?:   string          // manifest.name once known
  *     version?: string
  *     fromVersion?: string     // present when this is an UPDATE
  *     progress?: number        // 0..1 within the writing stage
  *     fileCount?: number
  *     filesWritten?: number
+ *     asking?: number          // permissions stage: how many are being asked
  *     error?:  string
  *   }
+ *
+ * `permissions` is the one stage that is not the installer working. The
+ * install has stopped and is waiting for a person to answer, which is why
+ * InstallSheet steps aside for it rather than drawing progress: the sheet is
+ * bottom-anchored, so is the question, and the sheet was on top of it.
  */
 
 const listeners = new Set();

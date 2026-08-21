@@ -231,6 +231,70 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().evaluateJavascript(js, null);
     }
 
+    // ── What was handed to us ────────────────────────────────────────────────
+
+    /**
+     * The kind of file behind an intent: name first, then type, then bytes.
+     *
+     * Each of the three handlers below used to ask this for itself, by
+     * looking for its own extension in the URI — which a content URI does not
+     * carry. Asking once, in one place, is also the only way the three
+     * answers can be guaranteed to disagree at most one way.
+     */
+    private String kindOf(Intent intent, Uri uri) {
+        return OpenedFile.kindOf(displayName(uri), intent.getType(), sniff(uri));
+    }
+
+    /**
+     * The provider's name for a file, which is where the extension lives.
+     *
+     * Falls back to the URI's last segment: a file:// URI has a real path and
+     * no provider to ask, and some content URIs happen to end in the name.
+     */
+    private String displayName(Uri uri) {
+        if ("file".equals(uri.getScheme())) return uri.getLastPathSegment();
+        try (android.database.Cursor c = getContentResolver().query(
+                uri, new String[] { android.provider.OpenableColumns.DISPLAY_NAME },
+                null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (i >= 0) {
+                    String name = c.getString(i);
+                    if (name != null && !name.isEmpty()) return name;
+                }
+            }
+        } catch (Exception ignored) {
+            // A provider that will not answer is not an error here; the bytes
+            // are still available and still say what the file is.
+        }
+        return uri.getLastPathSegment();
+    }
+
+    /**
+     * The first few bytes, for the magic number.
+     *
+     * Opened and closed on its own rather than held: the handler that goes on
+     * to accept the file re-opens it and reads the whole thing, and a stream
+     * kept alive across that decision is a descriptor leaked on every path
+     * that decides not to.
+     */
+    private byte[] sniff(Uri uri) {
+        try (InputStream is = getContentResolver().openInputStream(uri)) {
+            if (is == null) return null;
+            byte[] head = new byte[OpenedFile.SNIFF_BYTES];
+            int got = 0;
+            while (got < head.length) {
+                int n = is.read(head, got, head.length - got);
+                if (n < 0) break;
+                got += n;
+            }
+            if (got < head.length) return java.util.Arrays.copyOf(head, got);
+            return head;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     // ── .authbook file intent ─────────────────────────────────────────────────
 
     private void handleAuthBookIntent(Intent intent) {
@@ -239,12 +303,12 @@ public class MainActivity extends BridgeActivity {
         Uri uri = intent.getData();
         if (uri == null) return;
 
-        String uriLower = uri.toString().toLowerCase();
-        String mime = intent.getType();
-        if (uriLower.endsWith(".extbk") || uriLower.contains(".extbk?")
-                || "application/x-extbk".equals(mime)) return;
-        if (uriLower.endsWith(".thmbk") || uriLower.contains(".thmbk?")
-                || "application/x-thmbk".equals(mime)) return; // themes go to handleThmbkIntent
+        // A .extbk or a .thmbk is somebody else's job, and a content URI does
+        // not say which it is — see OpenedFile. Anything that is not
+        // recognisably a package is opened as a book, which is what this path
+        // did before and what a stray file should still land on.
+        String kind = kindOf(intent, uri);
+        if (OpenedFile.EXTBK.equals(kind) || OpenedFile.THMBK.equals(kind)) return;
 
         // try-with-resources, not a bare close() after the loop.
         //
@@ -298,11 +362,7 @@ public class MainActivity extends BridgeActivity {
         android.net.Uri uri = intent.getData();
         if (uri == null) return;
 
-        String uriStr = uri.toString().toLowerCase();
-        if (!uriStr.endsWith(".extbk") && !uriStr.contains(".extbk?")) {
-            String mime = intent.getType();
-            if (mime == null || !mime.equals("application/x-extbk")) return;
-        }
+        if (!OpenedFile.EXTBK.equals(kindOf(intent, uri))) return;
 
         try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) { dispatchExtbkError("Could not open file stream"); return; }
@@ -339,11 +399,7 @@ public class MainActivity extends BridgeActivity {
         android.net.Uri uri = intent.getData();
         if (uri == null) return;
 
-        String uriStr = uri.toString().toLowerCase();
-        if (!uriStr.endsWith(".thmbk") && !uriStr.contains(".thmbk?")) {
-            String mime = intent.getType();
-            if (mime == null || !mime.equals("application/x-thmbk")) return;
-        }
+        if (!OpenedFile.THMBK.equals(kindOf(intent, uri))) return;
 
         try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) { dispatchExtbkError("Could not open theme file stream"); return; }

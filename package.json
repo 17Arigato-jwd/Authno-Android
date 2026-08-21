@@ -73,6 +73,8 @@
     "check:timezones": "node scripts/check-timezones.mjs",
     "stress:extensions": "node scripts/stress-extensions.mjs",
     "check:extbk": "node scripts/check-extbk-crossread.mjs",
+    "check:theme-tokens": "node scripts/check-theme-tokens.mjs",
+    "check:opened-file": "node scripts/check-opened-file.mjs",
     "check:boot": "node scripts/check-boot.mjs",
     "fuzz:parsers": "node scripts/fuzz-parsers.mjs"
   },
