@@ -3,6 +3,56 @@
 All notable, user-facing changes. Dates are release dates; unreleased work sits
 under the top-most version until it ships.
 
+## 1.1.20-beta.1
+
+_Things that were unreadable on a light theme, a question that arrived
+underneath the panel that was waiting for it, and two things that could not be
+opened at all._
+
+### If you use a light theme
+
+- **Dialogs, sheets and notifications follow your theme again.** Their
+  backgrounds had stayed dark while the text on them followed the theme, so on
+  Sepia, Paper and Light the words were near-black on a near-black panel.
+- **Badges and pills have their colour back.** The small labels — "worth a
+  look", "new", "beta" — and the red and green buttons had been painting no
+  background at all, so a badge read as stray coloured text next to whatever
+  was beside it.
+- **Buttons choose a label colour that can be read on them.** A white label was
+  used whatever the button was filled with, which on the Gold and Sage accents
+  was close to invisible. That included "Upgrade to Pro" and the button that
+  confirms something you cannot undo.
+- Outline buttons, which have no fill at all, were drawn in white — on a pale
+  page that is nothing at all.
+- Extension settings pages use the app's own fields instead of their own, so
+  they match everything around them.
+
+### Extensions
+
+- **The install panel gets out of the way of the question it is asking.** When
+  an install stopped to ask what the extension may do, the progress panel sat
+  on top of that question, still reading "Installing…" — and its progress bar
+  ran backwards while you read it.
+- **An extension that was never asked what it may do now says so.** One
+  installed by opening a file, rather than from inside the app, could end up
+  allowed to do nothing at all and with no way to tell — it ran, did nothing,
+  and explained nothing. The Extensions tab now says the question was never put
+  and lets you answer it.
+
+### Opening things
+
+- **Opening a `.extbk` from your file manager installs it.** Tapping one did
+  nothing whatsoever — no error, nothing on screen, the app simply opened. It
+  now works from Downloads, Files, Drive and anywhere else that hands a file
+  over.
+- **Developer options can be reached again**, from the version in About.
+
+### For extension authors
+
+- `extbk unpack` can read the packages `extbk build` writes. It refused them as
+  invalid, which made looking inside somebody else's extension impossible.
+- `extbk info` lists the files in a package, not only its code.
+
 ## 1.1.20-beta.0
 
 _Extensions can finally do the things they said they could, the widgets fit
