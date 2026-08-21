@@ -114,6 +114,24 @@ async function writeExtensionFile(Filesystem, Directory, extId, relPath, data) {
   });
 }
 
+/**
+ * The manifest as it goes to disk, with the one field the app owns.
+ *
+ * `installedAt` is not the author's to write — it is when THIS copy landed on
+ * THIS device, which only the installer knows. The Extensions tab shows it,
+ * and without it the row could only ever read "Installed —".
+ *
+ * An update keeps the original date. "Installed 14 Aug" answers "how long have
+ * I had this", and resetting it on every update would answer a question nobody
+ * asked instead.
+ */
+function stamp(manifest, previous) {
+  return {
+    ...manifest,
+    installedAt: previous?.installedAt ?? new Date().toISOString(),
+  };
+}
+
 // ─── Manifest validation (mirrors format.js validateManifest) ─────────────────
 
 function validateManifest(raw) {
@@ -188,7 +206,8 @@ export async function installExtbkBytes(base64, { installId, silent = false, ask
     let written = 0;
     const step = () => { written += 1; emit({ stage: 'writing', name: manifest.name, version: manifest.version, fromVersion, fileCount: totalFiles, filesWritten: written, progress: written / totalFiles }); };
 
-    await writeExtensionFile(Filesystem, Directory, manifest.id, 'manifest.json', JSON.stringify(manifest, null, 2));
+    await writeExtensionFile(Filesystem, Directory, manifest.id, 'manifest.json',
+      JSON.stringify(stamp(manifest, previous), null, 2));
     step();
     await writeExtensionFile(Filesystem, Directory, manifest.id, 'index.js', entry);
     step();
@@ -283,7 +302,7 @@ async function installEpkBytes(bytes, { id, emit, askPermissions = null }) {
   };
 
   await writeExtensionFile(Filesystem, Directory, manifest.id, 'manifest.json',
-    JSON.stringify(manifest, null, 2));
+    JSON.stringify(stamp(manifest, previous), null, 2));
   step();
   for (const [path, source] of files) {
     await writeExtensionFile(Filesystem, Directory, manifest.id, path, source);

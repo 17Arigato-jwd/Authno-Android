@@ -404,6 +404,12 @@ export class UnknownMethod extends Error {
   }
 }
 
+/** Local calendar day, so "today" means the reader's today. */
+function dayKey(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
 /**
  * One extension's grants, plus a record of what it was refused.
  *
@@ -431,6 +437,20 @@ export class PermissionSet {
     this.userGranted = [...new Set(userHosts.filter((h) => !hostProblem(h)))].slice(0, maxUserHosts);
     this.maxUserHosts = maxUserHosts;
     this.denials = new Map();   // permission → { count, methods:Set, firstAt, lastAt }
+    /**
+     * The other half of the ledger: what a grant has actually been used for.
+     *
+     * Denials alone answer "why does this look broken". They cannot answer the
+     * question somebody asks about a permission they DID grant, which is
+     * whether it is being used at all — "Read all your books · never used" is
+     * a fact worth having next to the toggle that takes it away, and it is
+     * only available if the door counts both ways.
+     *
+     * `day` is a local date key rather than a timestamp window: "today" on
+     * this screen means the calendar day the reader is having, and a rolling
+     * 24 hours would read as wrong to them at breakfast.
+     */
+    this.uses = new Map();      // permission → { count, today, day, firstAt, lastAt }
   }
 
   /** Direct grant, or one implied by a grant — see `implies` in PERMISSIONS. */
@@ -465,7 +485,7 @@ export class PermissionSet {
 
     const permission = permissionForMethod(method);
     if (!permission) throw new UnknownMethod(method);
-    if (this.has(permission)) return true;
+    if (this.has(permission)) { this._used(permission, now); return true; }
 
     // Record the denial against the permission the AUTHOR DECLARED, when one
     // of those would have covered this method by implication.
@@ -492,6 +512,52 @@ export class PermissionSet {
     // The thrown error still names the permission that actually gates the call,
     // because that is what the extension author needs in order to fix it.
     throw new PermissionDenied(permission, method);
+  }
+
+  /**
+   * Count one allowed call, against the permission the AUTHOR declared.
+   *
+   * Same attribution as a denial and for the same reason: Cloud Backup
+   * declares `library:read:all` and calls `library.get`, which is gated by
+   * `library:read:current`. Counting the gate would put the number beside a
+   * row the user has never seen, and leave the row they did grant reading
+   * "never used" while it was working the whole time.
+   */
+  _used(permission, now) {
+    let attributed = permission;
+    if (!this.requested.has(permission)) {
+      for (const req of this.requested) {
+        if (impliedBy(req).has(permission)) { attributed = req; break; }
+      }
+    }
+    const day = dayKey(now);
+    const e = this.uses.get(attributed)
+      ?? { count: 0, today: 0, day, firstAt: now, lastAt: now };
+    if (e.day !== day) { e.day = day; e.today = 0; }
+    e.count += 1;
+    e.today += 1;
+    e.lastAt = now;
+    this.uses.set(attributed, e);
+  }
+
+  /**
+   * What each granted permission has been used for, most-used first.
+   *
+   * Only what this run has seen: the ledger lives on the running host and dies
+   * with it. That is a real limitation and the screen states it rather than
+   * implying the numbers are lifetime totals.
+   */
+  used(now = Date.now()) {
+    const day = dayKey(now);
+    return [...this.uses.entries()]
+      .map(([permission, e]) => ({
+        permission,
+        count: e.count,
+        today: e.day === day ? e.today : 0,
+        firstAt: e.firstAt,
+        lastAt: e.lastAt,
+      }))
+      .sort((a, b) => b.count - a.count);
   }
 
   /**

@@ -89,7 +89,7 @@ const REQUIRED_MODULES = [
   'components/ExtensionPage',
   'components/ExtensionPanel',
   'components/ExtensionDots',
-  'components/ExtensionTab',
+  'components/ExtensionsPanel',
   'components/ExtensionPermissions',
   'components/ExtensionPromptDialog',
   'components/ExtensionSettingsPage',

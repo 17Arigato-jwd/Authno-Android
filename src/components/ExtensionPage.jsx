@@ -8,6 +8,7 @@ import { hostV2 } from '../utils/extensionRunnerV2';
 import { FRAME_SANDBOX } from '../utils/sandboxProtocol';
 import { planModuleGraph, rewriteSpecifiers } from '../utils/moduleGraph';
 import { isAndroid } from '../utils/platform';
+import { useTheme, themeVars } from '../theme';
 
 // ── Inject spin keyframe once at module load ────────────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('ds-spin')) {
@@ -178,7 +179,50 @@ function StatusBox({ icon, title, subtitle }) {
 // modules into blob URLs inside the frame instead.
 
 
+/**
+ * The app's theme, as a stylesheet the extension's own page can read.
+ *
+ * A `ui-file` page is a sandboxed srcdoc document. It inherits nothing — not a
+ * variable, not a font, not a background — so before this it had no way to
+ * know what the app looked like and every author guessed. Cloud Backup guessed
+ * dark, correctly for four of AuthNo's themes and disastrously for the other
+ * two: on Sepia and Paper its headings were near-black on near-black, and its
+ * cards were dark rectangles on a cream page.
+ *
+ * So the frame carries the same custom properties the app sets on its own
+ * `:root` — the identical block, from the identical function, which is the
+ * only version of this that cannot drift. An extension styling with
+ * `var(--text-1)` follows the theme for free. One that hardcodes its colours
+ * at least gets a correct background and a readable default underneath them.
+ *
+ * `--accent` is added on top because the app's accent is a runtime override
+ * rather than part of the theme, and an extension's primary button should be
+ * the colour the rest of the app's primary buttons are.
+ */
+function pageTheme(theme, accentHex) {
+  const vars = theme ? themeVars(theme) : '';
+  return `    :root {
+${vars}
+      --accent: ${accentHex};
+      color-scheme: ${theme?.meta?.isDark === false ? 'light' : 'dark'};
+    }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--app-bg, transparent);
+      color: var(--text-1, inherit);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { box-sizing: border-box; }`;
+}
+
 function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
+  // The page is a document of its own, so it inherits nothing — not the
+  // theme's variables, not a font, not even a background. Which is why every
+  // heading in Cloud Backup's pages was invisible on Sepia and Paper: the
+  // extension had picked colours for a dark app and there was nothing in the
+  // frame to tell it the app had stopped being dark.
+  const { theme } = useTheme();
   const [srcdoc, setSrcdoc]     = useState(null);
   const [error, setError]       = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -400,7 +444,7 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    html, body { margin: 0; padding: 0; background: transparent; }
+${pageTheme(theme, accentHex)}
   </style>
   <script>${bridgeShim}${close}
 </head>
@@ -439,7 +483,10 @@ function UiFilePage({ extension, pageDef, session, accentHex, onBack }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [extension, pageDef]);
+    // theme and accent are in here because they are IN the document: the
+    // frame has no way to inherit a variable, so a theme switch has to
+    // rebuild it. Cheap — the modules are already read from disk by then.
+  }, [extension, pageDef, theme, accentHex]);
 
   // ── Handle postMessage calls from the iframe ────────────────────────────────
   useEffect(() => {

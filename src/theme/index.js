@@ -27,6 +27,10 @@ import { getAllThemes as _getAll } from './registry';
 export {
   createTheme,
   applyTheme,
+  // The custom-property block as text. `applyTheme` writes it to a document;
+  // an extension page needs the same block inside a frame that inherits
+  // nothing, which is the only way one can follow the theme at all.
+  themeVars,
   applyAccent,
   applyFonts,
   ThemeProvider,

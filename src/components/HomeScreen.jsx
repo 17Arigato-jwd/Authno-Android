@@ -1,4 +1,5 @@
 // HomeScreen.jsx
+import { ContributionIcon } from './contributionIcon';
 import { Fragment, useState, useRef, useCallback } from 'react';
 
 
@@ -15,17 +16,6 @@ import { useExtensionContributions, useExtensions } from '../utils/ExtensionCont
 
 // Resolve manifest.icon string → Lucide component, or null if not found
 // Extension-contributed tile icon resolver — maps string name → DSIcons key
-const TILE_ICON_MAP = {
-  Cloud: 'Cloud', Server: 'Package', HardDrive: 'Package', Upload: 'Upload',
-  BookOpen: 'BookOpen', Settings2: 'Settings', Puzzle: 'Extension',
-  BarChart2: 'Star', Zap: 'Lightning', Globe: 'Link', Star: 'Star',
-  Eye: 'Eye', Home: 'Home', Box: 'Package',
-};
-function resolveTileIcon(iconName, size = 28) {
-  const key = iconName && TILE_ICON_MAP[iconName];
-  const Icon = key && DSIcons[key];
-  return Icon ? <Icon size={size} /> : null;
-}
 
 // ─── Light-mode detector ──────────────────────────────────────────────────────
 // Reads the .light-mode class from the app-root div — no prop needed from App.js.
@@ -367,10 +357,10 @@ export default function HomeScreen({
     { icon: <DSIcons.FolderOpen size={28} color="currentColor" />, label: 'Edit an Existing Book', onClick: handleOpenExisting },
     // Extension-contributed action tiles (dynamically populated)
     ...extHomeTiles.map(tile => ({
-      icon: (() => {
-        const tileIcon = resolveTileIcon(tile.icon ?? tile._extIcon, 28);
-        return tileIcon ?? <DSIcons.Extension size={28} color="currentColor" />;
-      })(),
+      // One resolver, shared with the book screen, the drawer and Settings.
+      // Four copies of this map disagreed about which names they knew, so the
+      // same contribution had an icon here and a puzzle piece elsewhere.
+      icon: <ContributionIcon item={tile} size={28} slot="homescreen" />,
       label: tile.label,
       onClick: () => runContribution(tile._ext, tile, null),
     })),
