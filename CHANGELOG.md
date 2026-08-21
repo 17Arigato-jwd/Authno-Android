@@ -20,8 +20,8 @@ opened at all._
   was beside it.
 - **Buttons choose a label colour that can be read on them.** A white label was
   used whatever the button was filled with, which on the Gold and Sage accents
-  was close to invisible. That included "Upgrade to Pro" and the button that
-  confirms something you cannot undo.
+  was close to invisible — including on the button that confirms something you
+  cannot undo.
 - Outline buttons, which have no fill at all, were drawn in white — on a pale
   page that is nothing at all.
 - Extension settings pages use the app's own fields instead of their own, so
