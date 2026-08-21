@@ -46,6 +46,11 @@ const CHECKS = [
   // the extension sound while stepping around the app code that was not — which
   // is how a runner that could not link a second file shipped green.
   ['v2 runner links', 'npm', ['run', 'check:runner-v2'], true],
+  // Builds the sandbox host and then runs an extension in it. Both halves
+  // matter: the first says what is NOT in the bundle a dev tool hands out,
+  // the second is the only thing that ever found the manifests coming back
+  // base64 on every platform that is not Android.
+  ['sandbox host', 'npm', ['run', 'check:sandbox-host'], true],
   ['production build', 'npm', ['run', 'build'], true],
   // After the build, because it loads what the build produced. The other
   // browser checks drive synthetic harnesses; this one boots the real app and

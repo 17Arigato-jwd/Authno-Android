@@ -8,6 +8,7 @@
  * every entry — non-manifest entries (or plain files) return null and are skipped.
  */
 
+import { fsText } from './fsText';
 import { logError } from './ErrorLogger';
 import { APP_VERSION } from '../version';
 
@@ -84,7 +85,7 @@ async function loadManifest(dirName) {
       directory: Directory.Data,
       encoding: 'utf8',
     });
-    const raw = JSON.parse(result.data);
+    const raw = JSON.parse(fsText(result.data));
     validateManifest(raw);
     return { ...raw, _dirName: dirName };
   } catch (e) {

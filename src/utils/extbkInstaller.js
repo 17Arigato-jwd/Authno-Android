@@ -19,6 +19,7 @@
  *   isExtensionInstalled(extId)       → Promise<boolean>
  */
 
+import { fsText } from './fsText';
 import { logError }     from './ErrorLogger';
 import { unpackExtbk, validateExtbk, FILE_MAGIC } from './extbkFormat';
 import { isEpk, readEpk } from './epkFormat';
@@ -93,13 +94,23 @@ async function writeExtensionFile(Filesystem, Directory, extId, relPath, data) {
     } catch (_) {}
   }
 
-  const b64 = data instanceof Uint8Array ? bytesToBase64(data) : btoa(unescape(encodeURIComponent(data)));
+  // Text as text, bytes as base64 — and the difference is not cosmetic.
+  //
+  // Everything used to go out as base64 with no `encoding`. Native Filesystem
+  // decodes that on the way in, so a phone ended up with real text on disk and
+  // read it back correctly. The web implementation stores the string it is
+  // given and ignores `encoding` on the way out, so on desktop every file came
+  // back base64 — and discovery, which JSON.parses the manifest, failed on the
+  // first character of every extension ever installed there. They installed,
+  // said so, and then did not exist.
+  const isBytes = data instanceof Uint8Array;
 
   await Filesystem.writeFile({
     path: `${EXTENSIONS_DIR}/${extId}/${relPath}`,
-    data: b64,
+    data: isBytes ? bytesToBase64(data) : String(data),
     directory: Directory.Data,
     recursive: true,
+    ...(isBytes ? {} : { encoding: 'utf8' }),
   });
 }
 
@@ -362,7 +373,7 @@ export async function readInstalledManifest(extId) {
       path: `${EXTENSIONS_DIR}/${extId}/manifest.json`,
       directory: Directory.Data, encoding: 'utf8',
     });
-    return JSON.parse(typeof res.data === 'string' ? res.data : '');
+    return JSON.parse(fsText(res.data));
   } catch {
     return null;
   }

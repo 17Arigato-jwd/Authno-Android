@@ -94,3 +94,9 @@ android/app/src/main/assets/public/
 authno-license-private.json
 
 component-shots/
+
+# Built by scripts/build-sandbox-host.mjs; CI rebuilds it for the installer.
+extensions/extbk-sandbox/host/
+
+# The app's own production build must never be dropped in here again.
+extensions/extbk-sandbox/app/

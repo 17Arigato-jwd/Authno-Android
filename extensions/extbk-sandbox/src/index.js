@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * extbk-sandbox — v2.0.0
+ * extbk-sandbox — v2.1.0
  *
  * Local development server for AuthNo .extbk extensions.
  *
- *   • Serves the bundled React app at /app/ (if present) — run your code immediately
+ *   • Serves the sandbox host at /host/ — the app's extension surfaces, alone
  *   • Serves extension source files under /ext/ with hot-reload via WebSocket
  *   • Mock AuthNo session API — simulates sessionHooks, storage, and navigation
  *   • Split-pane UI: React app preview on the left, extension sandbox on the right
@@ -13,8 +13,9 @@
  * Usage:
  *   extbk-sandbox [extDir] [--port 3747]
  *
- * The bundled app/ directory is co-located with this install (placed there by CI).
- * If absent, the left pane shows a placeholder and only the extension sandbox runs.
+ * The host/ directory is co-located with this install (built by CI from
+ * src/sandbox/). If absent, the host tab says so and everything else still
+ * runs — the sandbox is useful without it.
  */
 
 import path              from 'path';
@@ -40,7 +41,7 @@ const DEFAULT_PORT = 3747;
 program
   .name('extbk-sandbox')
   .description('AuthNo extension dev server — hot reload + React preview + mock API')
-  .version('2.0.0')
+  .version('2.1.0')
   .argument('[extDir]', 'Extension source directory (must contain manifest.json + index.js)', '.')
   .option('-p, --port <port>', 'Port to listen on', String(DEFAULT_PORT))
   .parse();
@@ -49,11 +50,20 @@ const [extDir]       = program.args;
 const { port: portStr } = program.opts();
 const port           = parseInt(portStr, 10);
 const src            = path.resolve(extDir ?? '.');
-// The bundled-app pane is gone. It served a compiled copy of AuthNo itself
-// beside the extension — half the screen, most of the installer's size, and
-// nothing an extension author can act on. What replaced it is the space: the
-// permission switches, the command list and the host-call log all needed room,
-// and all three are about the extension rather than the app around it.
+// The app pane serves the sandbox HOST, not AuthNo.
+//
+// It used to be a compiled copy of the app, downloaded from CI — the gate, the
+// onboarding, the account handling and the billing page, all shipped inside a
+// dev tool so that somebody could see where a settings row lands. What is
+// there now is built from src/sandbox/: the extension surfaces and what they
+// need, and nothing an extension cannot reach. check:sandbox-host asserts that
+// against the built bytes rather than against anybody's intention.
+//
+// It shares the left column with the permission switches, the command list and
+// the host-call log, which are about the extension rather than the app around
+// it, and which nobody wanted to give up to get the pane back.
+const HOST_DIR = path.join(INSTALL_DIR, 'host');
+const HAS_HOST = fs.existsSync(path.join(HOST_DIR, 'index.html'));
 
 // ─── Validate extension directory ─────────────────────────────────────────────
 
@@ -113,8 +123,13 @@ app.use(express.json());
 // Sandbox shell UI
 app.get('/', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(sandboxShellHtml(manifest, port, IS_V2));
+  res.send(sandboxShellHtml(manifest, port, IS_V2, HAS_HOST));
 });
+
+// The sandbox host. Cached normally: it is a build artefact, not the code
+// under development, and re-fetching 600 KB on every hot reload of an
+// extension would make the reload feel like the app's fault.
+if (HAS_HOST) app.use('/host', express.static(HOST_DIR));
 
 // Extension source files (no cache — always fresh)
 app.use('/ext', express.static(src, { etag: false, maxAge: 0 }));
@@ -335,7 +350,7 @@ server.on('error', (e) => {
 
 server.listen(port, () => {
   log('');
-  log(chalk.bold('extbk-sandbox') + chalk.dim(' v2.0.0'));
+  log(chalk.bold('extbk-sandbox') + chalk.dim(' v2.1.0'));
   log(chalk.dim('─'.repeat(46)));
   log(`  Extension  : ${chalk.cyan(manifest.name)} ${chalk.dim(`(${manifest.id} v${manifest.version})`)}`);
   log(`  Directory  : ${chalk.dim(src)}`);
@@ -373,7 +388,7 @@ function makeMockSession() {
 
 // ─── Sandbox shell HTML ───────────────────────────────────────────────────────
 
-function sandboxShellHtml(manifest, wsPort, isV2) {
+function sandboxShellHtml(manifest, wsPort, isV2, hasHost) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -457,6 +472,20 @@ function sandboxShellHtml(manifest, wsPort, isV2) {
     .tag-info{color:var(--muted)}
     .tag-app{color:#38bdf8}
     /* The development panels that replaced the app preview. */
+    /* The left column is tabbed rather than split four ways: the host pane
+       needs the whole height to be worth looking at, and the three panels
+       beside it each need more than a quarter. */
+    .ptabs{display:flex;gap:2px;padding:5px 8px;background:var(--bg2);
+      border-bottom:1px solid var(--border);flex-shrink:0}
+    .ptab{padding:3px 9px;border-radius:5px;border:1px solid transparent;
+      background:none;color:var(--muted);font-size:11px;cursor:pointer}
+    .ptab:hover{color:var(--text)}
+    .ptab.on{background:var(--bg3);border-color:var(--border);color:var(--text)}
+    .pane{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+    .pane.on{display:flex}
+    .host-frame{flex:1;border:none;background:var(--bg)}
+    .host-missing{flex:1;display:flex;align-items:center;justify-content:center;
+      padding:24px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6}
     .perms{padding:8px 12px;overflow-y:auto;max-height:34%}
     .perm{display:flex;align-items:flex-start;gap:8px;padding:6px 0;
       border-bottom:1px solid var(--border)}
@@ -491,28 +520,50 @@ function sandboxShellHtml(manifest, wsPort, isV2) {
 
 <div class="main">
 
-  <!-- Left: what the extension asked for, and what it did with it.
-       This was a preview of the whole AuthNo app, which is not a thing an
-       extension author can act on. -->
+  <!-- Left: the host, and what the extension asked for.
+       The host pane is a cut-down AuthNo built from src/sandbox — the
+       extension surfaces and nothing else. It is not the app's own build,
+       which is what used to sit here. -->
   <div class="app-pane">
-    <div class="pane-header">
-      <span>Permissions</span>
-      <span style="color:var(--muted);font-size:10px">switch one off to see what happens</span>
+    <div class="ptabs">
+      <button class="ptab on" data-pane="host">Host</button>
+      <button class="ptab" data-pane="perms">Permissions</button>
+      <button class="ptab" data-pane="commands">Commands</button>
+      <button class="ptab" data-pane="wire">Host calls</button>
     </div>
-    <div id="perms" class="perms"></div>
 
-    <div class="pane-header" style="border-top:1px solid var(--border)">
-      <span>Commands</span>
-      <span style="color:var(--muted);font-size:10px" id="cmd-count"></span>
+    <div class="pane on" id="pane-host">
+      ${hasHost
+        ? '<iframe class="host-frame" id="host-frame" src="/host/" title="Sandbox host"></iframe>'
+        : '<div class="host-missing">The sandbox host is not installed beside this copy.<br>'
+          + 'Everything else still works — the extension runs in the pane on the right.<br><br>'
+          + '<code>npm run build:sandbox-host</code> in the AuthNo repo builds it.</div>'}
     </div>
-    <div id="commands" class="cmds"></div>
 
-    <div class="pane-header" style="border-top:1px solid var(--border)">
-      <span>Host calls</span>
-      <button class="btn" style="width:auto;padding:2px 8px;font-size:10px;margin:0"
-              onclick="clearCalls()">Clear</button>
+    <div class="pane" id="pane-perms">
+      <div class="pane-header">
+        <span>Permissions</span>
+        <span style="color:var(--muted);font-size:10px">switch one off to see what happens</span>
+      </div>
+      <div id="perms" class="perms" style="max-height:none;flex:1"></div>
     </div>
-    <div id="wire" class="wire"></div>
+
+    <div class="pane" id="pane-commands">
+      <div class="pane-header">
+        <span>Commands</span>
+        <span style="color:var(--muted);font-size:10px" id="cmd-count"></span>
+      </div>
+      <div id="commands" class="cmds" style="max-height:none;flex:1"></div>
+    </div>
+
+    <div class="pane" id="pane-wire">
+      <div class="pane-header">
+        <span>Host calls</span>
+        <button class="btn" style="width:auto;padding:2px 8px;font-size:10px;margin:0"
+                onclick="clearCalls()">Clear</button>
+      </div>
+      <div id="wire" class="wire"></div>
+    </div>
   </div>
 
   <!-- Middle: controls -->
@@ -679,7 +730,21 @@ function sandboxShellHtml(manifest, wsPort, isV2) {
     }
   });
   // The app frame is gone; a session update now only reaches the extension.
-  function postToApp() {}
+  // The host frame is a same-origin page served from /host/, so it can be
+  // messaged directly. It is a no-op when the host is not installed.
+  function postToApp(msg) {
+    const f = document.getElementById('host-frame');
+    try { f && f.contentWindow && f.contentWindow.postMessage(msg, '*'); } catch (e) { /* going */ }
+  }
+
+  document.querySelectorAll('.ptab').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.ptab').forEach(function (o) { o.classList.remove('on'); });
+      document.querySelectorAll('.pane').forEach(function (o) { o.classList.remove('on'); });
+      b.classList.add('on');
+      document.getElementById('pane-' + b.dataset.pane).classList.add('on');
+    });
+  });
 
   function addLog(tag, text) {
     const el   = document.getElementById('log');

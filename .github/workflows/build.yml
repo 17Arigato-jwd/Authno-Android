@@ -639,28 +639,39 @@ jobs:
   # extension immediately without needing to build the app themselves.
   build-sandbox:
     name: Build extbk-sandbox Installer
-    needs: build-react
+    # No longer `needs: build-react`. This used to download the app's own
+    # production build and ship it inside the installer, which handed the
+    # gate, onboarding, the account handling and the billing page to anybody
+    # who downloaded a dev tool. It builds its own host instead — the
+    # extension surfaces and what they need, nothing else — and
+    # check:sandbox-host asserts that against the built bytes.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
 
-      - name: Download compiled React app
-        uses: actions/download-artifact@v4
-        with: { name: react-build, path: extensions/extbk-sandbox/app/ }
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Build the sandbox host
+        run: npm run build:sandbox-host
 
       - name: Install sandbox dependencies
         working-directory: extensions/extbk-sandbox
         run: npm install --omit=dev
 
-      - name: Verify bundled app is present
+      - name: Verify the host is present and is not the app
         run: |
-          if [ ! -f "extensions/extbk-sandbox/app/index.html" ]; then
-            echo "Bundled React app missing from extbk-sandbox/app/" >&2
+          if [ ! -f "extensions/extbk-sandbox/host/index.html" ]; then
+            echo "Sandbox host missing from extbk-sandbox/host/" >&2
             exit 1
           fi
-          echo "Bundled app: $(find extensions/extbk-sandbox/app -type f | wc -l) files"
+          if [ -d "extensions/extbk-sandbox/app" ]; then
+            echo "extbk-sandbox/app/ is back — the sandbox must not ship the app's build" >&2
+            exit 1
+          fi
+          echo "Host: $(du -sh extensions/extbk-sandbox/host | cut -f1)"
 
       - name: Set version
         id: version
@@ -680,7 +691,7 @@ jobs:
           PKG="extbk-sandbox-${{ steps.version.outputs.name }}"
           mkdir -p dist/$PKG
           cp -r extensions/extbk-sandbox/src       dist/$PKG/src
-          cp -r extensions/extbk-sandbox/app       dist/$PKG/app
+          cp -r extensions/extbk-sandbox/host      dist/$PKG/host
           cp -r extensions/extbk-sandbox/installer dist/$PKG/installer
           cp    extensions/extbk-sandbox/package.json dist/$PKG/package.json
           chmod +x dist/$PKG/installer/install.sh
