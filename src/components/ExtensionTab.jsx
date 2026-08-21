@@ -544,7 +544,7 @@ function ExtensionCard({ ext, accentHex, session, onClose }) {
                   borderRadius: 10,
                   background: 'var(--color-danger)',
                   border: '1px solid var(--color-danger)',
-                  color: '#fff',
+                  color: 'var(--on-danger, #fff)',
                   fontWeight: 700,
                   cursor: 'pointer',
                 }}

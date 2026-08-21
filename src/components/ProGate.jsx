@@ -80,7 +80,7 @@ function UpgradePrompt({ feature, accentHex }) {
         variant="primary"
         size="md"
         icon={<StarIcon />}
-        style={{ background: accentHex, boxShadow: `0 4px 14px ${accentHex}55` }}
+        accentHex={accentHex}
         onClick={() => openBilling()}
       >
         Upgrade to Pro

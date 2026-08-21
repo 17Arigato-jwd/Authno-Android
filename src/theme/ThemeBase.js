@@ -20,6 +20,7 @@
 
 import { createContext, useContext, useState, useCallback } from 'react';
 import { resolveFontStack, ensureFontsLoaded, injectCustomFontFaces, webFontsEnabled } from '../utils/fontManager';
+import { onAccent, relativeLuminance } from '../DesignSystem/_utils';
 import { isAndroid } from '../utils/platform';
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -95,37 +96,16 @@ export function withAlpha(color, a) {
 }
 
 /**
- * onAccent(hex) → the text colour that can be read on an accent fill.
+ * onAccent / relativeLuminance now live in DesignSystem/_utils.js.
  *
- * The accent is the writer's own choice and the picker is a full HSV wheel, so
- * every hue and every lightness is reachable. A label hardcoded to white was
- * already failing on two of the six shipped presets — Gold #f59e0b and Sage
- * #22c55e sit near 2:1 against white — and disappears outright on anything
- * paler.
- *
- * Keeps white until it drops below 3:1, then switches. That is deliberately
- * not the threshold that maximises contrast: maximising would also flip Ember
- * and Ocean, which clear 3:1 and have read as white buttons since the app
- * shipped. Restyling half the buttons is a redesign; this is a bug fix, so it
- * only moves the ones that are actually unreadable. Past that point black is
- * the better choice by a wide margin anyway — 9:1 or more — so there is no
- * case where the rule picks the worse of the two.
- *
- * Mirrored natively in WidgetTheme.readableOn so the widgets and the app agree.
+ * They were here, and only the CSS variable below could reach them — so every
+ * button primitive in the DesignSystem went on painting `color: '#fff'` on an
+ * accent it had not looked at. Moved down a layer, where both the theme engine
+ * and the components that need the answer can ask. Re-exported so
+ * `import { onAccent } from '../theme'` keeps working, which is how
+ * widgetTheme.test.js checks it against WidgetTheme.readableOn.
  */
-export function onAccent(hex) {
-  return relativeLuminance(hex) > 0.30 ? '#111113' : '#ffffff';
-}
-
-/** WCAG 2.x relative luminance, 0 (black) to 1 (white). */
-function relativeLuminance(hex) {
-  const { r, g, b } = hexToRgb(hex || '#000000');
-  const lin = (v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
+export { onAccent, relativeLuminance };
 
 /**
  * buildAccentPalette(primaryHex)
@@ -274,6 +254,12 @@ export function themeVars(theme) {
 
     --accent:               ${acc.primary};
     --on-accent:            ${onAccent(acc.primary)};
+    /* The same question for the status fills. A confirm button on
+       --color-warning was white-on-amber, about 2:1, on the default theme. */
+    --on-danger:            ${onAccent(theme.statusColors.danger)};
+    --on-warning:           ${onAccent(theme.statusColors.warning)};
+    --on-success:           ${onAccent(theme.statusColors.success)};
+    --on-info:              ${onAccent(theme.statusColors.info)};
     --accent-light:         ${acc.light};
     --accent-dark:          ${acc.dark};
     --accent-base:          ${acc.base};
@@ -365,6 +351,12 @@ export function themeVars(theme) {
     --ds-info-line:         ${withAlpha(st.info, 0.33)};
     --ds-danger-fill:       ${withAlpha(st.danger, 0.80)};
     --ds-success-fill:      ${withAlpha(st.success, 0.80)};
+
+    --ds-on-accent:         ${onAccent(acc.primary)};
+    --ds-on-danger:         ${onAccent(st.danger)};
+    --ds-on-warning:        ${onAccent(st.warning)};
+    --ds-on-success:        ${onAccent(st.success)};
+    --ds-on-info:           ${onAccent(st.info)};
 
     --glass-bg:             ${theme.glass?.background ?? theme.backgrounds.modal};
     --glass-border:         ${theme.glass?.border ?? `1px solid ${theme.borders.standard}`};

@@ -93,7 +93,7 @@ function CreatorAvatar({ accentHex }) {
   if (!hasPhoto) {
     return (
       <div style={{ ...ring, display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${accentHex}, ${accentHex}55)` }}>
-        <span style={{ fontSize: 30, fontWeight: 800, color: "#fff" }}>V</span>
+        <span style={{ fontSize: 30, fontWeight: 800, color: "var(--on-accent, #fff)" }}>V</span>
       </div>
     );
   }

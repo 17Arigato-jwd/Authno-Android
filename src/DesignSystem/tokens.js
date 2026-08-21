@@ -78,6 +78,20 @@ export const COLORS = {
   infoLine:    'var(--ds-info-line, rgba(56,189,248,0.33))',
   dangerFill:  'var(--ds-danger-fill, rgba(237,66,69,0.8))',
   successFill: 'var(--ds-success-fill, rgba(34,197,94,0.8))',
+
+  // What can be read ON those fills.
+  //
+  // `onAccent()` has existed since v1.1.16 and its own comment names the two
+  // presets a hardcoded white label fails on — Gold and Sage, both near 2:1.
+  // Nothing but the CSS variable ever called it, so every button primitive in
+  // here went on painting '#fff' regardless. These are that answer, per fill.
+  // For a hex you hold at render time, call onAccent(hex) from ./_utils
+  // instead — a variable cannot be computed from a prop.
+  onAccent:  'var(--ds-on-accent, #ffffff)',
+  onDanger:  'var(--ds-on-danger, #ffffff)',
+  onWarning: 'var(--ds-on-warning, #111113)',
+  onSuccess: 'var(--ds-on-success, #111113)',
+  onInfo:    'var(--ds-on-info, #111113)',
 };
 
 export const GRADIENTS = {

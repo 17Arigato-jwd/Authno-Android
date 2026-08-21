@@ -73,7 +73,7 @@ function WarningRow({ warning, onFix, accentHex }) {
           onClick={onFix}
           style={{
             flexShrink: 0, padding: `6px ${SPACING.md}px`, borderRadius: RADIUS.sm,
-            border: 'none', background: accentHex, color: '#fff',
+            border: 'none', background: accentHex, color: 'var(--on-accent, #fff)',
             fontSize: TYPOGRAPHY.size.xs, fontWeight: TYPOGRAPHY.weight.bold,
             cursor: 'pointer',
           }}

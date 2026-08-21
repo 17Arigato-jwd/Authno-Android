@@ -104,7 +104,7 @@ export function ChapterRow({
             }}>Cancel</button>
             <button onClick={onDeleteConfirm} style={{
               padding: '6px 14px', borderRadius: '8px', border: 'none',
-              background: '#e03c3c', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+              background: 'var(--color-danger, #e03c3c)', color: 'var(--on-danger, #fff)', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
             }}>Delete</button>
           </div>
         </div>
@@ -123,7 +123,7 @@ export function ChapterRow({
                 style={{
                   width: '22px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'none', border: 'none', cursor: canMoveUp ? 'pointer' : 'default',
-                  color: canMoveUp ? 'var(--text-4)' : 'var(--text-6)',
+                  color: canMoveUp ? 'var(--text-4)' : 'var(--text-5)',
                   opacity: canMoveUp ? 1 : 0.25, padding: 0, borderRadius: '4px',
                 }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
@@ -137,7 +137,7 @@ export function ChapterRow({
                 style={{
                   width: '22px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'none', border: 'none', cursor: canMoveDown ? 'pointer' : 'default',
-                  color: canMoveDown ? 'var(--text-4)' : 'var(--text-6)',
+                  color: canMoveDown ? 'var(--text-4)' : 'var(--text-5)',
                   opacity: canMoveDown ? 1 : 0.25, padding: 0, borderRadius: '4px',
                 }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none">

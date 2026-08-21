@@ -170,7 +170,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
               cursor: 'pointer', boxShadow: `0 8px 22px ${accentHex}55`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             }}>
-            <DSIcons.Gift size={19} color="#fff" /> Try now — free for 7 days
+            <DSIcons.Gift size={19} color="var(--on-accent, #fff)" /> Try now — free for 7 days
           </button>
           <p style={{ fontSize: 12, color: 'var(--text-4)', textAlign: 'center', marginTop: 12, lineHeight: 1.6 }}>
             Nothing is charged today. You'll only pay {price.formatted}, once, if you're still here after day 7 —
@@ -188,7 +188,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
               boxShadow: `0 6px 18px ${accentHex}55`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
-            <DSIcons.Lock size={16} color="#fff" /> Buy Pro — {price.formatted}
+            <DSIcons.Lock size={16} color="var(--on-accent, #fff)" /> Buy Pro — {price.formatted}
           </button>
           <p style={{ fontSize: 11.5, color: 'var(--text-4)', textAlign: 'center', margin: '10px 0 20px', lineHeight: 1.6 }}>
             Opens secure checkout in your browser{upiAvailable ? ' — cards, UPI and netbanking' : ''}.
@@ -279,7 +279,7 @@ export default function BillingPage({ accentHex = '#5a00d9', onClose }) {
             style={{
               width: '100%', padding: '14px 0', borderRadius: 14, border: 'none',
               background: canPay ? accentHex : 'var(--surface-md)',
-              color: canPay ? '#fff' : 'var(--text-5)',
+              color: canPay ? 'var(--on-accent, #fff)' : 'var(--text-5)',
               fontSize: 15, fontWeight: 800, cursor: canPay && status === 'idle' ? 'pointer' : 'default',
               boxShadow: canPay ? `0 6px 18px ${accentHex}55` : 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,

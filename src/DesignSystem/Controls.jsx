@@ -15,7 +15,7 @@ import { COLORS, TYPOGRAPHY, RADIUS } from './tokens';
 export function Chip({ variant = 'default', icon, accentHex, children, onClick, style = {} }) {
   const accent = accentHex ?? COLORS.violet;
   const variants = {
-    default: { bg: 'rgba(255,255,255,0.06)', border: COLORS.border,         color: COLORS.textMuted  },
+    default: { bg: COLORS.tint,              border: COLORS.border,         color: COLORS.textMuted  },
     active:  { bg: `${accent}22`,            border: `${accent}55`,         color: accent             },
     success: { bg: COLORS.successSoft, border: COLORS.successLine, color: COLORS.success },
     warning: { bg: COLORS.warningSoft, border: COLORS.warningLine, color: COLORS.warning },

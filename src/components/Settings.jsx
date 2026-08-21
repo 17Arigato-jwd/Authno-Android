@@ -325,7 +325,8 @@ function ConfirmModal({ title, message, type, onConfirm, onCancel }) {
         <p style={{ fontSize: '14px', color: 'var(--text-4)', lineHeight: 1.5, marginBottom: '24px' }}>{message}</p>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 20px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-2)', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>Cancel</button>
-          <button onClick={onConfirm} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)', color: '#fff', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>Confirm</button>
+          <button onClick={onConfirm} style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: type === 'danger' ? 'var(--color-danger)' : 'var(--color-warning)',
+            color: type === 'danger' ? 'var(--on-danger, #fff)' : 'var(--on-warning, #111113)', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>Confirm</button>
         </div>
       </div>
     </div>

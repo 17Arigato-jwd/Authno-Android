@@ -15,6 +15,44 @@
   --titlebar-h:   0px;
 }
 
+/* ─── The gate and the rescue screen ───────────────────────────────────────
+   AccessGate and ExportRescue ask for these eleven names 57 times between
+   them, and nothing had ever defined one — so every reference fell to its
+   inline fallback, and the fallbacks were the only values that existed. They
+   drifted, as unenforced duplicates do: --onb-border meant four different
+   alphas, --onb-text4 three, and --onb-accent was a colour at four sites and
+   a linear-gradient at two, which is not a thing one custom property can be.
+
+   Defined here rather than by applyTheme() because these two screens are
+   reachable with no key, no account and no network — the rescue path exists
+   precisely for when the rest of the app cannot start — so their palette must
+   not depend on the theme engine having run. Values are today's, by role, so
+   nothing moves; the names that meant several things are now several names.
+
+   Open question for the owner, deliberately not answered here: whether the
+   gate should follow the chosen theme at all. It renders inside ThemeProvider
+   and could. That is a design call, not a bug. ── */
+:root {
+  --onb-bg:           #0b0710;
+  --onb-card:         rgba(20,14,28,0.86);
+
+  --onb-text1:        #fff;
+  --onb-text2:        rgba(255,255,255,0.8);
+  --onb-text3:        rgba(255,255,255,0.62);
+  --onb-text4:        rgba(255,255,255,0.45);
+
+  --onb-accent:       #c084fc;                              /* text and borders */
+  --onb-accent-fill:  linear-gradient(135deg,#c084fc,#a855f7); /* a button ground */
+  --onb-accent-soft:  rgba(168,85,247,0.16);
+
+  --onb-field:        rgba(255,255,255,0.05);   /* a text field */
+  --onb-field-border: rgba(255,255,255,0.11);
+  --onb-surface:      rgba(255,255,255,0.04);   /* a row or a resting tile */
+  --onb-surface-on:   rgba(255,255,255,0.06);   /* the same tile, chosen */
+  --onb-border:       rgba(255,255,255,0.09);
+  --onb-outline:      rgba(255,255,255,0.16);   /* a tile you can pick */
+}
+
 body {
   background-color: var(--app-bg);
   margin: 0;
