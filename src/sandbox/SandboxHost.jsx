@@ -574,7 +574,7 @@ function SlotsPane({ extensions, book }) {
         {rows.map((r, i) => (
           <div key={`${r.ext.id}-${r.slot}-${i}`} style={{
             ...card, padding: '9px 12px', display: 'flex', alignItems: 'flex-start', gap: 10,
-            borderColor: r.shown ? 'var(--border-sm)' : 'var(--warning-line, var(--border-sm))',
+            borderColor: r.shown ? 'var(--border-sm)' : COLORS.warningLine,
           }}>
             <span style={{
               marginTop: 3, width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
