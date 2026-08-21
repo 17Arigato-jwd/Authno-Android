@@ -12,7 +12,7 @@
  */
 
 import {
-  runExtensionV2, stopExtensionV2, stopAllV2, runningV2, hostFor,
+  runExtensionV2, stopExtensionV2, stopAllV2, runningV2, hostFor, planModules,
 } from './extensionRunnerV2.js';
 import { FRAME_SANDBOX } from './sandboxProtocol.js';
 import { createActivityMeter } from './activityMeter.js';
@@ -46,6 +46,20 @@ function handlers() {
     library: { list: async () => [], get: async () => null, currentId: () => null },
   };
 }
+
+/**
+ * Start an extension, with something to load unless the test names its own.
+ *
+ * Every test here used to pass no files at all and the runner took it: it
+ * forwarded whatever it was given to the frame, so an empty list was as
+ * acceptable as a wrong one. It now plans the module graph first and refuses a
+ * package with no entry before a frame exists, which is the behaviour that was
+ * missing — and which means a test about the frame has to hand it a module.
+ */
+const start = (opts) => runExtensionV2({
+  files: { 'index.js': 'export function activate() {}' },
+  ...opts,
+});
 
 /**
  * A frame that answers the way a real one does, without executing anything.
@@ -124,7 +138,7 @@ afterEach(async () => { await stopAllV2(); });
 describe('a v1 extension is refused, not adapted', () => {
   test('a manifest with no apiVersion is refused with a readable reason', async () => {
     const f = fakeDom();
-    const r = await runExtensionV2({
+    const r = await start({
       manifest: { id: 'old', name: 'Old', version: '1.5.0' },
       handlers: handlers(), dom: f.dom,
     });
@@ -135,7 +149,7 @@ describe('a v1 extension is refused, not adapted', () => {
 
   test('a future apiVersion is refused too', async () => {
     const f = fakeDom();
-    const r = await runExtensionV2({
+    const r = await start({
       manifest: { ...MANIFEST, apiVersion: 3 }, handlers: handlers(), dom: f.dom,
     });
     expect(r.ok).toBe(false);
@@ -144,7 +158,7 @@ describe('a v1 extension is refused, not adapted', () => {
 
   test('an invalid v2 manifest is refused before a frame exists', async () => {
     const f = fakeDom();
-    const r = await runExtensionV2({
+    const r = await start({
       manifest: { apiVersion: 2, id: 'a/b', name: 'X', version: '1.0.0' },
       handlers: handlers(), dom: f.dom,
     });
@@ -157,7 +171,7 @@ describe('a v1 extension is refused, not adapted', () => {
 describe('the frame that gets built', () => {
   test('it carries allow-scripts and nothing else', async () => {
     const f = fakeDom();
-    const r = await runExtensionV2({
+    const r = await start({
       manifest: MANIFEST, granted: [], handlers: handlers(), dom: f.dom,
     });
     expect(r.ok).toBe(true);
@@ -168,7 +182,7 @@ describe('the frame that gets built', () => {
 
   test('its document carries the policy for the grants actually held', async () => {
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, granted: ['library:read:all'], handlers: handlers(), dom: f.dom,
     });
     const doc = f.frames[0].srcdoc;
@@ -181,7 +195,7 @@ describe('the frame that gets built', () => {
 
   test('granting network puts the declared host in the document', async () => {
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, granted: ['network'], handlers: handlers(), dom: f.dom,
     });
     expect(f.frames[0].srcdoc).toContain('https://api.example.com');
@@ -189,30 +203,77 @@ describe('the frame that gets built', () => {
 
   test('the frame is hidden and labelled', async () => {
     const f = fakeDom();
-    await runExtensionV2({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
+    await start({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
     const frame = f.frames[0];
     expect(frame.getAttribute('aria-hidden')).toBe('true');
     expect(frame.getAttribute('title')).toContain('Demo');
     expect(frame.style.cssText).toContain('visibility:hidden');
   });
 
-  test('the entry module is listed last', async () => {
+  test('the entry module is listed last, under everything it imports', async () => {
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, handlers: handlers(), dom: f.dom,
-      files: { 'index.js': 'entry', 'lib/a.js': 'a', 'lib/b.js': 'b' },
+      files: {
+        'index.js': "import { a } from './lib/a.js';\nexport const x = a;",
+        'lib/a.js': "import { b } from './b.js';\nexport const a = b;",
+        'lib/b.js': 'export const b = 1;',
+      },
       entry: 'index.js',
     });
     const load = f.posted.find((m) => m.type === 'ext-load');
-    expect(load.modules.map((m) => m.path).at(-1)).toBe('index.js');
-    expect(load.modules).toHaveLength(3);
+    expect(load.modules.map((m) => m.path)).toEqual(['lib/b.js', 'lib/a.js', 'index.js']);
+  });
+
+  test('relative specifiers are rewritten before the frame sees them', () => {
+    // The bug this file did not catch. The frame is an opaque-origin srcdoc
+    // document — base URL `about:srcdoc` — so `./lib/a.js` resolves to nothing
+    // and the import throws before activate() is reached. Every extension made
+    // of more than one file failed to start, and the old test above could not
+    // see it because its three files imported nothing.
+    const plan = planModules({
+      'index.js': "import { a } from './lib/a.js';\nexport const x = a;",
+      'lib/a.js': 'export const a = 1;',
+    }, 'index.js');
+
+    expect(plan.error).toBeNull();
+    const entry = plan.modules.find((m) => m.path === 'index.js');
+    expect(entry.source).not.toContain('./lib/a.js');
+    // Index 0, because leaves come first and lib/a.js is the leaf.
+    expect(entry.source).toContain('__authno_mod_0__');
+  });
+
+  test('a package with nothing to import is refused before a frame exists', async () => {
+    const f = fakeDom();
+    const r = await start({
+      manifest: MANIFEST, handlers: handlers(), dom: f.dom, files: { 'other.js': 'x' },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/index\.js/);
+    expect(f.frames).toHaveLength(0);
+  });
+
+  test('a circular import is refused with the loop named, not left to hang', async () => {
+    const f = fakeDom();
+    const r = await start({
+      manifest: MANIFEST, handlers: handlers(), dom: f.dom,
+      files: {
+        'index.js': "import { a } from './a.js';\nexport const x = a;",
+        'a.js': "import { b } from './b.js';\nexport const a = b;",
+        'b.js': "import { a } from './a.js';\nexport const b = a;",
+      },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('circular import');
+    expect(r.error).toContain('a.js');
+    expect(f.frames).toHaveLength(0);
   });
 });
 
 describe('only this frame is believed', () => {
   test('a message from another window is ignored', async () => {
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, granted: ['library:read:all'], handlers: handlers(), dom: f.dom,
     });
     const before = f.posted.length;
@@ -227,7 +288,7 @@ describe('only this frame is believed', () => {
 
   test('a call from this frame is answered', async () => {
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, granted: ['library:read:all'], handlers: handlers(), dom: f.dom,
     });
     f.deliver({ type: 'ext-call', id: 1, method: 'library.list', args: [] });
@@ -240,7 +301,7 @@ describe('only this frame is believed', () => {
 
   test('an ungranted call comes back as an error, not a dropped channel', async () => {
     const f = fakeDom();
-    await runExtensionV2({ manifest: MANIFEST, granted: [], handlers: handlers(), dom: f.dom });
+    await start({ manifest: MANIFEST, granted: [], handlers: handlers(), dom: f.dom });
     f.deliver({ type: 'ext-call', id: 2, method: 'library.list', args: [] });
     await new Promise((r) => setTimeout(r, 0));
 
@@ -253,14 +314,14 @@ describe('only this frame is believed', () => {
 describe('lifecycle', () => {
   test('a started extension is listed and has a host', async () => {
     const f = fakeDom();
-    await runExtensionV2({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
+    await start({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
     expect(runningV2()).toEqual(['demo']);
     expect(hostFor('demo')).not.toBeNull();
   });
 
   test('activation that fails leaves nothing running or listening', async () => {
     const f = fakeDom({ readyError: 'no activate() export' });
-    const r = await runExtensionV2({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
+    const r = await start({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
     expect(r.ok).toBe(false);
     expect(runningV2()).toEqual([]);
     expect(f.frames[0].removed).toBe(true);
@@ -269,7 +330,7 @@ describe('lifecycle', () => {
 
   test('activation that never answers times out and cleans up', async () => {
     const f = fakeDom({ autoReady: false });
-    const r = await runExtensionV2({
+    const r = await start({
       manifest: MANIFEST, handlers: handlers(), dom: f.dom, activateTimeoutMs: 10,
     });
     expect(r).toMatchObject({ ok: false, error: 'activation timed out' });
@@ -279,7 +340,7 @@ describe('lifecycle', () => {
 
   test('stopping removes the frame, the listener and the dispatcher', async () => {
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, granted: ['library:read:all'], handlers: handlers(), dom: f.dom,
     });
     const host = hostFor('demo');
@@ -301,7 +362,7 @@ describe('lifecycle', () => {
         deliver({ type: 'ext-call', id: 7, method: 'storage.set', args: ['last', 'write'] });
       },
     });
-    await runExtensionV2({
+    await start({
       manifest: MANIFEST, granted: ['library:read:all'], handlers: handlers(), dom: f.dom,
     });
 
@@ -319,8 +380,8 @@ describe('lifecycle', () => {
 
   test('starting the same id twice replaces rather than duplicates', async () => {
     const f = fakeDom();
-    await runExtensionV2({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
-    await runExtensionV2({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
+    await start({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
+    await start({ manifest: MANIFEST, handlers: handlers(), dom: f.dom });
     expect(runningV2()).toEqual(['demo']);
     expect(f.frames[0].removed).toBe(true);
     expect(f.frames[1].removed).toBe(false);
@@ -338,7 +399,7 @@ describe('lifecycle', () => {
       permissions: { ...MANIFEST.permissions, activity: { reason: 'To time writing.' } },
     };
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: withActivity, granted: ['activity'], handlers: handlers(), dom: f.dom, meter,
     });
 
@@ -362,7 +423,7 @@ describe('lifecycle', () => {
       permissions: { ...MANIFEST.permissions, activity: { reason: 'To time writing.' } },
     };
     const f = fakeDom();
-    await runExtensionV2({
+    await start({
       manifest: withActivity, granted: ['activity'], handlers: handlers(), dom: f.dom, meter,
     });
 
@@ -376,7 +437,7 @@ describe('lifecycle', () => {
   });
 
   test('running with no DOM is refused rather than throwing', async () => {
-    const r = await runExtensionV2({
+    const r = await start({
       manifest: MANIFEST, handlers: handlers(), dom: { document: null, window: null },
     });
     expect(r).toMatchObject({ ok: false, error: 'no DOM to run an extension in' });

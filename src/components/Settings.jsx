@@ -24,6 +24,7 @@ import { useTheme, ALL_THEMES, getAllThemes, subscribeThemes, injectThemeFonts }
 import { ColorPicker } from './ColorPicker';
 import { useExtensionContributions, useExtensions } from '../utils/ExtensionContext';
 import ExtensionPage from './ExtensionPage';
+import ExtensionTab from './ExtensionTab';
 import { isAndroid } from '../utils/platform';
 import { APP_ICON_FAMILIES, appIconSupported, getAppIcon, setAppIcon, setAppIconAndRelaunch, appIconRelaunches } from '../utils/appIcon';
 import { getErrorHistory, clearErrorHistory, formatBugReport } from '../utils/ErrorLogger';
@@ -73,6 +74,13 @@ const NAV_ITEMS = [
   { id: 'writing',    label: 'Writing Goal',     icon: (p) => <DSIcons.Target {...p} />,    group: 'User' },
   { id: 'shortcuts',  label: 'Shortcuts',        icon: (p) => <DSIcons.Lightning {...p} />, group: 'App'  },
   { id: 'data',       label: 'Data & Storage',   icon: (p) => <DSIcons.Package {...p} />,   group: 'App'  },
+  // Extensions used to be reachable from exactly one place: the bottom tab bar
+  // in the library drawer, which only Android renders. So on desktop there was
+  // no way to see what was installed at all, and on a phone it was two screens
+  // away from where anybody looks for it. An extension's own contributed pages
+  // already appear below in the Extensions group; this is the tab that manages
+  // the extensions themselves — installing, removing, and what they may do.
+  { id: 'extensions', label: 'Extensions',       icon: (p) => <DSIcons.Extension {...p} />, group: 'App'  },
   { id: 'developer',  label: 'Developer',        icon: (p) => <DSIcons.Terminal {...p} />,  group: 'App'  },
   { id: 'about',      label: 'About',            icon: (p) => <DSIcons.Info {...p} />,      group: 'App'  },
 ];
@@ -94,6 +102,8 @@ const SETTINGS_INDEX = [
   ['writing', 'Count writing streaks'], ['writing', 'Daily reminder'],
   ['shortcuts', 'Keyboard shortcuts'],
   ['data', 'Clear all sessions'], ['data', 'Storage & recovery'],
+  ['extensions', 'Installed extensions'], ['extensions', 'Install from file'],
+  ['extensions', 'Extension permissions'], ['extensions', 'Remove an extension'],
   ['developer', 'Error log'], ['developer', 'Copy diagnostics'], ['developer', 'Replay welcome slides'],
   ['developer', 'Guided tour'], ['developer', 'Reset all settings'],
   ['about', 'Version'], ["about", "What's new"], ['about', 'Credits'],
@@ -1760,7 +1770,11 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
     </button>
   );
 
-  const isExtSection = extSettingsItems.some(item => activeSection === `ext::${item._extId}::${item.id}`);
+  // Both kinds of extension screen fill the panel rather than sitting in the
+  // centred 620px column: the manage tab is a scrolling list with a button
+  // pinned under it, and a contributed page draws its own chrome.
+  const isExtSection = activeSection === 'extensions'
+    || extSettingsItems.some(item => activeSection === `ext::${item._extId}::${item.id}`);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1815,6 +1829,10 @@ export function Settings({ isOpen, onClose, settings = DEFAULT_SETTINGS, onSave,
       {activeSection === 'about'      && <AboutPanel accentHex={accentHex} onSeeChanges={onSeeChanges} onStartTour={onStartTour}
                                                     onVersionTap={onVersionTap} versionHint={devUnlocked ? undefined : tapHint(tapState)} />}
       {activeSection === 'data'       && <DataPanel       settings={settings} onChange={handleChange} accentHex={accentHex} onClearSessions={onClearSessions} onOpenAbout={() => setActiveSection('about')} />}
+      {/* onClose is the Settings dialog's own: a contribution chip that opens a
+          page needs this out of the way to show it, exactly as it needs the
+          drawer out of the way when the same tab is rendered there. */}
+      {activeSection === 'extensions' && <ExtensionTab accentHex={accentHex} session={null} onClose={onClose} />}
       {allNavItems.filter(i => i._extItem).map(item => (
         activeSection === item.id && <ExtensionPage key={item.id} extension={item._extItem._ext} pageId={item._extItem.page} session={null} accentHex={accentHex} onBack={() => setActiveSection('general')} inline />
       ))}

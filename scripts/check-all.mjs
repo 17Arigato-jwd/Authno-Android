@@ -2,7 +2,7 @@
 /**
  * check-all.mjs — every check this repo has, in one command.
  *
- * There are twelve of them and they are easy to run selectively, which is how
+ * They are easy to run selectively, which is how
  * a `frameBootstrap` refactor updated two of three copies of the same shape
  * guard and shipped: the two were in checks I ran, the third was in one I did
  * not. CI caught it, three commits later, which is three commits of a red
@@ -41,6 +41,11 @@ const CHECKS = [
   ['extension protocol', 'npm', ['run', 'check:extensions'], true],
   ['extensions under load', 'npm', ['run', 'stress:extensions'], true],
   ['cloud backup runs', 'npm', ['run', 'check:cloud-backup'], true],
+  // The app's own runner, not a harness that stands in for it. `check:cloud-backup`
+  // builds its own frame and plans the module graph on the way in, so it proved
+  // the extension sound while stepping around the app code that was not — which
+  // is how a runner that could not link a second file shipped green.
+  ['v2 runner links', 'npm', ['run', 'check:runner-v2'], true],
   ['production build', 'npm', ['run', 'build'], true],
   // After the build, because it loads what the build produced. The other
   // browser checks drive synthetic harnesses; this one boots the real app and
