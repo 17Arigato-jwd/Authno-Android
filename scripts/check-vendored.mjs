@@ -33,6 +33,15 @@ const PAIRS = [
   ['src/utils/rs.js', 'extensions/extbk-cli/src/rs.js'],
   ['src/utils/reedSolomon.js', 'extensions/extbk-cli/src/reedSolomon.js'],
   ['src/utils/epkFormat.js', 'extensions/extbk-cli/src/epkFormat.js'],
+  // The sandbox runs extensions against the app's REAL host protocol rather
+  // than a mock of it. A mock is a second implementation, and the first thing
+  // a second implementation does is drift: the sandbox's hand-written v1
+  // context object was still the only thing it could offer when every real
+  // extension had moved to v2, so the dev tool could not run the extension it
+  // exists to develop.
+  ['src/utils/sandboxProtocol.js', 'extensions/extbk-sandbox/src/sandboxProtocol.js'],
+  ['src/utils/moduleGraph.js', 'extensions/extbk-sandbox/src/moduleGraph.js'],
+  ['src/utils/extensionPermissionsV2.js', 'extensions/extbk-sandbox/src/extensionPermissionsV2.js'],
 ];
 
 const RED = '\x1b[31m', GREEN = '\x1b[32m', DIM = '\x1b[2m', OFF = '\x1b[0m';

@@ -77,7 +77,9 @@
     "check:theme-tokens": "node scripts/check-theme-tokens.mjs",
     "check:opened-file": "node scripts/check-opened-file.mjs",
     "check:boot": "node scripts/check-boot.mjs",
-    "fuzz:parsers": "node scripts/fuzz-parsers.mjs"
+    "fuzz:parsers": "node scripts/fuzz-parsers.mjs",
+    "build:sandbox-host": "node scripts/build-sandbox-host.mjs",
+    "check:sandbox-host": "node scripts/build-sandbox-host.mjs && node scripts/check-sandbox-host.mjs"
   },
   "eslintConfig": {
     "extends": [

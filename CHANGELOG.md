@@ -17,6 +17,10 @@ _Two doors: one that would not open, and one that was not there._
   allowed to do, and the button that installs one from a file used to be
   reachable only from the library drawer — which desktop does not draw at all,
   and which is not where anybody looks. It is a tab in Settings now, on both.
+- **An extension installed on desktop stays installed.** Installing one
+  reported success and then produced nothing: the extension was written, and
+  every attempt to read it back afterwards failed silently. Extensions
+  installed before this update are picked up too — nothing needs reinstalling.
 
 ## 1.1.20-beta.1
 

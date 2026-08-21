@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * extbk-sandbox — v1.1.0
+ * extbk-sandbox — v2.1.0
  *
  * Local development server for AuthNo .extbk extensions.
  *
- *   • Serves the bundled React app at /app/ (if present) — run your code immediately
+ *   • Serves the sandbox host at /host/ — the app's extension surfaces, alone
  *   • Serves extension source files under /ext/ with hot-reload via WebSocket
  *   • Mock AuthNo session API — simulates sessionHooks, storage, and navigation
  *   • Split-pane UI: React app preview on the left, extension sandbox on the right
@@ -13,8 +13,9 @@
  * Usage:
  *   extbk-sandbox [extDir] [--port 3747]
  *
- * The bundled app/ directory is co-located with this install (placed there by CI).
- * If absent, the left pane shows a placeholder and only the extension sandbox runs.
+ * The host/ directory is co-located with this install (built by CI from
+ * src/sandbox/). If absent, the host tab says so and everything else still
+ * runs — the sandbox is useful without it.
  */
 
 import path              from 'path';
@@ -27,6 +28,9 @@ import { WebSocketServer } from 'ws';
 import chokidar          from 'chokidar';
 import chalk             from 'chalk';
 import { harnessHtml, bridgeJs } from './harness.js';
+import { harnessV2Html } from './harnessV2.js';
+import { SandboxHost } from './hostV2.js';
+import { planModuleGraph, rewriteSpecifiers } from './moduleGraph.js';
 import { makeLibrary, slimSession, sessionList, HOOKS } from './mock.js';
 
 const __dirname   = path.dirname(fileURLToPath(import.meta.url));
@@ -37,18 +41,29 @@ const DEFAULT_PORT = 3747;
 program
   .name('extbk-sandbox')
   .description('AuthNo extension dev server — hot reload + React preview + mock API')
-  .version('1.1.0')
+  .version('2.1.0')
   .argument('[extDir]', 'Extension source directory (must contain manifest.json + index.js)', '.')
   .option('-p, --port <port>', 'Port to listen on', String(DEFAULT_PORT))
-  .option('--no-app', 'Disable the bundled React app pane even if app/ exists')
   .parse();
 
 const [extDir]       = program.args;
-const { port: portStr, app: serveApp } = program.opts();
+const { port: portStr } = program.opts();
 const port           = parseInt(portStr, 10);
 const src            = path.resolve(extDir ?? '.');
-const appDir         = path.join(INSTALL_DIR, 'app');
-const hasBundledApp  = serveApp !== false && fs.existsSync(appDir) && fs.existsSync(path.join(appDir, 'index.html'));
+// The app pane serves the sandbox HOST, not AuthNo.
+//
+// It used to be a compiled copy of the app, downloaded from CI — the gate, the
+// onboarding, the account handling and the billing page, all shipped inside a
+// dev tool so that somebody could see where a settings row lands. What is
+// there now is built from src/sandbox/: the extension surfaces and what they
+// need, and nothing an extension cannot reach. check:sandbox-host asserts that
+// against the built bytes rather than against anybody's intention.
+//
+// It shares the left column with the permission switches, the command list and
+// the host-call log, which are about the extension rather than the app around
+// it, and which nobody wanted to give up to get the pane back.
+const HOST_DIR = path.join(INSTALL_DIR, 'host');
+const HAS_HOST = fs.existsSync(path.join(HOST_DIR, 'index.html'));
 
 // ─── Validate extension directory ─────────────────────────────────────────────
 
@@ -64,6 +79,42 @@ try {
   fatal(`manifest.json parse error: ${e.message}`);
 }
 
+const IS_V2 = manifest.apiVersion === 2;
+
+/**
+ * The extension's modules, planned the way the app plans them.
+ *
+ * A v2 extension is a module graph, not one file: the entry imports siblings
+ * and the host loads all of them into the frame with the specifiers rewritten.
+ * Reading only index.js — which is what the v1 path does — gets you an
+ * extension that fails on its first import.
+ */
+function planGraph(entry) {
+  const files = {};
+  const walk = (dir, prefix = '') => {
+    for (const name of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (name.name.startsWith('.') || name.name === 'node_modules' || name.name === 'test') continue;
+      const full = path.join(dir, name.name);
+      const rel = prefix ? `${prefix}/${name.name}` : name.name;
+      if (name.isDirectory()) walk(full, rel);
+      else if (rel.endsWith('.js')) files[rel] = fs.readFileSync(full, 'utf8');
+    }
+  };
+  walk(src);
+
+  const { order, missing, cycle } = planModuleGraph(files, entry);
+  if (cycle) throw new Error(`${entry} has a circular import: ${cycle.join(' → ')}`);
+  if (missing.length) {
+    throw new Error(`${missing[0].from} imports "${missing[0].spec}", which is not in this directory`);
+  }
+  const placeholders = {};
+  order.forEach((p2, i) => { placeholders[p2] = `__authno_mod_${i}__`; });
+  return order.map((p2) => ({
+    path: p2,
+    source: rewriteSpecifiers(p2, files[p2], files, (t) => placeholders[t]),
+  }));
+}
+
 // ─── Express app ──────────────────────────────────────────────────────────────
 
 const app = express();
@@ -72,16 +123,13 @@ app.use(express.json());
 // Sandbox shell UI
 app.get('/', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(sandboxShellHtml(manifest, port, hasBundledApp));
+  res.send(sandboxShellHtml(manifest, port, IS_V2, HAS_HOST));
 });
 
-// Bundled React app (SPA — all non-asset routes fall back to index.html)
-if (hasBundledApp) {
-  app.use('/app', express.static(appDir, { etag: true }));
-  app.get('/app/*', (_req, res) => {
-    res.sendFile(path.join(appDir, 'index.html'));
-  });
-}
+// The sandbox host. Cached normally: it is a build artefact, not the code
+// under development, and re-fetching 600 KB on every hot reload of an
+// extension would make the reload feel like the app's fault.
+if (HAS_HOST) app.use('/host', express.static(HOST_DIR));
 
 // Extension source files (no cache — always fresh)
 app.use('/ext', express.static(src, { etag: false, maxAge: 0 }));
@@ -95,13 +143,74 @@ const extStorage = new Map();
 /** The credential store an auth-form page writes on device. */
 let extConfig = {};
 
+/** The v2 host: one place answering every call, with the grants in front. */
+const hostV2 = new SandboxHost({ library, storage: extStorage, config: extConfig });
+hostV2.seedGrants(manifest);
+
 // The harness: imports the entry point and calls activate(). This replaced
 // `<iframe src="/ext/index.js">`, which merely displayed the source as text.
+//
+// Which harness depends on the manifest. A v2 extension gets the app's real
+// protocol — the same BOOTSTRAP_V2 and host router that run on a phone —
+// because the v1 context object this sandbox used to build for everything is
+// not a thing a v2 extension can use. It failed at activate() on the first
+// `authno.commands.register`, which is to say the tool for developing
+// extensions could not run the only extension there is.
 app.get('/harness', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-  res.send(harnessHtml(manifest));
+  if (!IS_V2) { res.send(harnessHtml(manifest)); return; }
+  try {
+    res.send(harnessV2Html(manifest, planGraph(manifest.entry ?? 'index.js'), manifest.entry ?? 'index.js'));
+  } catch (e) {
+    res.send(`<!DOCTYPE html><body style="background:#0f0f11;color:#fca5a5;font:13px ui-monospace,monospace;padding:20px">`
+      + `<b>This extension could not be loaded.</b><br><br>${escapeHtml(e.message)}</body>`);
+  }
 });
+
+/** The protocol itself, as a classic script the harness can include. */
+app.get('/api/protocol.js', (_req, res) => {
+  const file = path.join(__dirname, 'sandboxProtocol.js');
+  const source = fs.readFileSync(file, 'utf8').replace(/^export /gm, '');
+  if (!/function frameBootstrap\(/.test(source) || !/function createHostRouter\(/.test(source)) {
+    res.status(500).send('// sandboxProtocol.js has been restructured; re-vendor it');
+    return;
+  }
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(`${source}\nwindow.BOOTSTRAP_V2 = BOOTSTRAP_V2;\nwindow.createHostRouter = createHostRouter;\n`);
+});
+
+/** Every host call the extension makes, answered here so the log sees it. */
+app.post('/api/host', async (req, res) => {
+  const { method, args } = req.body ?? {};
+  try {
+    const result = await hostV2.dispatch(String(method), Array.isArray(args) ? args : []);
+    broadcast({ type: 'wire', call: hostV2.calls.at(-1) });
+    res.json({ result: result ?? null });
+  } catch (e) {
+    broadcast({ type: 'wire', call: hostV2.calls.at(-1) });
+    res.json({ error: e?.message ?? String(e), name: e?.name ?? 'Error' });
+  }
+});
+
+/** The permission switches — the sandbox's most useful development feature. */
+app.get('/api/permissions', (_req, res) => {
+  res.json({
+    declared: Object.entries(manifest.permissions ?? {}).map(([name, spec]) => ({
+      name, reason: spec?.reason ?? null, granted: hostV2.grants.get(name) !== false,
+    })),
+  });
+});
+app.post('/api/permissions', (req, res) => {
+  const { name, granted } = req.body ?? {};
+  hostV2.setGrant(String(name), !!granted);
+  res.json({ ok: true, granted: hostV2.grants.get(String(name)) });
+});
+
+/** What the extension registered, and what it has called. */
+app.get('/api/calls', (_req, res) => res.json({ calls: hostV2.calls.slice(-200) }));
+app.post('/api/calls/clear', (_req, res) => { hostV2.calls.length = 0; res.json({ ok: true }); });
 
 app.get('/api/bridge.js', (_req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -241,16 +350,14 @@ server.on('error', (e) => {
 
 server.listen(port, () => {
   log('');
-  log(chalk.bold('extbk-sandbox') + chalk.dim(' v1.1.0'));
+  log(chalk.bold('extbk-sandbox') + chalk.dim(' v2.1.0'));
   log(chalk.dim('─'.repeat(46)));
   log(`  Extension  : ${chalk.cyan(manifest.name)} ${chalk.dim(`(${manifest.id} v${manifest.version})`)}`);
   log(`  Directory  : ${chalk.dim(src)}`);
   log(`  Sandbox    : ${chalk.underline.cyan(`http://localhost:${port}`)}`);
-  if (hasBundledApp) {
-    log(`  React app  : ${chalk.underline.cyan(`http://localhost:${port}/app`)} ${chalk.dim('(bundled)')}`);
-  } else {
-    log(`  React app  : ${chalk.dim('not found — download the sandbox installer to include it')}`);
-  }
+  log(`  API        : ${IS_V2 ? chalk.green('apiVersion 2') : chalk.yellow('apiVersion 1')} ${chalk.dim(IS_V2 ? '(real host protocol)' : '(legacy context object)')}`);
+  const declared = Object.keys(manifest.permissions ?? {});
+  if (declared.length) log(`  Permissions: ${chalk.dim(declared.join(', '))}`);
   log('');
   log(chalk.dim('  Watching for file changes…'));
   log('');
@@ -281,7 +388,7 @@ function makeMockSession() {
 
 // ─── Sandbox shell HTML ───────────────────────────────────────────────────────
 
-function sandboxShellHtml(manifest, wsPort, hasApp) {
+function sandboxShellHtml(manifest, wsPort, isV2, hasHost) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -324,7 +431,6 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
       font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
       display:flex;align-items:center;gap:8px;flex-shrink:0;
     }
-    .app-frame{flex:1;border:none;background:#fff}
 
     /* Controls (middle) */
     .controls{
@@ -365,12 +471,42 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
     .tag-err{color:var(--red)}
     .tag-info{color:var(--muted)}
     .tag-app{color:#38bdf8}
-    .no-app-placeholder{
-      flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-      gap:12px;color:var(--muted);font-size:13px;text-align:center;padding:24px;
-    }
-    .no-app-placeholder code{font-family:monospace;font-size:11px;background:var(--bg3);
-      padding:4px 8px;border-radius:4px;color:var(--text)}
+    /* The development panels that replaced the app preview. */
+    /* The left column is tabbed rather than split four ways: the host pane
+       needs the whole height to be worth looking at, and the three panels
+       beside it each need more than a quarter. */
+    .ptabs{display:flex;gap:2px;padding:5px 8px;background:var(--bg2);
+      border-bottom:1px solid var(--border);flex-shrink:0}
+    .ptab{padding:3px 9px;border-radius:5px;border:1px solid transparent;
+      background:none;color:var(--muted);font-size:11px;cursor:pointer}
+    .ptab:hover{color:var(--text)}
+    .ptab.on{background:var(--bg3);border-color:var(--border);color:var(--text)}
+    .pane{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+    .pane.on{display:flex}
+    .host-frame{flex:1;border:none;background:var(--bg)}
+    .host-missing{flex:1;display:flex;align-items:center;justify-content:center;
+      padding:24px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6}
+    .perms{padding:8px 12px;overflow-y:auto;max-height:34%}
+    .perm{display:flex;align-items:flex-start;gap:8px;padding:6px 0;
+      border-bottom:1px solid var(--border)}
+    .perm:last-child{border-bottom:none}
+    .perm .sw{flex-shrink:0;width:30px;height:17px;border-radius:9px;background:var(--bg3);
+      border:1px solid var(--border);position:relative;cursor:pointer;transition:background .15s}
+    .perm .sw::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;
+      border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+    .perm.on .sw{background:var(--accent);border-color:var(--accent)}
+    .perm.on .sw::after{transform:translateX(13px);background:#fff}
+    .perm .n{font-size:11.5px;font-family:ui-monospace,monospace}
+    .perm.on .n{color:var(--text)} .perm .n{color:var(--muted)}
+    .perm .why{font-size:10.5px;color:var(--muted);line-height:1.45}
+    .cmds{padding:8px 12px;overflow-y:auto;max-height:22%}
+    .cmds .none{color:var(--muted);font-size:11px}
+    .wire{flex:1;overflow-y:auto;padding:6px 12px;background:#0a0a0d;
+      font-family:'SF Mono','Fira Code',monospace;font-size:11px;min-height:0}
+    .wire .row{line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .wire .m{color:var(--text)}
+    .wire .ok{color:var(--green)} .wire .denied{color:var(--yellow)} .wire .error{color:var(--red)}
+    .wire .a{color:var(--muted)}
   </style>
 </head>
 <body>
@@ -378,27 +514,56 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
   <div class="dot" id="dot"></div>
   <h1>${escHtml(manifest.name)}</h1>
   <span class="badge">${escHtml(manifest.id)} v${escHtml(manifest.version)}</span>
-  <span class="pill${hasApp ? ' on' : ''}" id="app-pill">${hasApp ? 'React app bundled' : 'No app bundle'}</span>
+  <span class="pill${isV2 ? ' on' : ''}">${isV2 ? 'apiVersion 2' : 'apiVersion 1'}</span>
   <span class="hstatus" id="status">Connecting…</span>
 </header>
 
 <div class="main">
 
-  <!-- Left: React app preview or placeholder -->
+  <!-- Left: the host, and what the extension asked for.
+       The host pane is a cut-down AuthNo built from src/sandbox — the
+       extension surfaces and nothing else. It is not the app's own build,
+       which is what used to sit here. -->
   <div class="app-pane">
-    <div class="pane-header">
-      <span>App preview</span>
-      ${hasApp ? '<button class="btn" style="width:auto;padding:2px 8px;font-size:10px;margin:0" onclick="reloadApp()">Reload</button>' : ''}
+    <div class="ptabs">
+      <button class="ptab on" data-pane="host">Host</button>
+      <button class="ptab" data-pane="perms">Permissions</button>
+      <button class="ptab" data-pane="commands">Commands</button>
+      <button class="ptab" data-pane="wire">Host calls</button>
     </div>
-    ${hasApp
-      ? `<iframe class="app-frame" id="app-frame" src="/app"></iframe>`
-      : `<div class="no-app-placeholder">
-          <div style="font-size:32px">📦</div>
-          <div>No bundled React app found.</div>
-          <div style="font-size:12px">Download the sandbox installer from GitHub Actions<br>to get a version that includes the compiled app.</div>
-          <div style="font-size:12px;margin-top:8px">Or build it yourself:<br><code>npm run build</code> → copy <code>build/</code> to <code>extbk-sandbox/app/</code></div>
-        </div>`
-    }
+
+    <div class="pane on" id="pane-host">
+      ${hasHost
+        ? '<iframe class="host-frame" id="host-frame" src="/host/" title="Sandbox host"></iframe>'
+        : '<div class="host-missing">The sandbox host is not installed beside this copy.<br>'
+          + 'Everything else still works — the extension runs in the pane on the right.<br><br>'
+          + '<code>npm run build:sandbox-host</code> in the AuthNo repo builds it.</div>'}
+    </div>
+
+    <div class="pane" id="pane-perms">
+      <div class="pane-header">
+        <span>Permissions</span>
+        <span style="color:var(--muted);font-size:10px">switch one off to see what happens</span>
+      </div>
+      <div id="perms" class="perms" style="max-height:none;flex:1"></div>
+    </div>
+
+    <div class="pane" id="pane-commands">
+      <div class="pane-header">
+        <span>Commands</span>
+        <span style="color:var(--muted);font-size:10px" id="cmd-count"></span>
+      </div>
+      <div id="commands" class="cmds" style="max-height:none;flex:1"></div>
+    </div>
+
+    <div class="pane" id="pane-wire">
+      <div class="pane-header">
+        <span>Host calls</span>
+        <button class="btn" style="width:auto;padding:2px 8px;font-size:10px;margin:0"
+                onclick="clearCalls()">Clear</button>
+      </div>
+      <div id="wire" class="wire"></div>
+    </div>
   </div>
 
   <!-- Middle: controls -->
@@ -454,6 +619,10 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
   }
 
   function handle(msg) {
+    // The host-call log. The server records every call with its outcome, so
+    // the harness does not also report them — one call producing two rows,
+    // one of them outcome-less, is what the first version of this did.
+    if (msg.type === 'wire') { addWire(msg.call); return; }
     if (msg.type === 'reload') {
       addLog('reload', 'Changed: ' + msg.file + ' — reloading extension');
       reloadExt();
@@ -541,7 +710,6 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
   }
 
   function reloadExt() { postToExt({ __sandboxCmd: true, cmd: 'reload' }); }
-  function reloadApp() { const f = document.getElementById('app-frame'); if (f) f.src = f.src; }
   function postToExt(msg) { document.getElementById('ext-frame')?.contentWindow?.postMessage(msg, '*'); }
 
   // Messages coming UP from the harness: activation status, logs, toasts.
@@ -550,12 +718,33 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
     if (!m || !m.__sandbox) return;
     if (m.type === 'log')       addLog(m.level === 'err' ? 'err' : m.level === 'warn' ? 'app' : 'conn', m.text);
     if (m.type === 'toast')     addLog('app', 'toast(' + m.variant + '): ' + m.text);
+    if (m.type === 'registered') renderCommands(m.commands);
+    if (m.type === 'wire')       addWire(m.call ?? m);
     if (m.type === 'activated') {
-      const names = Object.entries(m.hooks || {}).map(([k, v]) => k + '×' + v).join(', ');
+      // v1 reports { hookName: count }; v2 reports arrays of names.
+      const names = Array.isArray(m.hooks)
+        ? m.hooks.join(', ')
+        : Object.entries(m.hooks || {}).map(([k, v]) => k + '×' + v).join(', ');
+      renderCommands(Array.isArray(m.commands) ? m.commands : []);
       addLog('conn', 'activate() ok' + (names ? ' — listening: ' + names : ' — no hooks registered'));
     }
   });
-  function postToApp(msg) { document.getElementById('app-frame')?.contentWindow?.postMessage(msg, '*'); }
+  // The app frame is gone; a session update now only reaches the extension.
+  // The host frame is a same-origin page served from /host/, so it can be
+  // messaged directly. It is a no-op when the host is not installed.
+  function postToApp(msg) {
+    const f = document.getElementById('host-frame');
+    try { f && f.contentWindow && f.contentWindow.postMessage(msg, '*'); } catch (e) { /* going */ }
+  }
+
+  document.querySelectorAll('.ptab').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.ptab').forEach(function (o) { o.classList.remove('on'); });
+      document.querySelectorAll('.pane').forEach(function (o) { o.classList.remove('on'); });
+      b.classList.add('on');
+      document.getElementById('pane-' + b.dataset.pane).classList.add('on');
+    });
+  });
 
   function addLog(tag, text) {
     const el   = document.getElementById('log');
@@ -577,6 +766,82 @@ function sandboxShellHtml(manifest, wsPort, hasApp) {
   }
 
   connect();
+
+// ── The development panels ────────────────────────────────────────────────
+//
+// Permissions are the useful one. An extension that behaves perfectly with
+// everything granted is not evidence of much: what an author needs to see is
+// what theirs does when somebody says no, and on device that is the common
+// case. Switching one off here refuses the same wire methods the app refuses,
+// because the map comes from the app's own permission model.
+
+async function loadPerms() {
+  const el = document.getElementById('perms');
+  if (!el) return;
+  try {
+    const { declared } = await (await fetch('/api/permissions')).json();
+    if (!declared.length) { el.innerHTML = '<div class="cmds"><div class="none">This extension asks for nothing.</div></div>'; return; }
+    el.innerHTML = declared.map((p) => \`
+      <div class="perm \${p.granted ? 'on' : ''}" data-name="\${p.name}">
+        <div class="sw" onclick="togglePerm('\${p.name}')"></div>
+        <div>
+          <div class="n">\${p.name}</div>
+          \${p.reason ? \`<div class="why">\${p.reason}</div>\` : ''}
+        </div>
+      </div>\`).join('');
+  } catch { /* the server is restarting */ }
+}
+
+async function togglePerm(name) {
+  const row = document.querySelector(\`.perm[data-name="\${name}"]\`);
+  const next = !row.classList.contains('on');
+  row.classList.toggle('on', next);
+  await fetch('/api/permissions', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, granted: next }),
+  });
+  addLog('info', (next ? 'Granted ' : 'Refused ') + name);
+}
+
+function renderCommands(commands) {
+  const el = document.getElementById('commands');
+  const count = document.getElementById('cmd-count');
+  if (!el) return;
+  if (!commands || !commands.length) {
+    el.innerHTML = '<div class="none">None registered.</div>';
+    if (count) count.textContent = '';
+    return;
+  }
+  if (count) count.textContent = commands.length + ' registered';
+  el.innerHTML = commands.map((c) =>
+    \`<button class="btn" onclick="invokeCommand('\${c}')">▸ \${c}</button>\`).join('');
+}
+
+function invokeCommand(name) {
+  const f = document.getElementById('ext-frame');
+  f?.contentWindow?.postMessage({ __sandboxCmd: true, cmd: 'command', name, args: {} }, '*');
+  addLog('hook', 'command → ' + name);
+}
+
+function addWire(call) {
+  const el = document.getElementById('wire');
+  if (!el || !call) return;
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = \`<span class="\${call.outcome}">\${call.outcome === 'ok' ? '✓' : call.outcome === 'denied' ? '⊘' : '✗'}</span> \`
+    + \`<span class="m">\${call.method}</span>\`
+    + (call.detail ? \` <span class="a">\${String(call.detail).slice(0, 90)}</span>\` : '');
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function clearCalls() {
+  await fetch('/api/calls/clear', { method: 'POST' });
+  const el = document.getElementById('wire');
+  if (el) el.innerHTML = '';
+}
+
+loadPerms();
 </script>
 </body>
 </html>`;
@@ -591,3 +856,9 @@ function escHtml(s) {
 
 function log(msg)   { process.stdout.write(msg + '\n'); }
 function fatal(msg) { process.stderr.write(chalk.red('x ') + msg + '\n'); process.exit(1); }
+
+/** For the one place an error message reaches a browser as markup. */
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}

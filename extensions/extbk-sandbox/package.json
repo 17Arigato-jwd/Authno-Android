@@ -1,7 +1,7 @@
 {
   "name": "extbk-sandbox",
-  "version": "2.0.0",
-  "description": "Dev server for AuthNo .extbk extensions \u2014 runs activate(), fires every hook, hot reload",
+  "version": "2.1.0",
+  "description": "Dev server for AuthNo .extbk extensions — runs activate(), fires every hook, hot reload, and a cut-down host to see contributions land in",
   "bin": {
     "extbk-sandbox": "./src/index.js"
   },

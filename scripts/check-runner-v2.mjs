@@ -38,7 +38,15 @@ import { launchOptions } from './chromium.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4456;
-const FIXTURE = path.join(ROOT, 'src/utils/__fixtures__/cloud-backup-2.0.0.extbk');
+/**
+ * The multi-file package to run last, as shipped.
+ *
+ * The committed fixture by default; RUNNER_V2_EXTBK points it at another one,
+ * which is how a freshly built release gets checked against the runner before
+ * it goes out rather than after somebody installs it.
+ */
+const FIXTURE = process.env.RUNNER_V2_EXTBK
+  ?? path.join(ROOT, 'src/utils/__fixtures__/cloud-backup-2.0.0.extbk');
 
 let failures = 0;
 const ok = (m) => console.log(`  \x1b[32m✔\x1b[0m ${m}`);

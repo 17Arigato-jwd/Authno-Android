@@ -60,6 +60,7 @@ import { isAndroid } from './platform';
 import { toast as _toast } from '../DesignSystem';
 import { APP_VERSION } from '../version';
 import { planModuleGraph, rewriteSpecifiers } from './moduleGraph';
+import { fsText } from './fsText';
 import { sandboxDocument, createHostRouter, toSendable, FRAME_SANDBOX } from './sandboxProtocol';
 import {
   openBrowser as hostOpenBrowser,
@@ -128,7 +129,7 @@ export async function readExtensionTree(extId, { maxFiles = 200 } = {}) {
           directory: Directory.Data,
           encoding: 'utf8',
         });
-        if (typeof r?.data === 'string') out[rel] = r.data;
+        if (typeof r?.data === 'string') out[rel] = fsText(r.data);
       } catch { /* a file that will not read is a missing import, reported later */ }
     }
   };
